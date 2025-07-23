@@ -49,6 +49,24 @@ export default function ResultatForm() {
 
   const spillerOptions = spillere.map((s) => ({ value: s.id, label: s.navn }))
 
+  // Her sikrer vi, at sæt 2+ kun kan vælge de spillere, som er valgt i sæt 1
+  const getSpillerOptionsForSaet = (index: number) => {
+    if (index === 0) return spillerOptions
+
+    const foersteSaet = saetData[0]
+    if (!foersteSaet) return []
+
+    // De fire spillere i sæt 1
+    const muligheder = [
+      foersteSaet.spiller1A,
+      foersteSaet.spiller1B,
+      foersteSaet.spiller2A,
+      foersteSaet.spiller2B,
+    ].filter(Boolean) // fjern null eller undefined
+
+    return muligheder
+  }
+
   const opdaterSaet = (index: number, felt: string, value: any) => {
     const nyData = [...saetData]
     nyData[index][felt] = value
@@ -126,7 +144,7 @@ export default function ResultatForm() {
               <div style={{ flex: 1 }}>
                 <label>Spiller 1A:</label>
                 <Select
-                  options={spillerOptions}
+                  options={getSpillerOptionsForSaet(index)}
                   value={saet.spiller1A}
                   onChange={(v) => opdaterSaet(index, 'spiller1A', v)}
                   styles={{ container: (base) => ({ ...base, marginTop: '0.25rem' }) }}
@@ -136,7 +154,7 @@ export default function ResultatForm() {
               <div style={{ flex: 1 }}>
                 <label>Spiller 2A:</label>
                 <Select
-                  options={spillerOptions}
+                  options={getSpillerOptionsForSaet(index)}
                   value={saet.spiller2A}
                   onChange={(v) => opdaterSaet(index, 'spiller2A', v)}
                   styles={{ container: (base) => ({ ...base, marginTop: '0.25rem' }) }}
@@ -169,7 +187,7 @@ export default function ResultatForm() {
               <div style={{ flex: 1 }}>
                 <label>Spiller 1B:</label>
                 <Select
-                  options={spillerOptions}
+                  options={getSpillerOptionsForSaet(index)}
                   value={saet.spiller1B}
                   onChange={(v) => opdaterSaet(index, 'spiller1B', v)}
                   styles={{ container: (base) => ({ ...base, marginTop: '0.25rem' }) }}
@@ -179,7 +197,7 @@ export default function ResultatForm() {
               <div style={{ flex: 1 }}>
                 <label>Spiller 2B:</label>
                 <Select
-                  options={spillerOptions}
+                  options={getSpillerOptionsForSaet(index)}
                   value={saet.spiller2B}
                   onChange={(v) => opdaterSaet(index, 'spiller2B', v)}
                   styles={{ container: (base) => ({ ...base, marginTop: '0.25rem' }) }}
