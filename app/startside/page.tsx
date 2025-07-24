@@ -9,13 +9,13 @@ export default function Startside() {
 
       <nav style={styles.nav}>
         <Link href="/resultater" style={styles.button}>
-          Seneste resultater
+          🎾 Seneste resultater
         </Link>
         <Link href="/results" style={styles.button}>
-          Indtast resultat
+          ✍️ Indtast resultat
         </Link>
         <Link href="/rangliste" style={styles.button}>
-          Ranglisten
+          📊 Ranglisten
         </Link>
       </nav>
     </main>
@@ -45,7 +45,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   button: {
     display: 'block',
     padding: '1rem',
-    backgroundColor: '#0070f3',
+    backgroundColor: '#ff69b4', // Pink
     color: 'white',
     borderRadius: '6px',
     textDecoration: 'none',
