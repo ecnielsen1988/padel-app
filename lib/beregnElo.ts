@@ -1,10 +1,10 @@
 export type Kamp = {
   id: number
   dato: string
-  spiller1A: string
-  spiller1B: string
-  spiller2A: string
-  spiller2B: string
+  holdA1: string
+  holdA2: string
+  holdB1: string
+  holdB2: string
   scoreA: number
   scoreB: number
   faerdigspillet: boolean
@@ -60,13 +60,13 @@ export function beregnEloForKampe(
   const eloChanges: EloChanges = {}
 
   for (const kamp of kampe) {
-    const r1a = eloMap[kamp.spiller1A] ?? 1500
-    const r1b = eloMap[kamp.spiller1B] ?? 1500
-    const r2a = eloMap[kamp.spiller2A] ?? 1500
-    const r2b = eloMap[kamp.spiller2B] ?? 1500
+    const rA1 = eloMap[kamp.holdA1] ?? 1500
+    const rA2 = eloMap[kamp.holdA2] ?? 1500
+    const rB1 = eloMap[kamp.holdB1] ?? 1500
+    const rB2 = eloMap[kamp.holdB2] ?? 1500
 
-    const ratingA = (r1a + r1b) / 2
-    const ratingB = (r2a + r2b) / 2
+    const ratingA = (rA1 + rA2) / 2
+    const ratingB = (rB1 + rB2) / 2
 
     const EA = 1 / (1 + Math.pow(10, (ratingB - ratingA) / 400))
     const EB = 1 - EA
@@ -101,22 +101,22 @@ export function beregnEloForKampe(
       deltaB = -delta
     }
 
-    const nyRatingA = r1a + deltaA
-    const nyRatingB = r1b + deltaA
-    const nyRatingC = r2a + deltaB
-    const nyRatingD = r2b + deltaB
+    const nyRatingA1 = rA1 + deltaA
+    const nyRatingA2 = rA2 + deltaA
+    const nyRatingB1 = rB1 + deltaB
+    const nyRatingB2 = rB2 + deltaB
 
     eloChanges[kamp.id] = {
-      [kamp.spiller1A]: { før: r1a, efter: nyRatingA, diff: nyRatingA - r1a },
-      [kamp.spiller1B]: { før: r1b, efter: nyRatingB, diff: nyRatingB - r1b },
-      [kamp.spiller2A]: { før: r2a, efter: nyRatingC, diff: nyRatingC - r2a },
-      [kamp.spiller2B]: { før: r2b, efter: nyRatingD, diff: nyRatingD - r2b },
+      [kamp.holdA1]: { før: rA1, efter: nyRatingA1, diff: nyRatingA1 - rA1 },
+      [kamp.holdA2]: { før: rA2, efter: nyRatingA2, diff: nyRatingA2 - rA2 },
+      [kamp.holdB1]: { før: rB1, efter: nyRatingB1, diff: nyRatingB1 - rB1 },
+      [kamp.holdB2]: { før: rB2, efter: nyRatingB2, diff: nyRatingB2 - rB2 },
     }
 
-    eloMap[kamp.spiller1A] = nyRatingA
-    eloMap[kamp.spiller1B] = nyRatingB
-    eloMap[kamp.spiller2A] = nyRatingC
-    eloMap[kamp.spiller2B] = nyRatingD
+    eloMap[kamp.holdA1] = nyRatingA1
+    eloMap[kamp.holdA2] = nyRatingA2
+    eloMap[kamp.holdB1] = nyRatingB1
+    eloMap[kamp.holdB2] = nyRatingB2
   }
 
   return { nyEloMap: eloMap, eloChanges }

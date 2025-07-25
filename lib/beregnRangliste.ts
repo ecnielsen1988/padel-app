@@ -3,10 +3,10 @@ import { supabase } from '../lib/supabaseClient'
 type Resultat = {
   id: number
   dato: string
-  spiller1A: string
-  spiller1B: string
-  spiller2A: string
-  spiller2B: string
+  holdA1: string
+  holdA2: string
+  holdB1: string
+  holdB2: string
   scoreA: number
   scoreB: number
   faerdigspillet: boolean
@@ -67,20 +67,22 @@ export async function beregnRangliste(): Promise<{ navn: string; elo: number; ak
   console.log('DEBUG: Resultater hentet:', resultaterData.length)
 
   for (const kamp of resultaterData) {
+    const { holdA1, holdA2, holdB1, holdB2 } = kamp
+
     if (
-      !(kamp.spiller1A in eloMap) ||
-      !(kamp.spiller1B in eloMap) ||
-      !(kamp.spiller2A in eloMap) ||
-      !(kamp.spiller2B in eloMap)
+      !(holdA1 in eloMap) ||
+      !(holdA2 in eloMap) ||
+      !(holdB1 in eloMap) ||
+      !(holdB2 in eloMap)
     ) continue
 
-    const r1a = eloMap[kamp.spiller1A]
-    const r1b = eloMap[kamp.spiller1B]
-    const r2a = eloMap[kamp.spiller2A]
-    const r2b = eloMap[kamp.spiller2B]
+    const rA1 = eloMap[holdA1]
+    const rA2 = eloMap[holdA2]
+    const rB1 = eloMap[holdB1]
+    const rB2 = eloMap[holdB2]
 
-    const ratingA = (r1a + r1b) / 2
-    const ratingB = (r2a + r2b) / 2
+    const ratingA = (rA1 + rA2) / 2
+    const ratingB = (rB1 + rB2) / 2
 
     const EA = 1 / (1 + Math.pow(10, (ratingB - ratingA) / 400))
     const EB = 1 - EA
@@ -121,10 +123,10 @@ export async function beregnRangliste(): Promise<{ navn: string; elo: number; ak
       deltaB = NyK * (1 - EB) - NyK * EB
     }
 
-    eloMap[kamp.spiller1A] = r1a + deltaA
-    eloMap[kamp.spiller1B] = r1b + deltaA
-    eloMap[kamp.spiller2A] = r2a + deltaB
-    eloMap[kamp.spiller2B] = r2b + deltaB
+    eloMap[holdA1] = rA1 + deltaA
+    eloMap[holdA2] = rA2 + deltaA
+    eloMap[holdB1] = rB1 + deltaB
+    eloMap[holdB2] = rB2 + deltaB
   }
 
   const aktiveSpillere = Object.entries(eloMap)

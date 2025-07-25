@@ -6,8 +6,15 @@ import { supabase } from '../../lib/supabaseClient'
 
 export default function ResultatForm() {
   const [spillere, setSpillere] = useState<{ id: number; navn: string }[]>([])
-  const [antalSaet, setAntalSaet] = useState(1)
-  const [saetData, setSaetData] = useState<any[]>([])
+  const [saetData, setSaetData] = useState<any[]>([{
+    dato: new Date().toISOString().split('T')[0],
+    holdA1: null,
+    holdA2: null,
+    holdB1: null,
+    holdB2: null,
+    scoreA: 0,
+    scoreB: 0,
+  }])
   const [message, setMessage] = useState('')
 
   useEffect(() => {
@@ -27,44 +34,32 @@ export default function ResultatForm() {
     hentSpillere()
   }, [])
 
-  useEffect(() => {
-    const nyeSaet = []
-    for (let i = 0; i < antalSaet; i++) {
-      const tidligere = saetData[0]
-      nyeSaet.push({
-        dato: new Date().toISOString().split('T')[0],
-        spiller1A: tidligere?.spiller1A || null,
-        spiller1B: tidligere?.spiller1B || null,
-        spiller2A: tidligere?.spiller2A || null,
-        spiller2B: tidligere?.spiller2B || null,
-        scoreA: 6,
-        scoreB: 0,
-        faerdigspillet: true,
-        tiebreak: 'ingen',
-      })
-    }
-    setSaetData(nyeSaet)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [antalSaet])
-
   const spillerOptions = spillere.map((s) => ({ value: s.id, label: s.navn }))
 
-  // Her sikrer vi, at sæt 2+ kun kan vælge de spillere, som er valgt i sæt 1
-  const getSpillerOptionsForSaet = (index: number) => {
-    if (index === 0) return spillerOptions
+  const tilladteScore = [0, 1, 2, 3, 4, 5, 6, 7]
+  const faerdigResultater = [
+    [6, 0], [6, 1], [6, 2], [6, 3], [6, 4], [7, 5], [7, 6],
+    [0, 6], [1, 6], [2, 6], [3, 6], [4, 6], [5, 7], [6, 7]
+  ]
 
-    const foersteSaet = saetData[0]
-    if (!foersteSaet) return []
+  const erFaerdigspillet = (a: number, b: number) => {
+    return faerdigResultater.some(([x, y]) => x === a && y === b)
+  }
 
-    // De fire spillere i sæt 1
-    const muligheder = [
-      foersteSaet.spiller1A,
-      foersteSaet.spiller1B,
-      foersteSaet.spiller2A,
-      foersteSaet.spiller2B,
-    ].filter(Boolean) // fjern null eller undefined
-
-    return muligheder
+  const tilfoejSaet = () => {
+    const s1 = saetData[0]
+    setSaetData((prev) => [
+      ...prev,
+      {
+        dato: new Date().toISOString().split('T')[0],
+        holdA1: s1?.holdA1 || null,
+        holdA2: s1?.holdA2 || null,
+        holdB1: s1?.holdB1 || null,
+        holdB2: s1?.holdB2 || null,
+        scoreA: 0,
+        scoreB: 0,
+      },
+    ])
   }
 
   const opdaterSaet = (index: number, felt: string, value: any) => {
@@ -76,17 +71,19 @@ export default function ResultatForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    const resultater = saetData.map((s) => ({
-      dato: s.dato,
-      spiller1A: spillere.find(sp => sp.id === s.spiller1A?.value)?.navn || '',
-      spiller1B: spillere.find(sp => sp.id === s.spiller1B?.value)?.navn || '',
-      spiller2A: spillere.find(sp => sp.id === s.spiller2A?.value)?.navn || '',
-      spiller2B: spillere.find(sp => sp.id === s.spiller2B?.value)?.navn || '',
-      scoreA: parseInt(s.scoreA),
-      scoreB: parseInt(s.scoreB),
-      faerdigspillet: s.faerdigspillet,
-      tiebreak: s.tiebreak,
-    }))
+    const resultater = saetData
+      .filter((s) => !(s.scoreA === 0 && s.scoreB === 0))
+      .map((s) => ({
+        dato: s.dato,
+        holdA1: s.holdA1?.label || '',
+        holdA2: s.holdA2?.label || '',
+        holdB1: s.holdB1?.label || '',
+        holdB2: s.holdB2?.label || '',
+        scoreA: parseInt(s.scoreA),
+        scoreB: parseInt(s.scoreB),
+        faerdigspillet: erFaerdigspillet(parseInt(s.scoreA), parseInt(s.scoreB)),
+        tiebreak: 'ingen',
+      }))
 
     const { error } = await supabase.from('results').insert(resultater)
 
@@ -94,165 +91,82 @@ export default function ResultatForm() {
       setMessage('❌ Fejl: ' + error.message)
     } else {
       setMessage('✅ Resultater indsendt!')
+      // Nulstil til ét nyt sæt klar til indtastning
+      setSaetData([{
+        dato: new Date().toISOString().split('T')[0],
+        holdA1: null,
+        holdA2: null,
+        holdB1: null,
+        holdB2: null,
+        scoreA: 0,
+        scoreB: 0,
+      }])
     }
   }
 
   return (
     <main style={{ maxWidth: '800px', margin: 'auto', padding: '2rem' }}>
-      <h1 style={{ fontSize: '1.5rem', marginBottom: '1rem' }}>Hvor mange sæt vil du indtaste?</h1>
-      <select
-        value={antalSaet}
-        onChange={(e) => setAntalSaet(parseInt(e.target.value))}
-        style={{ marginBottom: '2rem', fontSize: '1.5rem', padding: '0.25rem 0.5rem', width: '60px' }}
-      >
-        {[1, 2, 3, 4, 5, 6].map((n) => (
-          <option key={n} value={n}>{n}</option>
-        ))}
-      </select>
+      <h1 style={{ fontSize: '1.5rem', marginBottom: '1rem' }}>Indtast resultater</h1>
 
       <form onSubmit={handleSubmit}>
         {saetData.map((saet, index) => (
-          <div
-            key={index}
-            style={{
-              border: '1px solid #ccc',
-              padding: '1rem',
-              marginBottom: '1rem',
-              borderRadius: '6px',
-              backgroundColor: '#f9f9f9',
-            }}
-          >
+          <div key={index} style={{ border: '1px solid #ccc', padding: '1rem', marginBottom: '1rem', borderRadius: '6px', backgroundColor: '#f9f9f9' }}>
             <h3 style={{ marginBottom: '1rem' }}>Sæt #{index + 1}</h3>
-
-            <label style={{ display: 'block', marginBottom: '0.5rem' }}>Dato:</label>
             <input
               type="date"
               value={saet.dato}
               onChange={(e) => opdaterSaet(index, 'dato', e.target.value)}
-              style={{ marginBottom: '1rem', width: '150px' }}
+              style={{ marginBottom: '1rem' }}
             />
 
-            {/* Første række: Spiller 1A, Spiller 2A, Score A */}
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '1rem',
-                marginBottom: '1rem',
-              }}
-            >
-              <div style={{ flex: 1 }}>
-                <label>Spiller 1A:</label>
-                <Select
-                  options={getSpillerOptionsForSaet(index)}
-                  value={saet.spiller1A}
-                  onChange={(v) => opdaterSaet(index, 'spiller1A', v)}
-                  styles={{ container: (base) => ({ ...base, marginTop: '0.25rem' }) }}
-                />
+            {[['A', 'holdA1', 'holdA2', 'scoreA'], ['B', 'holdB1', 'holdB2', 'scoreB']].map(([hold, p1, p2, scoreKey]) => (
+              <div key={hold} style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
+                <div style={{ flex: 1 }}>
+                  <label>Hold {hold}1:</label>
+                  <Select
+                    options={index === 0 ? spillerOptions : spillerOptions.filter((opt) => [saetData[0]?.holdA1?.value, saetData[0]?.holdA2?.value, saetData[0]?.holdB1?.value, saetData[0]?.holdB2?.value].includes(opt.value))}
+                    value={saet[p1]}
+                    onChange={(v) => opdaterSaet(index, p1, v)}
+                  />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label>Hold {hold}2:</label>
+                  <Select
+                    options={index === 0 ? spillerOptions : spillerOptions.filter((opt) => [saetData[0]?.holdA1?.value, saetData[0]?.holdA2?.value, saetData[0]?.holdB1?.value, saetData[0]?.holdB2?.value].includes(opt.value))}
+                    value={saet[p2]}
+                    onChange={(v) => opdaterSaet(index, p2, v)}
+                  />
+                </div>
+                <div>
+                  <label>Score {hold}:</label>
+                  <select
+                    value={saet[scoreKey]}
+                    onChange={(e) => opdaterSaet(index, scoreKey, e.target.value)}
+                    style={{ backgroundColor: '#fff', padding: '0.25rem 0.5rem', borderRadius: '4px' }}
+                  >
+                    {
+                      tilladteScore.map(n => (
+                        <option key={n} value={n}>{n}</option>
+                      ))
+                    }
+                  </select>
+                </div>
               </div>
-
-              <div style={{ flex: 1 }}>
-                <label>Spiller 2A:</label>
-                <Select
-                  options={getSpillerOptionsForSaet(index)}
-                  value={saet.spiller2A}
-                  onChange={(v) => opdaterSaet(index, 'spiller2A', v)}
-                  styles={{ container: (base) => ({ ...base, marginTop: '0.25rem' }) }}
-                />
-              </div>
-
-              <div style={{ width: '80px' }}>
-                <label>Score A:</label>
-                <select
-                  value={saet.scoreA}
-                  onChange={(e) => opdaterSaet(index, 'scoreA', e.target.value)}
-                  style={{ marginTop: '0.25rem', width: '100%' }}
-                >
-                  {[...Array(saet.tiebreak === 'matchtiebreak' ? 11 : 8).keys()].map((n) => (
-                    <option key={n} value={n}>{n}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Anden række: Spiller 1B, Spiller 2B, Score B */}
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '1rem',
-                marginBottom: '1rem',
-              }}
-            >
-              <div style={{ flex: 1 }}>
-                <label>Spiller 1B:</label>
-                <Select
-                  options={getSpillerOptionsForSaet(index)}
-                  value={saet.spiller1B}
-                  onChange={(v) => opdaterSaet(index, 'spiller1B', v)}
-                  styles={{ container: (base) => ({ ...base, marginTop: '0.25rem' }) }}
-                />
-              </div>
-
-              <div style={{ flex: 1 }}>
-                <label>Spiller 2B:</label>
-                <Select
-                  options={getSpillerOptionsForSaet(index)}
-                  value={saet.spiller2B}
-                  onChange={(v) => opdaterSaet(index, 'spiller2B', v)}
-                  styles={{ container: (base) => ({ ...base, marginTop: '0.25rem' }) }}
-                />
-              </div>
-
-              <div style={{ width: '80px' }}>
-                <label>Score B:</label>
-                <select
-                  value={saet.scoreB}
-                  onChange={(e) => opdaterSaet(index, 'scoreB', e.target.value)}
-                  style={{ marginTop: '0.25rem', width: '100%' }}
-                >
-                  {[...Array(saet.tiebreak === 'matchtiebreak' ? 11 : 8).keys()].map((n) => (
-                    <option key={n} value={n}>{n}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <label style={{ display: 'block', marginBottom: '0.5rem' }}>
-              <input
-                type="checkbox"
-                checked={saet.faerdigspillet}
-                onChange={(e) => opdaterSaet(index, 'faerdigspillet', e.target.checked)}
-              />{' '}
-              Sættet er færdigspillet
-            </label>
-
-            <label>
-              Tie-break:
-              <select
-                value={saet.tiebreak}
-                onChange={(e) => opdaterSaet(index, 'tiebreak', e.target.value)}
-                style={{ marginLeft: '0.5rem' }}
-              >
-                <option value="ingen">Ingen tie-break</option>
-                <option value="tiebreak">Tie-break</option>
-                <option value="matchtiebreak">Match tie-break</option>
-              </select>
-            </label>
+            ))}
           </div>
         ))}
 
-        <button
-          type="submit"
-          style={{
-            marginTop: '1rem',
-            padding: '0.5rem 1rem',
-            fontSize: '1.1rem',
-            cursor: 'pointer',
-          }}
-        >
-          Indsend resultat(er)
-        </button>
+        {saetData.length > 0 && (
+          <>
+            <button type="button" onClick={tilfoejSaet} style={{ marginRight: '1rem' }}>
+              ➕ Tilføj endnu et sæt
+            </button>
+
+            <button type="submit" style={{ padding: '0.5rem 1rem', backgroundColor: '#4CAF50', color: 'white', fontWeight: 'bold', borderRadius: '6px', cursor: 'pointer' }}>
+              Indsend resultat(er)
+            </button>
+          </>
+        )}
       </form>
 
       <p style={{ marginTop: '1rem', fontWeight: 'bold' }}>{message}</p>

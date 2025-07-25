@@ -1,4 +1,4 @@
-"use client"
+'use client'
 
 import { supabase } from '../../lib/supabaseClient'
 import React, { useEffect, useState } from 'react'
@@ -52,7 +52,17 @@ export default function ResultaterSide() {
       const resultaterData = await hentAlleResultater()
       if (!resultaterData) return
 
-      const { nyEloMap, eloChanges } = beregnEloForKampe(resultaterData, initialEloMap)
+      // Her laver vi et map til at oversætte nye feltnavne til gamle, hvis beregnEloForKampe forventer de gamle
+      const resultaterDataTilBeregning = resultaterData.map((kamp) => ({
+        ...kamp,
+        spiller1A: kamp.holdA1,
+        spiller1B: kamp.holdA2,
+        spiller2A: kamp.holdB1,
+        spiller2B: kamp.holdB2,
+        // evt andre nødvendige mappings
+      }))
+
+      const { nyEloMap, eloChanges } = beregnEloForKampe(resultaterDataTilBeregning, initialEloMap)
 
       setKampe(resultaterData.reverse())
       setEloMap(nyEloMap)
@@ -75,9 +85,9 @@ export default function ResultaterSide() {
               <strong>{new Date(kamp.dato).toLocaleDateString()}</strong> (ID: {kamp.id})
             </div>
             <div>
-              {kamp.spiller1A} & {kamp.spiller1B} ({eloMap[kamp.spiller1A]?.toFixed(1)} & {eloMap[kamp.spiller1B]?.toFixed(1)})
+              {kamp.holdA1} & {kamp.holdA2} ({eloMap[kamp.holdA1]?.toFixed(1)} & {eloMap[kamp.holdA2]?.toFixed(1)})
               vs.{' '}
-              {kamp.spiller2A} & {kamp.spiller2B} ({eloMap[kamp.spiller2A]?.toFixed(1)} & {eloMap[kamp.spiller2B]?.toFixed(1)})
+              {kamp.holdB1} & {kamp.holdB2} ({eloMap[kamp.holdB1]?.toFixed(1)} & {eloMap[kamp.holdB2]?.toFixed(1)})
             </div>
             <div>
               Score: {kamp.scoreA} - {kamp.scoreB}
