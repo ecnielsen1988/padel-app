@@ -52,14 +52,13 @@ export default function ResultaterSide() {
       const resultaterData = await hentAlleResultater()
       if (!resultaterData) return
 
-      // Her laver vi et map til at oversætte nye feltnavne til gamle, hvis beregnEloForKampe forventer de gamle
+      // Mapper holdA/B til spiller1/2 for beregning, hvis nødvendigt
       const resultaterDataTilBeregning = resultaterData.map((kamp) => ({
         ...kamp,
         spiller1A: kamp.holdA1,
         spiller1B: kamp.holdA2,
         spiller2A: kamp.holdB1,
         spiller2B: kamp.holdB2,
-        // evt andre nødvendige mappings
       }))
 
       const { nyEloMap, eloChanges } = beregnEloForKampe(resultaterDataTilBeregning, initialEloMap)
@@ -99,7 +98,7 @@ export default function ResultaterSide() {
                 {eloChanges[kamp.id] &&
                   Object.entries(eloChanges[kamp.id]).map(([navn, elo]) => (
                     <li key={navn}>
-                      {navn}: {elo.før.toFixed(1)} → {elo.efter.toFixed(1)} ({elo.diff >= 0 ? '+' : ''}
+                      {navn}: {elo.before.toFixed(1)} → {elo.after.toFixed(1)} ({elo.diff >= 0 ? '+' : ''}
                       {elo.diff.toFixed(1)})
                     </li>
                   ))}

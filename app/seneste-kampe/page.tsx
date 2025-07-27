@@ -57,15 +57,7 @@ export default function SenesteKampeSide() {
       const resultaterData = await hentAlleResultater()
       if (!resultaterData) return
 
-      const resultaterDataTilBeregning = resultaterData.map((kamp) => ({
-        ...kamp,
-        spiller1A: kamp.holdA1,
-        spiller1B: kamp.holdA2,
-        spiller2A: kamp.holdB1,
-        spiller2B: kamp.holdB2,
-      }))
-
-      const { nyEloMap, eloChanges } = beregnEloForKampe(resultaterDataTilBeregning, initialEloMap)
+      const { nyEloMap, eloChanges } = beregnEloForKampe(resultaterData, initialEloMap)
 
       const grupper: Record<number, Kamp[]> = {}
       resultaterData.forEach((kamp) => {
@@ -115,10 +107,10 @@ export default function SenesteKampeSide() {
 
         if (førsteElo) {
           spillere = [
-            { navn: førsteSæt.holdA1, startElo: førsteElo[førsteSæt.holdA1]?.før ?? 1500 },
-            { navn: førsteSæt.holdA2, startElo: førsteElo[førsteSæt.holdA2]?.før ?? 1500 },
-            { navn: førsteSæt.holdB1, startElo: førsteElo[førsteSæt.holdB1]?.før ?? 1500 },
-            { navn: førsteSæt.holdB2, startElo: førsteElo[førsteSæt.holdB2]?.før ?? 1500 },
+            { navn: førsteSæt.holdA1, startElo: førsteElo[førsteSæt.holdA1]?.before ?? 1500 },
+            { navn: førsteSæt.holdA2, startElo: førsteElo[førsteSæt.holdA2]?.before ?? 1500 },
+            { navn: førsteSæt.holdB1, startElo: førsteElo[førsteSæt.holdB1]?.before ?? 1500 },
+            { navn: førsteSæt.holdB2, startElo: førsteElo[førsteSæt.holdB2]?.before ?? 1500 },
           ].sort((a, b) => b.startElo - a.startElo)
         }
 
@@ -129,17 +121,17 @@ export default function SenesteKampeSide() {
           if (changes) {
             Object.entries(changes).forEach(([navn, change]) => {
               if (!samletEloChanges[navn]) {
-                samletEloChanges[navn] = { før: change.før, efter: change.efter, diff: 0 }
+                samletEloChanges[navn] = { before: change.before, after: change.after, diff: 0 }
               }
               samletEloChanges[navn].diff += change.diff
-              samletEloChanges[navn].efter = change.efter
+              samletEloChanges[navn].after = change.after
             })
           }
         })
 
         // Sortér spillere til total-opsummering efter efter-ELO
         const totalEloSorted = Object.entries(samletEloChanges).sort(
-          (a, b) => b[1].efter - a[1].efter
+          (a, b) => b[1].after - a[1].after
         )
 
         return (
@@ -235,12 +227,11 @@ export default function SenesteKampeSide() {
                     key={navn}
                     style={{
                       marginBottom: '0.2rem',
-                      color: elo.diff >= 0 ? '#2e7d32' : '#c62828',
-                      fontWeight: '600',
+                      color: elo.diff > 0 ? '#2e7d32' : elo.diff < 0 ? '#c62828' : '#666',
                     }}
                   >
-                    {navn}: {elo.før.toFixed(1)} → {elo.efter.toFixed(1)} ({elo.diff >= 0 ? '+' : ''}
-                    {elo.diff.toFixed(1)})
+                    {navn}: {elo.diff > 0 ? '+' : ''}
+                    {elo.diff.toFixed(1)} (før: {elo.before.toFixed(1)} - efter: {elo.after.toFixed(1)})
                   </li>
                 ))}
               </ul>

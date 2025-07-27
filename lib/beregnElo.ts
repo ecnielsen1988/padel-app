@@ -1,5 +1,6 @@
 export type Kamp = {
   id: number
+  kampid: number
   dato: string
   holdA1: string
   holdA2: string
@@ -16,8 +17,8 @@ export type Kamp = {
 export type EloMap = Record<string, number>
 
 export type EloChange = {
-  før: number
-  efter: number
+  before: number
+  after: number
   diff: number
 }
 
@@ -107,10 +108,10 @@ export function beregnEloForKampe(
     const nyRatingB2 = rB2 + deltaB
 
     eloChanges[kamp.id] = {
-      [kamp.holdA1]: { før: rA1, efter: nyRatingA1, diff: nyRatingA1 - rA1 },
-      [kamp.holdA2]: { før: rA2, efter: nyRatingA2, diff: nyRatingA2 - rA2 },
-      [kamp.holdB1]: { før: rB1, efter: nyRatingB1, diff: nyRatingB1 - rB1 },
-      [kamp.holdB2]: { før: rB2, efter: nyRatingB2, diff: nyRatingB2 - rB2 },
+      [kamp.holdA1]: { before: rA1, after: nyRatingA1, diff: nyRatingA1 - rA1 },
+      [kamp.holdA2]: { before: rA2, after: nyRatingA2, diff: nyRatingA2 - rA2 },
+      [kamp.holdB1]: { before: rB1, after: nyRatingB1, diff: nyRatingB1 - rB1 },
+      [kamp.holdB2]: { before: rB2, after: nyRatingB2, diff: nyRatingB2 - rB2 },
     }
 
     eloMap[kamp.holdA1] = nyRatingA1
