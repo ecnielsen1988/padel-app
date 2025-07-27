@@ -11,6 +11,9 @@ export default function Startside() {
         <Link href="/resultater" style={styles.button}>
           🎾 Seneste resultater
         </Link>
+        <Link href="/seneste-kampe" style={styles.button}>
+          🧠 Seneste kampe (med Elo)
+        </Link>
         <Link href="/results" style={styles.button}>
           ✍️ Indtast resultat
         </Link>
