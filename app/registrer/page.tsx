@@ -1,9 +1,12 @@
 "use client"
 
 import React, { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { supabase } from "../../lib/supabaseClient"
 
 export default function Registrer() {
+  const router = useRouter()
+
   const [fornavn, setFornavn] = useState("")
   const [efternavn, setEfternavn] = useState("")
   const [visningsnavn, setVisningsnavn] = useState("")
@@ -104,15 +107,11 @@ export default function Registrer() {
     }
 
     setSucces("Profil oprettet!")
-    setFornavn("")
-    setEfternavn("")
-    setVisningsnavn("")
-    setEmail("")
-    setFødselsdato("")
-    setKøn("")
-    setTelefon("")
-    setNiveau("")
-    setStartElo(0)
+
+    // Redirect til startside efter 1.5 sek
+    setTimeout(() => {
+      router.push("/startside")
+    }, 1500)
   }
 
   return (
@@ -264,4 +263,3 @@ const styles: { [key: string]: React.CSSProperties } = {
     textAlign: "center",
   },
 }
-
