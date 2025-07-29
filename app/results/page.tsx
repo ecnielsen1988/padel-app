@@ -6,15 +6,7 @@ import { supabase } from '../../lib/supabaseClient'
 
 export default function ResultatForm() {
   const [spillere, setSpillere] = useState<{ id: number; navn: string }[]>([])
-  const [saetData, setSaetData] = useState<any[]>([{
-    dato: new Date().toISOString().split('T')[0],
-    holdA1: null,
-    holdA2: null,
-    holdB1: null,
-    holdB2: null,
-    scoreA: 0,
-    scoreB: 0,
-  }])
+  const [saetData, setSaetData] = useState<any[]>([nytTomtSaet()])
   const [message, setMessage] = useState('')
 
   useEffect(() => {
@@ -35,12 +27,23 @@ export default function ResultatForm() {
   }, [])
 
   const spillerOptions = spillere.map((s) => ({ value: s.id, label: s.navn }))
-
   const tilladteScore = [0, 1, 2, 3, 4, 5, 6, 7]
   const faerdigResultater = [
     [6, 0], [6, 1], [6, 2], [6, 3], [6, 4], [7, 5], [7, 6],
     [0, 6], [1, 6], [2, 6], [3, 6], [4, 6], [5, 7], [6, 7]
   ]
+
+  function nytTomtSaet() {
+    return {
+      dato: new Date().toISOString().split('T')[0],
+      holdA1: null,
+      holdA2: null,
+      holdB1: null,
+      holdB2: null,
+      scoreA: 0,
+      scoreB: 0,
+    }
+  }
 
   const erFaerdigspillet = (a: number, b: number) => {
     return faerdigResultater.some(([x, y]) => x === a && y === b)
@@ -71,6 +74,22 @@ export default function ResultatForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
+    // 1. Hent højeste kampid (kun dem der ikke er null)
+    const { data: maxData, error: maxError } = await supabase
+      .from('results')
+      .select('kampid')
+      .not('kampid', 'is', null)
+      .order('kampid', { ascending: false })
+      .limit(1)
+
+    if (maxError) {
+      setMessage('❌ Fejl ved hentning af kampid: ' + maxError.message)
+      return
+    }
+
+    const nyKampid = (maxData?.[0]?.kampid || 0) + 1
+
+    // 2. Klargør resultater med kampid
     const resultater = saetData
       .filter((s) => !(s.scoreA === 0 && s.scoreB === 0))
       .map((s) => ({
@@ -83,24 +102,17 @@ export default function ResultatForm() {
         scoreB: parseInt(s.scoreB),
         faerdigspillet: erFaerdigspillet(parseInt(s.scoreA), parseInt(s.scoreB)),
         tiebreak: 'ingen',
+        kampid: nyKampid,
       }))
 
+    // 3. Indsend til Supabase
     const { error } = await supabase.from('results').insert(resultater)
 
     if (error) {
       setMessage('❌ Fejl: ' + error.message)
     } else {
-      setMessage('✅ Resultater indsendt!')
-      // Nulstil til ét nyt sæt klar til indtastning
-      setSaetData([{
-        dato: new Date().toISOString().split('T')[0],
-        holdA1: null,
-        holdA2: null,
-        holdB1: null,
-        holdB2: null,
-        scoreA: 0,
-        scoreB: 0,
-      }])
+      setMessage(`✅ Resultater indsendt! Kamp ID: ${nyKampid}`)
+      setSaetData([nytTomtSaet()])
     }
   }
 
@@ -124,7 +136,9 @@ export default function ResultatForm() {
                 <div style={{ flex: 1 }}>
                   <label>Hold {hold}1:</label>
                   <Select
-                    options={index === 0 ? spillerOptions : spillerOptions.filter((opt) => [saetData[0]?.holdA1?.value, saetData[0]?.holdA2?.value, saetData[0]?.holdB1?.value, saetData[0]?.holdB2?.value].includes(opt.value))}
+                    options={index === 0 ? spillerOptions : spillerOptions.filter((opt) =>
+                      [saetData[0]?.holdA1?.value, saetData[0]?.holdA2?.value, saetData[0]?.holdB1?.value, saetData[0]?.holdB2?.value].includes(opt.value)
+                    )}
                     value={saet[p1]}
                     onChange={(v) => opdaterSaet(index, p1, v)}
                   />
@@ -132,7 +146,9 @@ export default function ResultatForm() {
                 <div style={{ flex: 1 }}>
                   <label>Hold {hold}2:</label>
                   <Select
-                    options={index === 0 ? spillerOptions : spillerOptions.filter((opt) => [saetData[0]?.holdA1?.value, saetData[0]?.holdA2?.value, saetData[0]?.holdB1?.value, saetData[0]?.holdB2?.value].includes(opt.value))}
+                    options={index === 0 ? spillerOptions : spillerOptions.filter((opt) =>
+                      [saetData[0]?.holdA1?.value, saetData[0]?.holdA2?.value, saetData[0]?.holdB1?.value, saetData[0]?.holdB2?.value].includes(opt.value)
+                    )}
                     value={saet[p2]}
                     onChange={(v) => opdaterSaet(index, p2, v)}
                   />
@@ -144,11 +160,9 @@ export default function ResultatForm() {
                     onChange={(e) => opdaterSaet(index, scoreKey, e.target.value)}
                     style={{ backgroundColor: '#fff', padding: '0.25rem 0.5rem', borderRadius: '4px' }}
                   >
-                    {
-                      tilladteScore.map(n => (
-                        <option key={n} value={n}>{n}</option>
-                      ))
-                    }
+                    {tilladteScore.map(n => (
+                      <option key={n} value={n}>{n}</option>
+                    ))}
                   </select>
                 </div>
               </div>
