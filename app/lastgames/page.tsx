@@ -155,7 +155,7 @@ export default function SenesteKampeSide() {
                 fontWeight: '600',
               }}
             >
-              📅 {new Date(førsteSæt.date).toLocaleDateString('da-DK')}
+              📅 {new Date(førsteSæt.dato).toLocaleDateString('da-DK')}
             </div>
 
             {/* Spillere og start Elo */}
