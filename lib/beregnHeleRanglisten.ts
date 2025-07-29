@@ -1,3 +1,4 @@
+// lib/beregnHeleRangliste.ts
 import { supabase } from '../lib/supabaseClient'
 
 type Resultat = {
@@ -16,7 +17,6 @@ type Resultat = {
 }
 
 type EloMap = Record<string, number>
-type AktivMap = Record<string, boolean>
 
 async function hentAlleResultater(batchSize = 1000): Promise<Resultat[]> {
   let samletData: Resultat[] = []
@@ -41,30 +41,19 @@ async function hentAlleResultater(batchSize = 1000): Promise<Resultat[]> {
   return samletData
 }
 
-export async function beregnRangliste(): Promise<{ navn: string; elo: number; aktiv: boolean }[]> {
-  console.log('DEBUG: beregnRangliste er kaldt')
-
+export async function beregnHeleRanglisten(): Promise<{ navn: string; elo: number }[]> {
   const { data: spillereData, error } = await supabase.from('spillere').select('*')
-  console.log('DEBUG: Spillere hentet fra Supabase:', spillereData)
-
   if (error || !spillereData) {
     console.error('Fejl ved hentning af spillere:', error)
     return []
   }
 
   const eloMap: EloMap = {}
-  const aktivMap: AktivMap = {}
-
   spillereData.forEach((s: any) => {
     eloMap[s.navn] = s.elo_rating ?? 1500
-    aktivMap[s.navn] = s.aktiv ?? false
   })
 
-  console.log('DEBUG: eloMap:', eloMap)
-  console.log('DEBUG: aktivMap:', aktivMap)
-
   const resultaterData = await hentAlleResultater()
-  console.log('DEBUG: Resultater hentet:', resultaterData.length)
 
   for (const kamp of resultaterData) {
     const { holdA1, holdA2, holdB1, holdB2 } = kamp
@@ -129,12 +118,9 @@ export async function beregnRangliste(): Promise<{ navn: string; elo: number; ak
     eloMap[holdB2] = rB2 + deltaB
   }
 
-  const aktiveSpillere = Object.entries(eloMap)
-    .filter(([navn]) => aktivMap[navn])
-    .map(([navn, elo]) => ({ navn, elo, aktiv: true }))
+  const alleSpillere = Object.entries(eloMap)
+    .map(([navn, elo]) => ({ navn, elo }))
     .sort((a, b) => b.elo - a.elo)
 
-  console.log('DEBUG: Aktive spillere til ranglisten:', aktiveSpillere)
-
-  return aktiveSpillere
+  return alleSpillere
 }

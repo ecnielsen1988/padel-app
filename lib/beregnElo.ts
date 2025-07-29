@@ -8,9 +8,8 @@ export type Kamp = {
   holdB2: string
   scoreA: number
   scoreB: number
-  faerdigspillet: boolean
-  ugentligtEvent: boolean
-  torsdag: boolean
+  finish: boolean
+  event: boolean
   tiebreak: string
 }
 
@@ -25,30 +24,28 @@ export type EloChange = {
 export type EloChanges = Record<number, { [key: string]: EloChange }>
 
 function beregnK(
-  faerdigspillet: boolean,
+  finish: boolean,
   scoreA: number,
   scoreB: number,
-  ugentligt: boolean,
-  torsdag: boolean,
+  event: boolean,
   tiebreak: string
 ): number {
-  let K = 64
+  let K = 32
 
   if (tiebreak === 'tiebreak') {
-    K = 16
+    K = 8
   } else if (tiebreak === 'matchtiebreak') {
-    K = 32
-  } else if (!faerdigspillet) {
+    K = 16
+  } else if (!finish) {
     const maxScore = Math.max(scoreA, scoreB)
-    if (maxScore === 6 || maxScore === 5) K = 32
-    else if (maxScore === 4) K = 16
-    else if (maxScore === 3) K = 8
-    else if (maxScore === 2) K = 4
-    else if (maxScore === 1) K = 2
+    if (maxScore === 6 || maxScore === 5) K = 16
+    else if (maxScore === 4) K = 8
+    else if (maxScore === 3) K = 4
+    else if (maxScore === 2) K = 2
+    else if (maxScore === 1) K = 1
   }
 
-  if (ugentligt) K *= 2
-  if (torsdag) K *= 2
+  if (event) K *= 2
 
   return K
 }
@@ -73,11 +70,10 @@ export function beregnEloForKampe(
     const EB = 1 - EA
 
     const baseK = beregnK(
-      kamp.faerdigspillet,
+      kamp.finish,
       kamp.scoreA,
       kamp.scoreB,
-      kamp.ugentligtEvent,
-      kamp.torsdag,
+      kamp.event,
       kamp.tiebreak
     )
 

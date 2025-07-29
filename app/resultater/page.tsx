@@ -17,9 +17,9 @@ export default function ResultaterSide() {
 
       while (true) {
         const { data: batch, error } = await supabase
-          .from('results')
+          .from('newresults')          // <-- Skiftet her til newresults
           .select('*')
-          .order('dato', { ascending: true })
+          .order('date', { ascending: true })  // Husk at feltnavnet også hedder 'date' nu?
           .order('id', { ascending: true })
           .gt('id', lastId)
           .limit(batchSize)
@@ -41,16 +41,22 @@ export default function ResultaterSide() {
     }
 
     async function hentResultaterOgBeregnElo() {
-      const { data: spillereData } = await supabase.from('spillere').select('*')
-      if (!spillereData) return
+  const { data: spillereData } = await supabase.from('profiles').select('*')
+  if (!spillereData) return
 
-      const initialEloMap: EloMap = {}
-      spillereData.forEach((s: any) => {
-        initialEloMap[s.navn.trim()] = s.elo_rating ?? 1500
-      })
+  console.log('spillereData:', spillereData)
 
-      const resultaterData = await hentAlleResultater()
-      if (!resultaterData) return
+  const initialEloMap: EloMap = {}
+  spillereData.forEach((s: any) => {
+    if (typeof s.visningsnavn === 'string' && s.visningsnavn.trim() !== '') {
+      initialEloMap[s.visningsnavn.trim()] = s.startElo ?? 1500
+    } else {
+      console.warn('Spiller uden visningsnavn eller visningsnavn ikke string:', s)
+    }
+  })
+
+  const resultaterData = await hentAlleResultater()
+  if (!resultaterData) return
 
       // Mapper holdA/B til spiller1/2 for beregning, hvis nødvendigt
       const resultaterDataTilBeregning = resultaterData.map((kamp) => ({
@@ -81,7 +87,7 @@ export default function ResultaterSide() {
             style={{ marginBottom: '1rem', borderBottom: '1px solid #ccc', paddingBottom: '0.5rem' }}
           >
             <div>
-              <strong>{new Date(kamp.dato).toLocaleDateString()}</strong> (ID: {kamp.id})
+              <strong>{new Date(kamp.date).toLocaleDateString()}</strong> (ID: {kamp.id})
             </div>
             <div>
               {kamp.holdA1} & {kamp.holdA2} ({eloMap[kamp.holdA1]?.toFixed(1)} & {eloMap[kamp.holdA2]?.toFixed(1)})
