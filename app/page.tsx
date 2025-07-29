@@ -1,16 +1,67 @@
+import Image from "next/image";
+import Link from "next/link";
+
 export default function Home() {
   return (
-    <main className="min-h-screen flex flex-col justify-center items-center p-8">
-      <h1 className="text-4xl font-bold mb-6">Velkommen til Padel Rangliste</h1>
-      <p className="mb-4 text-center max-w-md">
+    <main style={styles.main}>
+      <div style={styles.logoContainer}>
+        <Image
+          src="/padelhuset-logo.png"
+          alt="Padelhuset Logo"
+          width={200}
+          height={60}
+          priority
+        />
+      </div>
+
+      <h1 style={styles.title}>Velkommen til PADELHUSETS rangliste</h1>
+
+      <p style={styles.text}>
         Her kan du se ranglisten, tilmelde kampe og meget mere.
       </p>
-      <a
-        href="/login"
-        className="px-6 py-3 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
-      >
+
+      <Link href="/login" style={styles.button}>
         Log ind
-      </a>
+      </Link>
     </main>
   );
 }
+
+const styles: { [key: string]: React.CSSProperties } = {
+  main: {
+    maxWidth: 500,
+    margin: "3rem auto",
+    padding: "2rem",
+    backgroundColor: "#222",
+    borderRadius: 8,
+    color: "white",
+    textAlign: "center",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+  },
+  logoContainer: {
+    marginBottom: "2rem",
+  },
+  title: {
+    fontSize: "2.5rem",
+    fontWeight: "bold",
+    marginBottom: "1rem",
+  },
+  text: {
+    marginBottom: "2rem",
+    maxWidth: 400,
+  },
+  button: {
+    backgroundColor: "#ff69b4",
+    color: "white",
+    padding: "1rem 2rem",
+    borderRadius: 6,
+    textDecoration: "none",
+    fontWeight: "bold",
+    fontSize: "1.2rem",
+    cursor: "pointer",
+    transition: "background-color 0.3s ease",
+    display: "inline-block",
+  },
+};
