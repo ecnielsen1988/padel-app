@@ -1,4 +1,5 @@
 'use client'
+export const dynamic = 'force-dynamic'
 
 import { supabase } from '../../lib/supabaseClient'
 import React, { useEffect, useState } from 'react'
@@ -101,7 +102,6 @@ export default function SenesteKampeSide() {
       {kampGrupper.map(({ kampid, sæt }) => {
         const førsteSæt = sæt[0]
 
-        // Brug første sæt og hent ELO før første sæt
         const førsteElo = eloChanges[førsteSæt.id]
         let spillere: { navn: string; startElo: number }[] = []
 
@@ -114,7 +114,6 @@ export default function SenesteKampeSide() {
           ].sort((a, b) => b.startElo - a.startElo)
         }
 
-        // Saml Elo-ændringer for hele kampen
         const samletEloChanges: { [key: string]: EloChange } = {}
         sæt.forEach((kamp) => {
           const changes = eloChanges[kamp.id]
@@ -129,7 +128,6 @@ export default function SenesteKampeSide() {
           }
         })
 
-        // Sortér spillere til total-opsummering efter efter-ELO
         const totalEloSorted = Object.entries(samletEloChanges).sort(
           (a, b) => b[1].after - a[1].after
         )
@@ -147,7 +145,6 @@ export default function SenesteKampeSide() {
               boxShadow: '0 0 5px rgba(0,0,0,0.1), 0 0 10px rgba(0,0,0,0.05)',
             }}
           >
-            {/* Date */}
             <div
               style={{
                 fontSize: '1.1rem',
@@ -158,7 +155,6 @@ export default function SenesteKampeSide() {
               📅 {new Date(førsteSæt.dato).toLocaleDateString('da-DK')}
             </div>
 
-            {/* Spillere og start Elo */}
             <div
               style={{
                 display: 'flex',
@@ -176,7 +172,6 @@ export default function SenesteKampeSide() {
               ))}
             </div>
 
-            {/* Sæt info */}
             <div style={{ marginBottom: '1rem' }}>
               {sæt.map((kamp, index) => {
                 const changes = eloChanges[kamp.id]
@@ -218,7 +213,6 @@ export default function SenesteKampeSide() {
               })}
             </div>
 
-            {/* Total Elo ændringer */}
             <div>
               <strong>🔥 Total Elo ændringer:</strong>
               <ul style={{ listStyle: 'none', paddingLeft: 0, marginTop: '0.3rem' }}>
