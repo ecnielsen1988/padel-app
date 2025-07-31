@@ -12,10 +12,13 @@
     "@supabase/auth-helpers-nextjs": "^0.10.0",
     "@supabase/supabase-js": "^2.52.0",
     "date-fns": "^4.1.0",
+    "dayjs": "^1.11.13",
     "dotenv": "^17.2.1",
     "next": "15.4.2",
+    "qrcode.react": "^4.2.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",
+    "react-qr-code": "^2.0.18",
     "react-select": "^5.10.2"
   },
   "devDependencies": {

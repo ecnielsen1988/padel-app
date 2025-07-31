@@ -152,7 +152,7 @@ export default function SenesteKampeSide() {
                 fontWeight: '600',
               }}
             >
-              📅 {new Date(førsteSæt.dato).toLocaleDateString('da-DK')}
+              📅 {new Date(førsteSæt.date).toLocaleDateString('da-DK')}
             </div>
 
             <div
