@@ -2,16 +2,20 @@
 
 import { useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
+import Link from "next/link";
 
 export default function VelkommenPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [besked, setBesked] = useState("");
+  const [visLoginKnap, setVisLoginKnap] = useState(false);
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
+    setBesked("");
+    setVisLoginKnap(false);
 
-    const { error } = await supabase.auth.signUp({
+    const { error: signupError } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -19,9 +23,22 @@ export default function VelkommenPage() {
       },
     });
 
-    if (error) {
-      setBesked("Der opstod en fejl: " + error.message);
+    if (signupError) {
+      setBesked("Der opstod en fejl: " + signupError.message);
+      return;
+    }
+
+    // Forsøg at logge ind for at tjekke om brugeren allerede er bekræftet
+    const { error: loginError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (!loginError) {
+      setBesked("Denne e-mail er allerede oprettet og bekræftet. Du kan logge ind.");
+      setVisLoginKnap(true);
     } else {
+      // Hvis login fejler, antager vi at brugeren mangler at bekræfte sin e-mail
       setBesked("Tjek din e-mail og bekræft din konto.");
     }
   };
@@ -50,7 +67,16 @@ export default function VelkommenPage() {
           Opret konto
         </button>
       </form>
-      {besked && <p>{besked}</p>}
+
+      {besked && <p style={{ marginTop: "1rem" }}>{besked}</p>}
+
+      {visLoginKnap && (
+        <Link href="/login">
+          <button style={{ ...styles.button, backgroundColor: "#444", marginTop: "1rem" }}>
+            Gå til login
+          </button>
+        </Link>
+      )}
     </main>
   );
 }
