@@ -24,7 +24,7 @@ export default function SenesteKampeSide() {
         const { data: batch, error } = await supabase
           .from('results')
           .select('*')
-          .order('dato', { ascending: true })
+          .order('date', { ascending: true })
           .order('id', { ascending: true })
           .gt('id', lastId)
           .limit(batchSize)
@@ -155,7 +155,7 @@ export default function SenesteKampeSide() {
                 fontWeight: '600',
               }}
             >
-              📅 {new Date(førsteSæt.dato).toLocaleDateString('da-DK')}
+              📅 {new Date(førsteSæt.date).toLocaleDateString('da-DK')}
             </div>
 
             {/* Spillere og start Elo */}

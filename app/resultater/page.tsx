@@ -87,7 +87,7 @@ export default function ResultaterSide() {
             style={{ marginBottom: '1rem', borderBottom: '1px solid #ccc', paddingBottom: '0.5rem' }}
           >
             <div>
-              <strong>{new Date(kamp.dato).toLocaleDateString()}</strong> (ID: {kamp.id})
+              <strong>{new Date(kamp.date).toLocaleDateString()}</strong> (ID: {kamp.id})
             </div>
             <div>
               {kamp.holdA1} & {kamp.holdA2} ({eloMap[kamp.holdA1]?.toFixed(1)} & {eloMap[kamp.holdA2]?.toFixed(1)})

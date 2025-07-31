@@ -1,7 +1,7 @@
 export type Kamp = {
   id: number
   kampid: number
-  dato: string
+  date: string
   holdA1: string
   holdA2: string
   holdB1: string
