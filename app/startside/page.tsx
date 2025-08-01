@@ -12,6 +12,7 @@ type Bruger = {
 export default function StartSide() {
   const [bruger, setBruger] = useState<Bruger | null>(null)
   const [loading, setLoading] = useState(true)
+  const [ulæsteAntal, setUlæsteAntal] = useState<number>(0)
 
   useEffect(() => {
     const hentBruger = async () => {
@@ -28,6 +29,18 @@ export default function StartSide() {
           console.error('Fejl ved hentning af profil:', error)
         } else {
           setBruger(profile)
+
+          // Hvis admin: hent antal ulæste beskeder
+          if (profile.rolle === 'admin') {
+            const { count, error: beskedFejl } = await supabase
+              .from('admin_messages')
+              .select('*', { count: 'exact', head: true })
+              .eq('læst', false)
+
+            if (!beskedFejl && typeof count === 'number') {
+              setUlæsteAntal(count)
+            }
+          }
         }
       }
 
@@ -96,14 +109,29 @@ export default function StartSide() {
         )}
 
         {bruger.rolle === 'admin' && (
-          <Link
-            href="/admin"
-            className="bg-gray-800 hover:bg-gray-900 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
-          >
-            🛠 Adminpanel
-          </Link>
+          <>
+            <Link
+              href="/admin"
+              className="bg-gray-800 hover:bg-gray-900 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
+            >
+              🛠 Adminpanel
+            </Link>
+
+            <Link
+              href="/admin/beskeder"
+              className="bg-yellow-500 hover:bg-yellow-600 text-black font-semibold py-3 px-5 rounded-xl text-center shadow flex justify-between items-center"
+            >
+              🔔 Beskeder
+              {ulæsteAntal > 0 && (
+                <span className="ml-2 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded-full">
+                  {ulæsteAntal}
+                </span>
+              )}
+            </Link>
+          </>
         )}
       </div>
     </div>
   )
 }
+

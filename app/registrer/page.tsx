@@ -87,24 +87,27 @@ export default function Registrer() {
     }
 
     const { error: profilFejl } = await supabase.from("profiles").insert({
-      id: user.id,
-      fornavn,
-      efternavn,
-      visningsnavn: visningsnavn.trim(),
-      email,
-      fødselsdato,
-      køn,
-      telefon,
-      rolle: "bruger",
-      niveau,
-      startElo
-    })
+  id: user.id,
+  fornavn,
+  efternavn,
+  visningsnavn: visningsnavn.trim(),
+  email,
+  køn,
+  telefon,
+  rolle: "bruger",
+  niveau,
+  startElo,
+  ...(fødselsdato ? { fødselsdato } : {}) // <-- dette er fixet
+})
+
 
     if (profilFejl) {
-      console.log("Profilfejl:", profilFejl)
-      setFejl("Bruger blev oprettet, men profilen kunne ikke gemmes.")
-      return
-    }
+  console.error("Profilfejl:", profilFejl)
+  setFejl("❌ Fejl ved oprettelse: " + profilFejl.message)
+  return
+}
+
+
 
     setSucces("Profil oprettet!")
 

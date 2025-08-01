@@ -91,6 +91,11 @@ export default function SenesteKampeSide() {
   // Hent brugerens Supabase-id (kræver at brugeren er logget ind)
   const { data: userData } = await supabase.auth.getUser()
   const senderId = userData?.user?.id
+  
+if (!senderId) {
+  alert('Du skal være logget ind for at sende besked.')
+  return
+}
 
   const { error } = await supabase.from('admin_messages').insert([
     {

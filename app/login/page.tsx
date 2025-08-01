@@ -13,16 +13,36 @@ export default function LoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data: loginData, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
 
     if (error) {
       setMessage("❌ Fejl: " + error.message);
+      return;
+    }
+
+    const userId = loginData.user.id;
+
+    // Tjek om bruger findes i profiles
+    const { data: profil, error: profilError } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("id", userId)
+      .maybeSingle();
+
+    if (profilError) {
+      setMessage("❌ Fejl ved tjek af profil: " + profilError.message);
+      return;
+    }
+
+    setMessage("✅ Du er nu logget ind!");
+
+    if (profil) {
+      router.push("/startside"); // Profil findes
     } else {
-      setMessage("✅ Du er nu logget ind!");
-      router.push("/startside"); // Redirigerer efter login
+      router.push("/registrer"); // Ingen profil endnu
     }
   };
 
@@ -95,3 +115,4 @@ const styles: { [key: string]: React.CSSProperties } = {
     marginTop: "1rem",
   },
 };
+
