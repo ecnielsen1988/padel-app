@@ -1,33 +1,44 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import Select from 'react-select'
 import { supabase } from '../../lib/supabaseClient'
+import { SaetForm } from './SaetForm'
 
 export default function ResultatForm() {
   const [spillere, setSpillere] = useState<{ id: number; visningsnavn: string }[]>([])
-  const [saetData, setSaetData] = useState<any[]>([nytTomtSaet()])
+  const [aktivtSaet, setAktivtSaet] = useState<any>(nytTomtSaet())
+  const [afsluttedeSaet, setAfsluttedeSaet] = useState<any[]>([])
   const [message, setMessage] = useState('')
+  const [begrænsedeSpillere, setBegrænsedeSpillere] = useState<{ value: string; label: string }[] | null>(null)
 
   useEffect(() => {
-    async function hentSpillere() {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, visningsnavn')
-        .order('visningsnavn', { ascending: true })
+  async function hentSpillere() {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, visningsnavn')
+      .order('visningsnavn', { ascending: true })
 
-      if (error) {
-        console.error('Fejl ved hentning af spillere:', error)
-      } else {
-        setSpillere(data || [])
-      }
+    if (error) {
+      console.error('Fejl ved hentning af spillere:', error)
+    } else {
+      console.log("✅ Hentede spillere fra Supabase:", data)  // <--- Her logger vi
+      setSpillere(data || [])
     }
+  }
 
-    hentSpillere()
-  }, [])
+  hentSpillere()
+}, [])
 
-  const spillerOptions = spillere.map((s) => ({ value: s.id, label: s.visningsnavn }))
-  const tilladteScore = [0, 1, 2, 3, 4, 5, 6, 7]
+
+
+  useEffect(() => {
+    if (aktivtSaet.date === '') {
+      const iDag = new Date().toISOString().split('T')[0]
+      setAktivtSaet((prev: any) => ({ ...prev, date: iDag }))
+    }
+  }, [aktivtSaet])
+
+  const spillerOptions = spillere.map((s) => ({ value: s.visningsnavn, label: s.visningsnavn }))
   const faerdigResultater = [
     [6, 0], [6, 1], [6, 2], [6, 3], [6, 4], [7, 5], [7, 6],
     [0, 6], [1, 6], [2, 6], [3, 6], [4, 6], [5, 7], [6, 7]
@@ -35,7 +46,7 @@ export default function ResultatForm() {
 
   function nytTomtSaet() {
     return {
-      dato: new Date().toISOString().split('T')[0],
+      date: '',
       holdA1: null,
       holdA2: null,
       holdB1: null,
@@ -45,30 +56,50 @@ export default function ResultatForm() {
     }
   }
 
-  const erFaerdigspillet = (a: number, b: number) => {
-    return faerdigResultater.some(([x, y]) => x === a && y === b)
+  const erFaerdigspillet = (a: number, b: number) =>
+    faerdigResultater.some(([x, y]) => x === a && y === b)
+
+  // I ResultatForm.tsx
+
+const tilfoejSaet = () => {
+  setAfsluttedeSaet((prev) => [...prev, aktivtSaet])
+
+  const første = aktivtSaet
+  const spillernavne = [
+    første.holdA1?.value || første.holdA1,
+    første.holdA2?.value || første.holdA2,
+    første.holdB1?.value || første.holdB1,
+    første.holdB2?.value || første.holdB2,
+  ]
+
+  const begrænsede = spillerOptions.filter((opt) =>
+    spillernavne.includes(opt.value)
+  )
+
+  setBegrænsedeSpillere(begrænsede)
+
+  setAktivtSaet({
+    date: new Date().toISOString().split('T')[0],
+    holdA1: første.holdA1?.value || første.holdA1,
+    holdA2: første.holdA2?.value || første.holdA2,
+    holdB1: første.holdB1?.value || første.holdB1,
+    holdB2: første.holdB2?.value || første.holdB2,
+    scoreA: 0,
+    scoreB: 0,
+  })
+}
+
+
+
+  const fjernSaet = (index: number) => {
+    setAfsluttedeSaet((prev) => prev.filter((_, i) => i !== index))
   }
 
-  const tilfoejSaet = () => {
-    const s1 = saetData[0]
-    setSaetData((prev) => [
+  const opdaterSaet = (felt: string, value: any) => {
+    setAktivtSaet((prev: any) => ({
       ...prev,
-      {
-        dato: new Date().toISOString().split('T')[0],
-        holdA1: s1?.holdA1 || null,
-        holdA2: s1?.holdA2 || null,
-        holdB1: s1?.holdB1 || null,
-        holdB2: s1?.holdB2 || null,
-        scoreA: 0,
-        scoreB: 0,
-      },
-    ])
-  }
-
-  const opdaterSaet = (index: number, felt: string, value: any) => {
-    const nyData = [...saetData]
-    nyData[index][felt] = value
-    setSaetData(nyData)
+      [felt]: value
+    }))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -87,18 +118,19 @@ export default function ResultatForm() {
     }
 
     const nyKampid = (maxData?.[0]?.kampid || 0) + 1
+    const alleSaet = [...afsluttedeSaet, aktivtSaet]
 
-    const resultater = saetData
+    const resultater = alleSaet
       .filter((s) => !(s.scoreA === 0 && s.scoreB === 0))
       .map((s) => ({
-        dato: s.dato,
-        holdA1: s.holdA1?.label || '',
-        holdA2: s.holdA2?.label || '',
-        holdB1: s.holdB1?.label || '',
-        holdB2: s.holdB2?.label || '',
-        scoreA: parseInt(s.scoreA),
-        scoreB: parseInt(s.scoreB),
-        finish: erFaerdigspillet(parseInt(s.scoreA), parseInt(s.scoreB)),
+        date: s.date,
+        holdA1: s.holdA1?.value || s.holdA1,
+        holdA2: s.holdA2?.value || s.holdA2,
+        holdB1: s.holdB1?.value || s.holdB1,
+        holdB2: s.holdB2?.value || s.holdB2,
+        scoreA: s.scoreA,
+        scoreB: s.scoreB,
+        finish: erFaerdigspillet(s.scoreA, s.scoreB),
         event: false,
         tiebreak: 'ingen',
         kampid: nyKampid,
@@ -110,119 +142,96 @@ export default function ResultatForm() {
       setMessage('❌ Fejl: ' + error.message)
     } else {
       setMessage(`✅ Resultater indsendt! 🏆 Kamp ID: ${nyKampid}`)
-      setSaetData([nytTomtSaet()])
+      setAfsluttedeSaet([])
+      setAktivtSaet(nytTomtSaet())
+      setBegrænsedeSpillere(null)
     }
   }
 
+  const navn = (idOrObj: any) => {
+    const id = typeof idOrObj === 'object' ? idOrObj?.value : idOrObj
+    return spillerOptions.find((s) => s.value === id)?.label || 'Ukendt'
+  }
+
   return (
-    <main style={{ maxWidth: '800px', margin: 'auto', padding: '2rem', fontFamily: 'sans-serif' }}>
+    <main style={{
+      maxWidth: '600px',
+      margin: 'auto',
+      padding: '2rem',
+      fontFamily: 'sans-serif',
+      backgroundColor: '#fff0f6',
+      borderRadius: '12px'
+    }}>
       <h1 style={{ fontSize: '2rem', marginBottom: '1.5rem', color: '#d63384' }}>🎾 Indtast resultater</h1>
 
       <form onSubmit={handleSubmit}>
-        {saetData.map((saet, index) => (
-          <div key={index} style={{
-            border: '2px solid #f8bbd0',
-            padding: '1rem',
-            marginBottom: '1.5rem',
-            borderRadius: '12px',
-            backgroundColor: '#fff0f6'
-          }}>
-            <h3 style={{ marginBottom: '1rem', color: '#c2185b' }}>Sæt #{index + 1} ✨</h3>
-            <input
-              type="date"
-              value={saet.dato}
-              onChange={(e) => opdaterSaet(index, 'dato', e.target.value)}
-              style={{ marginBottom: '1rem', borderRadius: '6px', border: '1px solid #ccc', padding: '0.5rem' }}
-            />
-
-            {[['A', 'holdA1', 'holdA2', 'scoreA'], ['B', 'holdB1', 'holdB2', 'scoreB']].map(([hold, p1, p2, scoreKey]) => (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
-  <div style={{ flex: '1 1 40%' }}>
-    <Select
-      placeholder={`Hold ${hold}1`}
-      options={index === 0 ? spillerOptions : spillerOptions.filter((opt) =>
-        [saetData[0]?.holdA1?.value, saetData[0]?.holdA2?.value, saetData[0]?.holdB1?.value, saetData[0]?.holdB2?.value].includes(opt.value)
-      )}
-      value={saet[p1]}
-      onChange={(v) => opdaterSaet(index, p1, v)}
-    />
-  </div>
-  <div style={{ flex: '1 1 40%' }}>
-    <Select
-      placeholder={`Hold ${hold}2`}
-      options={index === 0 ? spillerOptions : spillerOptions.filter((opt) =>
-        [saetData[0]?.holdA1?.value, saetData[0]?.holdA2?.value, saetData[0]?.holdB1?.value, saetData[0]?.holdB2?.value].includes(opt.value)
-      )}
-      value={saet[p2]}
-      onChange={(v) => opdaterSaet(index, p2, v)}
-    />
-  </div>
-  <div style={{ flex: '0 1 60px' }}>
-    <select
-      value={saet[scoreKey]}
-      onChange={(e) => opdaterSaet(index, scoreKey, e.target.value)}
-      style={{
-        backgroundColor: '#fff',
-        padding: '0.25rem 0.5rem',
-        borderRadius: '6px',
-        border: '1px solid #ccc',
-        width: '100%',
-        minWidth: '60px'
-      }}
-    >
-      {tilladteScore.map(n => (
-        <option key={n} value={n}>{n}</option>
-      ))}
-    </select>
-  </div>
-</div>
-
-
-            ))}
+        {afsluttedeSaet.length > 0 && (
+          <div style={{ marginBottom: '1.5rem', color: '#6a1b9a', fontWeight: 'bold' }}>
+            Tidligere sæt:
+            <ul style={{ paddingLeft: '1rem' }}>
+              {afsluttedeSaet.map((s, i) => (
+                <li key={i} style={{ marginBottom: '0.5rem' }}>
+                  Sæt #{i + 1}: {navn(s.holdA1)} & {navn(s.holdA2)} vs. {navn(s.holdB1)} & {navn(s.holdB2)} – {s.scoreA}-{s.scoreB}
+                  <button
+                    onClick={() => fjernSaet(i)}
+                    title="Fjern sæt"
+                    style={{
+                      marginLeft: '0.5rem',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: '#d81b60',
+                      fontSize: '1.2rem',
+                    }}
+                  >
+                    🗑
+                  </button>
+                </li>
+              ))}
+            </ul>
           </div>
-        ))}
-
-        {saetData.length > 0 && (
-          <>
-            <button
-              type="button"
-              onClick={tilfoejSaet}
-              style={{
-                marginRight: '1rem',
-                backgroundColor: '#f48fb1',
-                border: 'none',
-                color: '#fff',
-                fontWeight: 'bold',
-                padding: '0.5rem 1rem',
-                borderRadius: '8px',
-                cursor: 'pointer'
-              }}
-            >
-              ➕ Tilføj sæt
-            </button>
-
-            <button
-              type="submit"
-              style={{
-                padding: '0.5rem 1.5rem',
-                backgroundColor: '#ec407a',
-                color: 'white',
-                fontWeight: 'bold',
-                border: 'none',
-                borderRadius: '8px',
-                cursor: 'pointer'
-              }}
-            >
-              ✅ Indsend resultat(er)
-            </button>
-          </>
         )}
+
+        <SaetForm
+          index={afsluttedeSaet.length}
+          saet={aktivtSaet}
+          spillerOptions={spillerOptions}
+          opdaterSaet={(index, felt, value) => opdaterSaet(felt, value)}
+          begrænsedeSpillere={begrænsedeSpillere}
+        />
+
+        <div style={{ marginBottom: '1rem' }}>
+          <button
+            type="button"
+            onClick={tilfoejSaet}
+            style={knapStyle}
+          >
+            ➕ Tilføj sæt
+          </button>
+          <button
+            type="submit"
+            style={{ ...knapStyle, backgroundColor: '#a2184b' }}
+          >
+            Indsend resultater
+          </button>
+        </div>
       </form>
 
-      <p style={{ marginTop: '1rem', fontWeight: 'bold', color: message.startsWith('✅') ? '#4CAF50' : '#d32f2f' }}>
-        {message}
-      </p>
+      {message && (
+        <p style={{ color: message.startsWith('❌') ? 'red' : '#d81b60', fontWeight: 'bold' }}>{message}</p>
+      )}
     </main>
   )
+}
+
+const knapStyle = {
+  backgroundColor: '#d81b60',
+  color: 'white',
+  border: 'none',
+  padding: '0.8rem 1.4rem',
+  borderRadius: '10px',
+  fontSize: '1rem',
+  cursor: 'pointer',
+  marginRight: '1rem'
 }
 
