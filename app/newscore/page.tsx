@@ -136,45 +136,48 @@ export default function ResultatForm() {
             />
 
             {[['A', 'holdA1', 'holdA2', 'scoreA'], ['B', 'holdB1', 'holdB2', 'scoreB']].map(([hold, p1, p2, scoreKey]) => (
-              <div key={hold} style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
-                <div style={{ flex: 1 }}>
-                  <label>Hold {hold}1:</label>
-                  <Select
-                    options={index === 0 ? spillerOptions : spillerOptions.filter((opt) =>
-                      [saetData[0]?.holdA1?.value, saetData[0]?.holdA2?.value, saetData[0]?.holdB1?.value, saetData[0]?.holdB2?.value].includes(opt.value)
-                    )}
-                    value={saet[p1]}
-                    onChange={(v) => opdaterSaet(index, p1, v)}
-                  />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <label>Hold {hold}2:</label>
-                  <Select
-                    options={index === 0 ? spillerOptions : spillerOptions.filter((opt) =>
-                      [saetData[0]?.holdA1?.value, saetData[0]?.holdA2?.value, saetData[0]?.holdB1?.value, saetData[0]?.holdB2?.value].includes(opt.value)
-                    )}
-                    value={saet[p2]}
-                    onChange={(v) => opdaterSaet(index, p2, v)}
-                  />
-                </div>
-                <div>
-                  <label>🎯 Score {hold}:</label>
-                  <select
-                    value={saet[scoreKey]}
-                    onChange={(e) => opdaterSaet(index, scoreKey, e.target.value)}
-                    style={{
-                      backgroundColor: '#fff',
-                      padding: '0.25rem 0.5rem',
-                      borderRadius: '6px',
-                      border: '1px solid #ccc'
-                    }}
-                  >
-                    {tilladteScore.map(n => (
-                      <option key={n} value={n}>{n}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+  <div style={{ flex: '1 1 40%' }}>
+    <Select
+      placeholder={`Hold ${hold}1`}
+      options={index === 0 ? spillerOptions : spillerOptions.filter((opt) =>
+        [saetData[0]?.holdA1?.value, saetData[0]?.holdA2?.value, saetData[0]?.holdB1?.value, saetData[0]?.holdB2?.value].includes(opt.value)
+      )}
+      value={saet[p1]}
+      onChange={(v) => opdaterSaet(index, p1, v)}
+    />
+  </div>
+  <div style={{ flex: '1 1 40%' }}>
+    <Select
+      placeholder={`Hold ${hold}2`}
+      options={index === 0 ? spillerOptions : spillerOptions.filter((opt) =>
+        [saetData[0]?.holdA1?.value, saetData[0]?.holdA2?.value, saetData[0]?.holdB1?.value, saetData[0]?.holdB2?.value].includes(opt.value)
+      )}
+      value={saet[p2]}
+      onChange={(v) => opdaterSaet(index, p2, v)}
+    />
+  </div>
+  <div style={{ flex: '0 1 60px' }}>
+    <select
+      value={saet[scoreKey]}
+      onChange={(e) => opdaterSaet(index, scoreKey, e.target.value)}
+      style={{
+        backgroundColor: '#fff',
+        padding: '0.25rem 0.5rem',
+        borderRadius: '6px',
+        border: '1px solid #ccc',
+        width: '100%',
+        minWidth: '60px'
+      }}
+    >
+      {tilladteScore.map(n => (
+        <option key={n} value={n}>{n}</option>
+      ))}
+    </select>
+  </div>
+</div>
+
+
             ))}
           </div>
         ))}
