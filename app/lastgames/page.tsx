@@ -14,6 +14,7 @@ export default function SenesteKampeSide() {
   const [kampGrupper, setKampGrupper] = useState<KampGruppe[]>([])
   const [eloMap, setEloMap] = useState<EloMap>({})
   const [eloChanges, setEloChanges] = useState<Record<number, { [key: string]: EloChange }>>({})
+  const [kommentarer, setKommentarer] = useState<Record<number, string>>({})
 
   useEffect(() => {
     async function hentAlleResultater(): Promise<Kamp[]> {
@@ -83,6 +84,36 @@ export default function SenesteKampeSide() {
     hentResultaterOgBeregnElo()
   }, [])
 
+  async function sendBeskedTilAdmin(kampid: number) {
+  const besked = kommentarer[kampid]
+  if (!besked) return
+
+  // Hent brugerens Supabase-id (kræver at brugeren er logget ind)
+  const { data: userData } = await supabase.auth.getUser()
+  const senderId = userData?.user?.id
+
+  const { error } = await supabase.from('admin_messages').insert([
+    {
+      kampid,
+      besked,
+      tidspunkt: new Date().toISOString(),
+      sender_id: senderId, // <-- dette er nyt
+    },
+  ])
+
+  if (error) {
+    alert('Kunne ikke sende besked: ' + error.message)
+  } else {
+    alert('Besked sendt til admin.')
+    setKommentarer((prev) => ({ ...prev, [kampid]: '' }))
+  }
+}
+
+
+  function redigerKamp(kampid: number) {
+    window.location.href = `/rediger/${kampid}` // Eller brug Next.js router
+  }
+
   return (
     <div
       style={{
@@ -101,7 +132,6 @@ export default function SenesteKampeSide() {
 
       {kampGrupper.map(({ kampid, sæt }) => {
         const førsteSæt = sæt[0]
-
         const førsteElo = eloChanges[førsteSæt.id]
         let spillere: { navn: string; startElo: number }[] = []
 
@@ -138,11 +168,11 @@ export default function SenesteKampeSide() {
             style={{
               marginBottom: '2.5rem',
               padding: '1rem 1.5rem',
-              border: '2px solid #4CAF50',
+              border: '2px solid #ec407a',
               borderRadius: '8px',
-              backgroundColor: 'var(--bg-card, #f0fff4)',
-              color: 'var(--text-primary, #000)',
-              boxShadow: '0 0 5px rgba(0,0,0,0.1), 0 0 10px rgba(0,0,0,0.05)',
+              backgroundColor: '#fff0f5',
+              color: '#000',
+              boxShadow: '0 0 5px rgba(0,0,0,0.05), 0 0 10px rgba(236,64,122,0.1)',
             }}
           >
             <div
@@ -213,22 +243,102 @@ export default function SenesteKampeSide() {
               })}
             </div>
 
-            <div>
-              <strong>🔥 Total Elo ændringer:</strong>
-              <ul style={{ listStyle: 'none', paddingLeft: 0, marginTop: '0.3rem' }}>
-                {totalEloSorted.map(([navn, elo]) => (
-                  <li
-                    key={navn}
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-around',
+                alignItems: 'center',
+                marginTop: '1.2rem',
+                paddingTop: '1rem',
+                borderTop: '1px dashed #aaa',
+              }}
+            >
+              {totalEloSorted.map(([navn, elo]) => (
+                <div key={navn} style={{ textAlign: 'center', minWidth: '100px' }}>
+                  <div style={{ fontSize: '1.5rem' }}>🎾</div>
+                  <div style={{ fontWeight: 'bold', fontSize: '0.95rem', marginTop: '0.2rem' }}>
+                    {navn}
+                  </div>
+                  <div style={{ fontSize: '0.85rem', color: '#555' }}>
+                    Elo: {elo.after.toFixed(1)}
+                  </div>
+                  <div
                     style={{
-                      marginBottom: '0.2rem',
+                      fontSize: '0.9rem',
+                      fontWeight: 'bold',
                       color: elo.diff > 0 ? '#2e7d32' : elo.diff < 0 ? '#c62828' : '#666',
+                      marginTop: '0.2rem',
                     }}
                   >
-                    {navn}: {elo.diff > 0 ? '+' : ''}
-                    {elo.diff.toFixed(1)} (før: {elo.before.toFixed(1)} - efter: {elo.after.toFixed(1)})
-                  </li>
-                ))}
-              </ul>
+                    {elo.diff > 0 ? '+' : ''}
+                    {elo.diff.toFixed(1)}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Funktioner: Rediger eller send besked */}
+            <div style={{ marginTop: '1.5rem' }}>
+              {(() => {
+                const kampTidspunkt = new Date(førsteSæt.date)
+                const nu = new Date()
+                const forskelIMs = nu.getTime() - kampTidspunkt.getTime()
+                const kanRedigeres = forskelIMs < 24 * 60 * 60 * 1000
+
+                if (kanRedigeres) {
+                  return (
+                    <button
+                      onClick={() => redigerKamp(kampid)}
+                      style={{
+                        backgroundColor: '#ec407a',
+                        color: '#fff',
+                        padding: '0.4rem 0.8rem',
+                        borderRadius: '6px',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontWeight: 'bold',
+                      }}
+                    >
+                      ✏️ Rediger kamp
+                    </button>
+                  )
+                } else {
+                  return (
+                    <div>
+                      <textarea
+                        placeholder="Skriv en kommentar til administrator..."
+                        value={kommentarer[kampid] || ''}
+                        onChange={(e) =>
+                          setKommentarer((prev) => ({ ...prev, [kampid]: e.target.value }))
+                        }
+                        style={{
+                          width: '100%',
+                          padding: '0.5rem',
+                          borderRadius: '6px',
+                          border: '1px solid #ccc',
+                          minHeight: '60px',
+                          marginBottom: '0.5rem',
+                          fontFamily: 'inherit',
+                        }}
+                      />
+                      <button
+                        onClick={() => sendBeskedTilAdmin(kampid)}
+                        style={{
+                          backgroundColor: '#ec407a',
+                          color: '#fff',
+                          padding: '0.4rem 0.8rem',
+                          borderRadius: '6px',
+                          border: 'none',
+                          cursor: 'pointer',
+                          fontWeight: 'bold',
+                        }}
+                      >
+                        📩 Send kommentar til administrator
+                      </button>
+                    </div>
+                  )
+                }
+              })()}
             </div>
           </div>
         )
@@ -236,3 +346,4 @@ export default function SenesteKampeSide() {
     </div>
   )
 }
+
