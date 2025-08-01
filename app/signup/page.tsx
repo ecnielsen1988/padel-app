@@ -19,7 +19,7 @@ export default function VelkommenPage() {
       email,
       password,
       options: {
-        emailRedirectTo: `${window.location.origin}/velkommen`,
+        emailRedirectTo: `${window.location.origin}/registrer`, // ⬅️ Ændret her
       },
     });
 
@@ -38,8 +38,7 @@ export default function VelkommenPage() {
       setBesked("Denne e-mail er allerede oprettet og bekræftet. Du kan logge ind.");
       setVisLoginKnap(true);
     } else {
-      // Hvis login fejler, antager vi at brugeren mangler at bekræfte sin e-mail
-      setBesked("Tjek din e-mail og bekræft din konto.");
+      setBesked("Vi har sendt dig en bekræftelsesmail. Klik på linket i mailen for at fortsætte oprettelsen.");
     }
   };
 
