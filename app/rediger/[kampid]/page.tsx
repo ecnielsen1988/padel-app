@@ -55,7 +55,7 @@ export default function RedigerKampSide() {
 
     const { error } = await supabase
       .from('newresults')
-      .upsert(updates, { onConflict: ['id'] })
+      .upsert(updates, { onConflict: 'id' })
 
     if (error) {
       setBesked('❌ Fejl ved opdatering: ' + error.message)
