@@ -43,9 +43,13 @@ export default function AdminBeskeder() {
         .select('id, kampid, besked, tidspunkt, visningsnavn, læst')
         .order('tidspunkt', { ascending: false })
 
-      if (!error && data) {
-        setBeskeder(data as Besked[])
-      }
+      if (!error && Array.isArray(data)) {
+  setBeskeder(data as unknown as Besked[])
+} else {
+  console.error('❌ Ugyldig dataformat:', data)
+}
+
+
 
       setLoading(false)
     }
