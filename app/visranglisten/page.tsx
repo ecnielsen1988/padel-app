@@ -227,7 +227,7 @@ export default function VisRanglistenSide() {
         </div>
         {/* QR Kode nederst */}
         <div className="flex justify-center mt-6">
-          <QRCode value="https://ranglisten.padelhuset.dk/signup" size={100} bgColor="#ffffff" fgColor="#ff69b4" />
+          <QRCode value="https://padelhuset-app.netfily.app/signup" size={100} bgColor="#ffffff" fgColor="#ff69b4" />
         </div>
       </section>
     </main>
