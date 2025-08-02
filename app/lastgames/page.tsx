@@ -32,16 +32,11 @@ export default function SenesteKampeSide() {
           .gt('id', lastId)
           .limit(batchSize)
 
-        if (error) {
-          console.error('Fejl ved hentning af batch:', error)
-          break
-        }
-
+        if (error) break
         if (!batch || batch.length === 0) break
 
         alleResultater = alleResultater.concat(batch)
         lastId = batch[batch.length - 1].id
-
         if (batch.length < batchSize) break
       }
 
@@ -70,15 +65,14 @@ export default function SenesteKampeSide() {
       })
 
       const kampGrupperArray: KampGruppe[] = Object.entries(grupper)
-  .map(([kampid, sætUnTyped]) => {
-    const sæt = sætUnTyped as Kamp[]
-    return {
-      kampid: Number(kampid),
-      sæt,
-      indberettetAf: sæt[0].indberettet_af ?? undefined,
-    }
-  })
-
+        .map(([kampid, sætUnTyped]) => {
+          const sæt = sætUnTyped as Kamp[]
+          return {
+            kampid: Number(kampid),
+            sæt,
+            indberettetAf: sæt[0].indberettet_af ?? undefined,
+          }
+        })
         .sort((a, b) => b.kampid - a.kampid)
         .slice(0, 20)
 
@@ -173,33 +167,52 @@ export default function SenesteKampeSide() {
 
         return (
           <div
-  key={kampid}
-  style={{
-    marginBottom: '2.5rem',
-    padding: '1rem 1.5rem',
-    border: '2px solid #ec407a',
-    borderRadius: '8px',
-    backgroundColor: '#fff0f5',
-    color: '#000',
-    boxShadow: '0 0 5px rgba(0,0,0,0.05), 0 0 10px rgba(236,64,122,0.1)',
-    position: 'relative', // 👈 nødvendig for absolut placering
-  }}
->
-
+            key={kampid}
+            style={{
+              marginBottom: '2.5rem',
+              padding: '1rem 1.5rem',
+              border: '2px solid #ec407a',
+              borderRadius: '8px',
+              backgroundColor: '#fff0f5',
+              color: '#000',
+              boxShadow: '0 0 5px rgba(0,0,0,0.05), 0 0 10px rgba(236,64,122,0.1)',
+              position: 'relative',
+            }}
+          >
             <div style={{ fontSize: '1.1rem', marginBottom: '0.3rem', fontWeight: '600' }}>
               📅 {new Date(førsteSæt.date).toLocaleDateString('da-DK')}
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-around', fontWeight: '600', marginBottom: '0.8rem' }}>
+            {/* Øverste spilleroversigt */}
+            <div
+              style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                justifyContent: 'space-around',
+                fontWeight: '600',
+                marginBottom: '0.8rem',
+                gap: '0.5rem',
+              }}
+            >
               {spillere.map(({ navn, startElo }) => (
-                <div key={navn} style={{ textAlign: 'center', minWidth: '110px' }}>
-                  🎾 <br />
+                <div
+                  key={navn}
+                  style={{
+                    textAlign: 'center',
+                    minWidth: '70px',
+                    maxWidth: '100px',
+                    wordBreak: 'break-word',
+                    flex: 1,
+                  }}
+                >
+                  <span style={{ fontSize: '1rem' }} className="sm:text-[1.5rem]">🎾</span><br />
                   {navn} <br />
                   <small style={{ color: '#555' }}>ELO før: {startElo.toFixed(1)}</small>
                 </div>
               ))}
             </div>
 
+            {/* Sætvisning */}
             <div style={{ marginBottom: '1rem' }}>
               {sæt.map((kamp, index) => {
                 const changes = eloChanges[kamp.id]
@@ -234,25 +247,41 @@ export default function SenesteKampeSide() {
               })}
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center', marginTop: '1.2rem', paddingTop: '1rem', borderTop: '1px dashed #aaa' }}>
+            {/* Elo efter kampen */}
+            <div
+              style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                justifyContent: 'space-around',
+                alignItems: 'center',
+                marginTop: '1.2rem',
+                paddingTop: '1rem',
+                borderTop: '1px dashed #aaa',
+                gap: '0.5rem',
+              }}
+            >
               {totalEloSorted.map(([navn, elo]) => (
-                <div key={navn} style={{ textAlign: 'center', minWidth: '100px' }}>
-                  <div
-  style={{
-    fontSize: '1.2rem',
-  }}
->
-  <span className="sm:text-[1.5rem]">🎾</span>
-</div>
-
+                <div
+                  key={navn}
+                  style={{
+                    textAlign: 'center',
+                    minWidth: '70px',
+                    maxWidth: '100px',
+                    wordBreak: 'break-word',
+                    flex: 1,
+                  }}
+                >
+                  <span style={{ fontSize: '1rem' }} className="sm:text-[1.5rem]">🎾</span><br />
                   <div style={{ fontWeight: 'bold', fontSize: '0.95rem', marginTop: '0.2rem' }}>{navn}</div>
                   <div style={{ fontSize: '0.85rem', color: '#555' }}>Elo: {elo.after.toFixed(1)}</div>
-                  <div style={{
-                    fontSize: '0.9rem',
-                    fontWeight: 'bold',
-                    color: elo.diff > 0 ? '#2e7d32' : elo.diff < 0 ? '#c62828' : '#666',
-                    marginTop: '0.2rem',
-                  }}>
+                  <div
+                    style={{
+                      fontSize: '0.9rem',
+                      fontWeight: 'bold',
+                      color: elo.diff > 0 ? '#2e7d32' : elo.diff < 0 ? '#c62828' : '#666',
+                      marginTop: '0.2rem',
+                    }}
+                  >
                     {elo.diff > 0 ? '+' : ''}
                     {elo.diff.toFixed(1)}
                   </div>
@@ -260,19 +289,20 @@ export default function SenesteKampeSide() {
               ))}
             </div>
 
+            {/* Indberettet af */}
             {indberettetAf && (
-  <div style={{
-    position: 'absolute',
-    bottom: '0.4rem',
-    right: '0.8rem',
-    fontSize: '0.75rem',
-    color: '#888',
-  }}>
-    Indberettet af {indberettetAf}
-  </div>
-)}
+              <div style={{
+                position: 'absolute',
+                bottom: '0.4rem',
+                right: '0.8rem',
+                fontSize: '0.75rem',
+                color: '#888',
+              }}>
+                Indberettet af {indberettetAf}
+              </div>
+            )}
 
-
+            {/* Rediger eller kommentar */}
             <div style={{ marginTop: '1.5rem' }}>
               {(() => {
                 const kampTidspunkt = new Date(førsteSæt.date)
