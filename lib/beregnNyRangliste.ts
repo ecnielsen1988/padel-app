@@ -1,3 +1,4 @@
+// lib/beregnNyRangliste.ts
 import { supabase } from '../lib/supabaseClient'
 
 type Resultat = {
@@ -15,6 +16,12 @@ type Resultat = {
 }
 
 type EloMap = Record<string, number>
+
+type Profil = {
+  visningsnavn: string
+  startElo: number
+  køn: string | null
+}
 
 async function hentAlleResultater(batchSize = 1000): Promise<Resultat[]> {
   let samletData: Resultat[] = []
@@ -39,26 +46,25 @@ async function hentAlleResultater(batchSize = 1000): Promise<Resultat[]> {
   return samletData
 }
 
-export async function beregnNyRangliste(): Promise<
-  { visningsnavn: string; elo: number; køn: string | null }[]
-> {
-  const { data: profilesData, error } = await supabase
+export async function beregnNyRangliste(): Promise<{ visningsnavn: string; elo: number; køn: string | null }[]> {
+  const { data, error } = await supabase
     .from('profiles')
     .select('visningsnavn, startElo, køn')
 
-  if (error || !profilesData) {
+  if (error || !data || !Array.isArray(data)) {
     console.error('Fejl ved hentning af spillere:', error)
     return []
   }
 
+  const profilesData = data as Profil[]
+
   const eloMap: EloMap = {}
-  profilesData.forEach((s: any) => {
+  profilesData.forEach((s) => {
     eloMap[s.visningsnavn] = s.startElo ?? 1500
   })
 
   const resultaterData = await hentAlleResultater()
 
-  // Hvis der ikke er nogen kampe, returner Elo direkte
   if (resultaterData.length === 0) {
     return Object.entries(eloMap)
       .map(([visningsnavn, elo]) => {
@@ -75,17 +81,7 @@ export async function beregnNyRangliste(): Promise<
   for (const kamp of resultaterData) {
     const { holdA1, holdA2, holdB1, holdB2 } = kamp
 
-    if (
-      !(holdA1 in eloMap) ||
-      !(holdA2 in eloMap) ||
-      !(holdB1 in eloMap) ||
-      !(holdB2 in eloMap)
-    ) {
-      console.log('Ignorerer kamp – mangler spillere:')
-      if (!(holdA1 in eloMap)) console.log('Mangler:', holdA1)
-      if (!(holdA2 in eloMap)) console.log('Mangler:', holdA2)
-      if (!(holdB1 in eloMap)) console.log('Mangler:', holdB1)
-      if (!(holdB2 in eloMap)) console.log('Mangler:', holdB2)
+    if (!(holdA1 in eloMap) || !(holdA2 in eloMap) || !(holdB1 in eloMap) || !(holdB2 in eloMap)) {
       continue
     }
 
@@ -153,3 +149,4 @@ export async function beregnNyRangliste(): Promise<
     })
     .sort((a, b) => b.elo - a.elo)
 }
+
