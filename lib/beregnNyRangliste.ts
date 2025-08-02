@@ -1,4 +1,3 @@
-// lib/beregnNyRangliste.ts
 import { supabase } from '../lib/supabaseClient'
 
 type Resultat = {
@@ -51,12 +50,18 @@ export async function beregnNyRangliste(): Promise<{ visningsnavn: string; elo: 
     .from('profiles')
     .select('visningsnavn, startElo, køn')
 
-  if (error || !data || !Array.isArray(data)) {
-    console.error('Fejl ved hentning af spillere:', error)
+  if (error) {
+    console.error('❌ Fejl ved hentning af spillere:', error)
     return []
   }
 
-  const profilesData = data as Profil[]
+  // ✅ Kontroller at data er et array
+  if (!Array.isArray(data)) {
+    console.error('❌ Data fra Supabase er ikke et array:', data)
+    return []
+  }
+
+  const profilesData: Profil[] = data
 
   const eloMap: EloMap = {}
   profilesData.forEach((s) => {
@@ -66,15 +71,12 @@ export async function beregnNyRangliste(): Promise<{ visningsnavn: string; elo: 
   const resultaterData = await hentAlleResultater()
 
   if (resultaterData.length === 0) {
-    return Object.entries(eloMap)
-      .map(([visningsnavn, elo]) => {
-        const profil = profilesData.find((p) => p.visningsnavn === visningsnavn)
-        return {
-          visningsnavn,
-          elo,
-          køn: profil?.køn ?? null,
-        }
-      })
+    return profilesData
+      .map(({ visningsnavn, startElo, køn }) => ({
+        visningsnavn,
+        elo: startElo ?? 1500,
+        køn,
+      }))
       .sort((a, b) => b.elo - a.elo)
   }
 
@@ -149,4 +151,3 @@ export async function beregnNyRangliste(): Promise<{ visningsnavn: string; elo: 
     })
     .sort((a, b) => b.elo - a.elo)
 }
-
