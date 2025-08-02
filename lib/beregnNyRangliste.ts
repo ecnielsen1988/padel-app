@@ -1,4 +1,3 @@
-// lib/beregnNyRangliste.ts
 import { supabase } from '../lib/supabaseClient'
 
 type Resultat = {
@@ -40,38 +39,42 @@ async function hentAlleResultater(batchSize = 1000): Promise<Resultat[]> {
   return samletData
 }
 
-export async function beregnNyRangliste(): Promise<{ navn: string; elo: number }[]> {
-  // Hent alle spillere fra profiles med startElo
+export async function beregnNyRangliste(): Promise<
+  { visningsnavn: string; elo: number; køn: string | null }[]
+> {
   const { data: profilesData, error } = await supabase
     .from('profiles')
-    .select('visningsnavn, startElo')
+    .select('visningsnavn, startElo, køn')
 
   if (error || !profilesData) {
     console.error('Fejl ved hentning af spillere:', error)
     return []
   }
 
-  // Start EloMap med startElo for alle spillere
   const eloMap: EloMap = {}
   profilesData.forEach((s: any) => {
     eloMap[s.visningsnavn] = s.startElo ?? 1500
   })
 
-  // Hent alle resultater (kampe)
   const resultaterData = await hentAlleResultater()
 
+  // Hvis der ikke er nogen kampe, returner Elo direkte
   if (resultaterData.length === 0) {
-    // Ingen kampe spillet, returner bare startElo
     return Object.entries(eloMap)
-      .map(([navn, elo]) => ({ navn, elo }))
+      .map(([visningsnavn, elo]) => {
+        const profil = profilesData.find((p) => p.visningsnavn === visningsnavn)
+        return {
+          visningsnavn,
+          elo,
+          køn: profil?.køn ?? null,
+        }
+      })
       .sort((a, b) => b.elo - a.elo)
   }
 
-  // Beregn Elo baseret på resultater
   for (const kamp of resultaterData) {
     const { holdA1, holdA2, holdB1, holdB2 } = kamp
 
-    // Spring kampen over hvis nogen spillere mangler i eloMap
     if (
       !(holdA1 in eloMap) ||
       !(holdA2 in eloMap) ||
@@ -139,10 +142,14 @@ export async function beregnNyRangliste(): Promise<{ navn: string; elo: number }
     eloMap[holdB2] = rB2 + deltaB
   }
 
-  // Returnér alle spillere med opdateret Elo, sorteret efter Elo
-  const alleSpillere = Object.entries(eloMap)
-    .map(([navn, elo]) => ({ navn, elo }))
+  return Object.entries(eloMap)
+    .map(([visningsnavn, elo]) => {
+      const profil = profilesData.find((p) => p.visningsnavn === visningsnavn)
+      return {
+        visningsnavn,
+        elo,
+        køn: profil?.køn ?? null,
+      }
+    })
     .sort((a, b) => b.elo - a.elo)
-
-  return alleSpillere
 }
