@@ -5,7 +5,7 @@ import { supabase } from '../../lib/supabaseClient'
 import { SaetForm } from './SaetForm'
 
 export default function ResultatForm() {
-  const [spillere, setSpillere] = useState<{ id: number; visningsnavn: string }[]>([])
+  const [spillere, setSpillere] = useState<{ visningsnavn: string }[]>([])
   const [aktivtSaet, setAktivtSaet] = useState<any>(nytTomtSaet())
   const [afsluttedeSaet, setAfsluttedeSaet] = useState<any[]>([])
   const [message, setMessage] = useState('')
@@ -15,7 +15,7 @@ export default function ResultatForm() {
     async function hentSpillere() {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, visningsnavn')
+        .select('visningsnavn')
         .order('visningsnavn', { ascending: true })
 
       if (error) {
@@ -98,7 +98,6 @@ export default function ResultatForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    // Hent brugerinfo og visningsnavn
     const {
       data: { user },
       error: userError,
@@ -109,18 +108,19 @@ export default function ResultatForm() {
       return
     }
 
+    // Hent visningsnavn fra profiles baseret på user.id
     const { data: profil, error: profilError } = await supabase
       .from('profiles')
       .select('visningsnavn')
       .eq('id', user.id)
       .single()
 
-    if (profilError || !profil) {
-      setMessage('❌ Kunne ikke finde brugerprofil.')
+    if (profilError || !profil?.visningsnavn) {
+      setMessage('❌ Kunne ikke finde visningsnavn – log venligst ind.')
       return
     }
 
-    const visningsnavn = profil.visningsnavn
+    const visningsnavn = profil.visningsnavn.trim()
 
     const { data: maxData, error: maxError } = await supabase
       .from('newresults')
