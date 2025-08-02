@@ -11,6 +11,7 @@ export type Kamp = {
   finish: boolean
   event: boolean
   tiebreak: string
+  indberettet_af?: string // 👈 tilføj denne linje
 }
 
 export type EloMap = Record<string, number>

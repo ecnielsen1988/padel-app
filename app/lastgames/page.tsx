@@ -70,11 +70,15 @@ export default function SenesteKampeSide() {
       })
 
       const kampGrupperArray: KampGruppe[] = Object.entries(grupper)
-        .map(([kampid, sæt]) => ({
-          kampid: Number(kampid),
-          sæt,
-          indberettetAf: sæt[0].indberettet_af || null,
-        }))
+  .map(([kampid, sætUnTyped]) => {
+    const sæt = sætUnTyped as Kamp[]
+    return {
+      kampid: Number(kampid),
+      sæt,
+      indberettetAf: sæt[0].indberettet_af || null,
+    }
+  })
+  
         .sort((a, b) => b.kampid - a.kampid)
         .slice(0, 20)
 
