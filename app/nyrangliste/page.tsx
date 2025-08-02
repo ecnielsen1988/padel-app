@@ -16,7 +16,7 @@ export default async function NyRanglisteSide() {
 
   return (
     <main className="min-h-screen py-10 px-4 sm:px-8 md:px-16 bg-white dark:bg-[#1e1e1e] text-gray-900 dark:text-white font-sans">
-      <h1 className="text-3xl sm:text-4xl font-bold text-center text-pink-600 mb-10">
+      <h1 className="text-2xl sm:text-4xl font-bold text-center text-pink-600 mb-10">
         📋 Ranglisten
       </h1>
 
@@ -41,15 +41,15 @@ export default async function NyRanglisteSide() {
                     : 'bg-white dark:bg-[#2a2a2a]'
                 }`}
               >
-                <div className="flex items-center gap-3">
-                  <span className="text-xl font-bold text-pink-600 dark:text-pink-400">
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <span className="text-base sm:text-xl font-bold text-pink-600 dark:text-pink-400">
                     #{index + 1}
                   </span>
-                  <span className="text-lg font-medium">
+                  <span className="text-sm sm:text-lg font-medium">
                     {spiller.visningsnavn} {erKonge ? '👑' : erDronning ? '👸' : ''}
                   </span>
                 </div>
-                <span className="text-base font-semibold">
+                <span className="text-sm sm:text-base font-semibold whitespace-nowrap">
                   Elo: {Math.round(spiller.elo)}
                 </span>
               </li>
@@ -60,4 +60,3 @@ export default async function NyRanglisteSide() {
     </main>
   )
 }
-
