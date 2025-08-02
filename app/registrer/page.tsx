@@ -12,7 +12,7 @@ export default function Registrer() {
   const [visningsnavn, setVisningsnavn] = useState("")
   const [email, setEmail] = useState("")
   const [fødselsdato, setFødselsdato] = useState("")
-  const [køn, setKøn] = useState("")
+  const [koen, setKoen] = useState("")
   const [telefon, setTelefon] = useState("")
   const [niveau, setNiveau] = useState("")
   const [startElo, setStartElo] = useState(0)
@@ -92,7 +92,7 @@ export default function Registrer() {
   efternavn,
   visningsnavn: visningsnavn.trim(),
   email,
-  køn,
+  koen,
   telefon,
   rolle: "bruger",
   niveau,
@@ -156,7 +156,7 @@ export default function Registrer() {
 
           <label style={styles.label}>
             Køn:
-            <select value={køn} onChange={(e) => setKøn(e.target.value)} style={styles.input}>
+            <select value={koen} onChange={(e) => setKoen(e.target.value)} style={styles.input}>
               <option value="">-- Vælg --</option>
               <option value="mand">Mand</option>
               <option value="kvinde">Kvinde</option>

@@ -18,7 +18,7 @@ type Resultat = {
 type Profil = {
   visningsnavn: string
   startElo: number | null
-  køn: string | null
+  koen: string | null
 }
 
 type EloMap = Record<string, number>
@@ -47,11 +47,11 @@ async function hentAlleResultater(batchSize = 1000): Promise<Resultat[]> {
 }
 
 export async function beregnNyRangliste(): Promise<
-  { visningsnavn: string; elo: number; køn: string | null }[]
+  { visningsnavn: string; elo: number; koen: string | null }[]
 > {
   const { data, error } = await supabase
     .from('profiles')
-    .select('visningsnavn, startElo, køn')
+    .select('visningsnavn, startElo, koen')
 
   if (error) {
     console.error('❌ Fejl ved hentning af spillere:', error)
@@ -74,10 +74,10 @@ export async function beregnNyRangliste(): Promise<
 
   if (resultaterData.length === 0) {
     return profilesData
-      .map(({ visningsnavn, startElo, køn }) => ({
+      .map(({ visningsnavn, startElo, koen }) => ({
         visningsnavn,
         elo: startElo ?? 1500,
-        køn,
+        koen,
       }))
       .sort((a, b) => b.elo - a.elo)
   }
@@ -158,7 +158,7 @@ export async function beregnNyRangliste(): Promise<
       return {
         visningsnavn,
         elo,
-        køn: profil?.køn ?? null,
+        koen: profil?.koen ?? null,
       }
     })
     .sort((a, b) => b.elo - a.elo)

@@ -5,14 +5,14 @@ import { beregnNyRangliste } from '../../lib/beregnNyRangliste'
 type Spiller = {
   visningsnavn: string
   elo: number
-  køn: string | null
+  koen: string | null
 }
 
 export default async function NyRanglisteSide() {
   const rangliste: Spiller[] = await beregnNyRangliste()
 
-  const bedsteMand = rangliste.find((s) => s.køn === 'mand')
-  const bedsteKvinde = rangliste.find((s) => s.køn === 'kvinde')
+  const bedsteMand = rangliste.find((s) => s.koen === 'mand')
+  const bedsteKvinde = rangliste.find((s) => s.koen === 'kvinde')
 
   return (
     <main className="min-h-screen py-10 px-4 sm:px-8 md:px-16 bg-white dark:bg-[#1e1e1e] text-gray-900 dark:text-white font-sans">
