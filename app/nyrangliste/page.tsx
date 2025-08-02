@@ -2,10 +2,15 @@ export const dynamic = 'force-dynamic'
 
 import { beregnNyRangliste } from '../../lib/beregnNyRangliste'
 
-export default async function NyRanglisteSide() {
-  const rangliste = await beregnNyRangliste()
+type Spiller = {
+  visningsnavn: string
+  elo: number
+  køn: string | null
+}
 
-  // Find bedste mand og kvinde
+export default async function NyRanglisteSide() {
+  const rangliste: Spiller[] = await beregnNyRangliste()
+
   const bedsteMand = rangliste.find((s) => s.køn === 'mand')
   const bedsteKvinde = rangliste.find((s) => s.køn === 'kvinde')
 

@@ -1,3 +1,4 @@
+// lib/beregnNyRangliste.ts
 import { supabase } from '../lib/supabaseClient'
 
 type Resultat = {
@@ -14,13 +15,13 @@ type Resultat = {
   tiebreak: 'ingen' | 'tiebreak' | 'matchtiebreak'
 }
 
-type EloMap = Record<string, number>
-
 type Profil = {
   visningsnavn: string
-  startElo: number
+  startElo: number | null
   køn: string | null
 }
+
+type EloMap = Record<string, number>
 
 async function hentAlleResultater(batchSize = 1000): Promise<Resultat[]> {
   let samletData: Resultat[] = []
@@ -45,7 +46,9 @@ async function hentAlleResultater(batchSize = 1000): Promise<Resultat[]> {
   return samletData
 }
 
-export async function beregnNyRangliste(): Promise<{ visningsnavn: string; elo: number; køn: string | null }[]> {
+export async function beregnNyRangliste(): Promise<
+  { visningsnavn: string; elo: number; køn: string | null }[]
+> {
   const { data, error } = await supabase
     .from('profiles')
     .select('visningsnavn, startElo, køn')
@@ -55,7 +58,6 @@ export async function beregnNyRangliste(): Promise<{ visningsnavn: string; elo: 
     return []
   }
 
-  // ✅ Kontroller at data er et array
   if (!Array.isArray(data)) {
     console.error('❌ Data fra Supabase er ikke et array:', data)
     return []
@@ -83,7 +85,17 @@ export async function beregnNyRangliste(): Promise<{ visningsnavn: string; elo: 
   for (const kamp of resultaterData) {
     const { holdA1, holdA2, holdB1, holdB2 } = kamp
 
-    if (!(holdA1 in eloMap) || !(holdA2 in eloMap) || !(holdB1 in eloMap) || !(holdB2 in eloMap)) {
+    if (
+      !(holdA1 in eloMap) ||
+      !(holdA2 in eloMap) ||
+      !(holdB1 in eloMap) ||
+      !(holdB2 in eloMap)
+    ) {
+      console.log('Ignorerer kamp – mangler spillere:')
+      if (!(holdA1 in eloMap)) console.log('Mangler:', holdA1)
+      if (!(holdA2 in eloMap)) console.log('Mangler:', holdA2)
+      if (!(holdB1 in eloMap)) console.log('Mangler:', holdB1)
+      if (!(holdB2 in eloMap)) console.log('Mangler:', holdB2)
       continue
     }
 
@@ -151,3 +163,4 @@ export async function beregnNyRangliste(): Promise<{ visningsnavn: string; elo: 
     })
     .sort((a, b) => b.elo - a.elo)
 }
+
