@@ -75,10 +75,10 @@ export default function SenesteKampeSide() {
     return {
       kampid: Number(kampid),
       sæt,
-      indberettetAf: sæt[0].indberettet_af || null,
+      indberettetAf: sæt[0].indberettet_af ?? undefined,
     }
   })
-  
+
         .sort((a, b) => b.kampid - a.kampid)
         .slice(0, 20)
 
