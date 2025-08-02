@@ -8,6 +8,7 @@ import { Kamp, EloChange, EloMap, beregnEloForKampe } from '../../lib/beregnElo'
 interface KampGruppe {
   kampid: number
   sæt: Kamp[]
+  indberettetAf?: string
 }
 
 export default function SenesteKampeSide() {
@@ -72,6 +73,7 @@ export default function SenesteKampeSide() {
         .map(([kampid, sæt]) => ({
           kampid: Number(kampid),
           sæt,
+          indberettetAf: sæt[0].indberettet_af || null,
         }))
         .sort((a, b) => b.kampid - a.kampid)
         .slice(0, 20)
@@ -85,38 +87,36 @@ export default function SenesteKampeSide() {
   }, [])
 
   async function sendBeskedTilAdmin(kampid: number) {
-  const besked = kommentarer[kampid]
-  if (!besked) return
+    const besked = kommentarer[kampid]
+    if (!besked) return
 
-  // Hent brugerens Supabase-id (kræver at brugeren er logget ind)
-  const { data: userData } = await supabase.auth.getUser()
-  const senderId = userData?.user?.id
-  
-if (!senderId) {
-  alert('Du skal være logget ind for at sende besked.')
-  return
-}
+    const { data: userData } = await supabase.auth.getUser()
+    const senderId = userData?.user?.id
 
-  const { error } = await supabase.from('admin_messages').insert([
-    {
-      kampid,
-      besked,
-      tidspunkt: new Date().toISOString(),
-      sender_id: senderId, // <-- dette er nyt
-    },
-  ])
+    if (!senderId) {
+      alert('Du skal være logget ind for at sende besked.')
+      return
+    }
 
-  if (error) {
-    alert('Kunne ikke sende besked: ' + error.message)
-  } else {
-    alert('Besked sendt til admin.')
-    setKommentarer((prev) => ({ ...prev, [kampid]: '' }))
+    const { error } = await supabase.from('admin_messages').insert([
+      {
+        kampid,
+        besked,
+        tidspunkt: new Date().toISOString(),
+        sender_id: senderId,
+      },
+    ])
+
+    if (error) {
+      alert('Kunne ikke sende besked: ' + error.message)
+    } else {
+      alert('Besked sendt til admin.')
+      setKommentarer((prev) => ({ ...prev, [kampid]: '' }))
+    }
   }
-}
-
 
   function redigerKamp(kampid: number) {
-    window.location.href = `/rediger/${kampid}` // Eller brug Next.js router
+    window.location.href = `/rediger/${kampid}`
   }
 
   return (
@@ -135,7 +135,7 @@ if (!senderId) {
         Viser de seneste 20 kampe
       </p>
 
-      {kampGrupper.map(({ kampid, sæt }) => {
+      {kampGrupper.map(({ kampid, sæt, indberettetAf }) => {
         const førsteSæt = sæt[0]
         const førsteElo = eloChanges[førsteSæt.id]
         let spillere: { navn: string; startElo: number }[] = []
@@ -169,35 +169,24 @@ if (!senderId) {
 
         return (
           <div
-            key={kampid}
-            style={{
-              marginBottom: '2.5rem',
-              padding: '1rem 1.5rem',
-              border: '2px solid #ec407a',
-              borderRadius: '8px',
-              backgroundColor: '#fff0f5',
-              color: '#000',
-              boxShadow: '0 0 5px rgba(0,0,0,0.05), 0 0 10px rgba(236,64,122,0.1)',
-            }}
-          >
-            <div
-              style={{
-                fontSize: '1.1rem',
-                marginBottom: '0.3rem',
-                fontWeight: '600',
-              }}
-            >
+  key={kampid}
+  style={{
+    marginBottom: '2.5rem',
+    padding: '1rem 1.5rem',
+    border: '2px solid #ec407a',
+    borderRadius: '8px',
+    backgroundColor: '#fff0f5',
+    color: '#000',
+    boxShadow: '0 0 5px rgba(0,0,0,0.05), 0 0 10px rgba(236,64,122,0.1)',
+    position: 'relative', // 👈 nødvendig for absolut placering
+  }}
+>
+
+            <div style={{ fontSize: '1.1rem', marginBottom: '0.3rem', fontWeight: '600' }}>
               📅 {new Date(førsteSæt.date).toLocaleDateString('da-DK')}
             </div>
 
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-around',
-                fontWeight: '600',
-                marginBottom: '0.8rem',
-              }}
-            >
+            <div style={{ display: 'flex', justifyContent: 'space-around', fontWeight: '600', marginBottom: '0.8rem' }}>
               {spillere.map(({ navn, startElo }) => (
                 <div key={navn} style={{ textAlign: 'center', minWidth: '110px' }}>
                   🎾 <br />
@@ -233,14 +222,7 @@ if (!senderId) {
                     <div style={{ width: '70px', textAlign: 'center' }}>
                       {kamp.scoreA} - {kamp.scoreB}
                     </div>
-                    <div
-                      style={{
-                        width: '50px',
-                        textAlign: 'right',
-                        fontWeight: '700',
-                        color: '#2e7d32',
-                      }}
-                    >
+                    <div style={{ width: '50px', textAlign: 'right', fontWeight: '700', color: '#2e7d32' }}>
                       {setElo.toFixed(1)}
                     </div>
                   </div>
@@ -248,33 +230,25 @@ if (!senderId) {
               })}
             </div>
 
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-around',
-                alignItems: 'center',
-                marginTop: '1.2rem',
-                paddingTop: '1rem',
-                borderTop: '1px dashed #aaa',
-              }}
-            >
+            <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center', marginTop: '1.2rem', paddingTop: '1rem', borderTop: '1px dashed #aaa' }}>
               {totalEloSorted.map(([navn, elo]) => (
                 <div key={navn} style={{ textAlign: 'center', minWidth: '100px' }}>
-                  <div style={{ fontSize: '1.5rem' }}>🎾</div>
-                  <div style={{ fontWeight: 'bold', fontSize: '0.95rem', marginTop: '0.2rem' }}>
-                    {navn}
-                  </div>
-                  <div style={{ fontSize: '0.85rem', color: '#555' }}>
-                    Elo: {elo.after.toFixed(1)}
-                  </div>
                   <div
-                    style={{
-                      fontSize: '0.9rem',
-                      fontWeight: 'bold',
-                      color: elo.diff > 0 ? '#2e7d32' : elo.diff < 0 ? '#c62828' : '#666',
-                      marginTop: '0.2rem',
-                    }}
-                  >
+  style={{
+    fontSize: '1.2rem',
+  }}
+>
+  <span className="sm:text-[1.5rem]">🎾</span>
+</div>
+
+                  <div style={{ fontWeight: 'bold', fontSize: '0.95rem', marginTop: '0.2rem' }}>{navn}</div>
+                  <div style={{ fontSize: '0.85rem', color: '#555' }}>Elo: {elo.after.toFixed(1)}</div>
+                  <div style={{
+                    fontSize: '0.9rem',
+                    fontWeight: 'bold',
+                    color: elo.diff > 0 ? '#2e7d32' : elo.diff < 0 ? '#c62828' : '#666',
+                    marginTop: '0.2rem',
+                  }}>
                     {elo.diff > 0 ? '+' : ''}
                     {elo.diff.toFixed(1)}
                   </div>
@@ -282,7 +256,19 @@ if (!senderId) {
               ))}
             </div>
 
-            {/* Funktioner: Rediger eller send besked */}
+            {indberettetAf && (
+  <div style={{
+    position: 'absolute',
+    bottom: '0.4rem',
+    right: '0.8rem',
+    fontSize: '0.75rem',
+    color: '#888',
+  }}>
+    Indberettet af {indberettetAf}
+  </div>
+)}
+
+
             <div style={{ marginTop: '1.5rem' }}>
               {(() => {
                 const kampTidspunkt = new Date(førsteSæt.date)

@@ -12,24 +12,21 @@ export default function ResultatForm() {
   const [begrænsedeSpillere, setBegrænsedeSpillere] = useState<{ value: string; label: string }[] | null>(null)
 
   useEffect(() => {
-  async function hentSpillere() {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('id, visningsnavn')
-      .order('visningsnavn', { ascending: true })
+    async function hentSpillere() {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, visningsnavn')
+        .order('visningsnavn', { ascending: true })
 
-    if (error) {
-      console.error('Fejl ved hentning af spillere:', error)
-    } else {
-      console.log("✅ Hentede spillere fra Supabase:", data)  // <--- Her logger vi
-      setSpillere(data || [])
+      if (error) {
+        console.error('Fejl ved hentning af spillere:', error)
+      } else {
+        setSpillere(data || [])
+      }
     }
-  }
 
-  hentSpillere()
-}, [])
-
-
+    hentSpillere()
+  }, [])
 
   useEffect(() => {
     if (aktivtSaet.date === '') {
@@ -59,37 +56,33 @@ export default function ResultatForm() {
   const erFaerdigspillet = (a: number, b: number) =>
     faerdigResultater.some(([x, y]) => x === a && y === b)
 
-  // I ResultatForm.tsx
+  const tilfoejSaet = () => {
+    setAfsluttedeSaet((prev) => [...prev, aktivtSaet])
 
-const tilfoejSaet = () => {
-  setAfsluttedeSaet((prev) => [...prev, aktivtSaet])
+    const første = aktivtSaet
+    const spillernavne = [
+      første.holdA1?.value || første.holdA1,
+      første.holdA2?.value || første.holdA2,
+      første.holdB1?.value || første.holdB1,
+      første.holdB2?.value || første.holdB2,
+    ]
 
-  const første = aktivtSaet
-  const spillernavne = [
-    første.holdA1?.value || første.holdA1,
-    første.holdA2?.value || første.holdA2,
-    første.holdB1?.value || første.holdB1,
-    første.holdB2?.value || første.holdB2,
-  ]
+    const begrænsede = spillerOptions.filter((opt) =>
+      spillernavne.includes(opt.value)
+    )
 
-  const begrænsede = spillerOptions.filter((opt) =>
-    spillernavne.includes(opt.value)
-  )
+    setBegrænsedeSpillere(begrænsede)
 
-  setBegrænsedeSpillere(begrænsede)
-
-  setAktivtSaet({
-    date: new Date().toISOString().split('T')[0],
-    holdA1: første.holdA1?.value || første.holdA1,
-    holdA2: første.holdA2?.value || første.holdA2,
-    holdB1: første.holdB1?.value || første.holdB1,
-    holdB2: første.holdB2?.value || første.holdB2,
-    scoreA: 0,
-    scoreB: 0,
-  })
-}
-
-
+    setAktivtSaet({
+      date: new Date().toISOString().split('T')[0],
+      holdA1: første.holdA1?.value || første.holdA1,
+      holdA2: første.holdA2?.value || første.holdA2,
+      holdB1: første.holdB1?.value || første.holdB1,
+      holdB2: første.holdB2?.value || første.holdB2,
+      scoreA: 0,
+      scoreB: 0,
+    })
+  }
 
   const fjernSaet = (index: number) => {
     setAfsluttedeSaet((prev) => prev.filter((_, i) => i !== index))
@@ -104,6 +97,30 @@ const tilfoejSaet = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    // Hent brugerinfo og visningsnavn
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser()
+
+    if (userError || !user) {
+      setMessage('❌ Kunne ikke finde bruger – log venligst ind.')
+      return
+    }
+
+    const { data: profil, error: profilError } = await supabase
+      .from('profiles')
+      .select('visningsnavn')
+      .eq('id', user.id)
+      .single()
+
+    if (profilError || !profil) {
+      setMessage('❌ Kunne ikke finde brugerprofil.')
+      return
+    }
+
+    const visningsnavn = profil.visningsnavn
 
     const { data: maxData, error: maxError } = await supabase
       .from('newresults')
@@ -134,6 +151,7 @@ const tilfoejSaet = () => {
         event: false,
         tiebreak: 'ingen',
         kampid: nyKampid,
+        indberettet_af: visningsnavn,
       }))
 
     const { error } = await supabase.from('newresults').insert(resultater)
@@ -201,19 +219,8 @@ const tilfoejSaet = () => {
         />
 
         <div style={{ marginBottom: '1rem' }}>
-          <button
-            type="button"
-            onClick={tilfoejSaet}
-            style={knapStyle}
-          >
-            ➕ Tilføj sæt
-          </button>
-          <button
-            type="submit"
-            style={{ ...knapStyle, backgroundColor: '#a2184b' }}
-          >
-            Indsend resultater
-          </button>
+          <button type="button" onClick={tilfoejSaet} style={knapStyle}>➕ Tilføj sæt</button>
+          <button type="submit" style={{ ...knapStyle, backgroundColor: '#a2184b' }}>Indsend resultater</button>
         </div>
       </form>
 
