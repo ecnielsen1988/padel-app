@@ -185,32 +185,30 @@ export default function SenesteKampeSide() {
 
             {/* Øverste spilleroversigt */}
             <div
-              style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                justifyContent: 'space-around',
-                fontWeight: '600',
-                marginBottom: '0.8rem',
-                gap: '0.5rem',
-              }}
-            >
-              {spillere.map(({ navn, startElo }) => (
-                <div
-                  key={navn}
-                  style={{
-                    textAlign: 'center',
-                    minWidth: '70px',
-                    maxWidth: '100px',
-                    wordBreak: 'break-word',
-                    flex: 1,
-                  }}
-                >
-                  <span style={{ fontSize: '1rem' }} className="sm:text-[1.5rem]">🎾</span><br />
-                  {navn} <br />
-                  <small style={{ color: '#555' }}>ELO før: {startElo.toFixed(1)}</small>
-                </div>
-              ))}
-            </div>
+  style={{
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.3rem',
+    marginBottom: '1rem',
+  }}
+>
+  {spillere.map(({ navn, startElo }) => (
+    <div
+      key={navn}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        fontSize: '0.95rem',
+        flexWrap: 'wrap',
+      }}
+    >
+      <span style={{ fontSize: '1rem', marginRight: '0.5rem' }}>🎾</span>
+      <strong style={{ marginRight: '0.5rem' }}>{navn}</strong>
+      <span style={{ color: '#555', fontSize: '0.85rem' }}>ELO før: {startElo.toFixed(1)}</span>
+    </div>
+  ))}
+</div>
+
 
             {/* Sætvisning */}
             <div style={{ marginBottom: '1rem' }}>
@@ -249,45 +247,44 @@ export default function SenesteKampeSide() {
 
             {/* Elo efter kampen */}
             <div
-              style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                justifyContent: 'space-around',
-                alignItems: 'center',
-                marginTop: '1.2rem',
-                paddingTop: '1rem',
-                borderTop: '1px dashed #aaa',
-                gap: '0.5rem',
-              }}
-            >
-              {totalEloSorted.map(([navn, elo]) => (
-                <div
-                  key={navn}
-                  style={{
-                    textAlign: 'center',
-                    minWidth: '70px',
-                    maxWidth: '100px',
-                    wordBreak: 'break-word',
-                    flex: 1,
-                  }}
-                >
-                  <span style={{ fontSize: '1rem' }} className="sm:text-[1.5rem]">🎾</span><br />
-                  <div style={{ fontWeight: 'bold', fontSize: '0.95rem', marginTop: '0.2rem' }}>{navn}</div>
-                  <div style={{ fontSize: '0.85rem', color: '#555' }}>Elo: {elo.after.toFixed(1)}</div>
-                  <div
-                    style={{
-                      fontSize: '0.9rem',
-                      fontWeight: 'bold',
-                      color: elo.diff > 0 ? '#2e7d32' : elo.diff < 0 ? '#c62828' : '#666',
-                      marginTop: '0.2rem',
-                    }}
-                  >
-                    {elo.diff > 0 ? '+' : ''}
-                    {elo.diff.toFixed(1)}
-                  </div>
-                </div>
-              ))}
-            </div>
+  style={{
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.3rem',
+    marginTop: '1.2rem',
+    paddingTop: '1rem',
+    borderTop: '1px dashed #aaa',
+  }}
+>
+  {totalEloSorted.map(([navn, elo]) => (
+    <div
+      key={navn}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        fontSize: '0.95rem',
+        flexWrap: 'wrap',
+      }}
+    >
+      <span style={{ fontSize: '1rem', marginRight: '0.5rem' }}>🎾</span>
+      <strong style={{ marginRight: '0.5rem' }}>{navn}</strong>
+      <span style={{ color: '#555', fontSize: '0.85rem', marginRight: '0.5rem' }}>
+        Elo: {elo.after.toFixed(1)}
+      </span>
+      <span
+        style={{
+          fontSize: '0.9rem',
+          fontWeight: 'bold',
+          color: elo.diff > 0 ? '#2e7d32' : elo.diff < 0 ? '#c62828' : '#666',
+        }}
+      >
+        ({elo.diff > 0 ? '+' : ''}
+        {elo.diff.toFixed(1)})
+      </span>
+    </div>
+  ))}
+</div>
+
 
             {/* Indberettet af */}
             {indberettetAf && (
