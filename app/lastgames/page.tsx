@@ -84,6 +84,28 @@ export default function SenesteKampeSide() {
     hentResultaterOgBeregnElo()
   }, [])
 
+  function getEmojiForEloDiff(diff: number): string {
+    if (diff >= 100) return '🍾'
+    if (diff >= 50) return '🏆'
+    if (diff >= 40) return '🏅'
+    if (diff >= 30) return '☄️'
+    if (diff >= 20) return '🚀'
+    if (diff >= 10) return '🔥'
+    if (diff >= 5) return '📈'
+    if (diff >= 0) return '💪'
+    if (diff > -5) return '🎲'
+    if (diff > -10) return '📉'
+    if (diff > -20) return '🧯'
+    if (diff > -30) return '🪂'
+    if (diff > -40) return '❄️'
+    if (diff > -50) return '💩'
+    if (diff > -100) return '🥊'
+    return '🙈'
+  }
+
+
+
+
   async function sendBeskedTilAdmin(kampid: number) {
     const besked = kommentarer[kampid]
     if (!besked) return
@@ -198,16 +220,27 @@ export default function SenesteKampeSide() {
       style={{
         display: 'flex',
         alignItems: 'center',
-        fontSize: '0.95rem',
         flexWrap: 'wrap',
+        fontSize: 'clamp(0.75rem, 2.5vw, 0.95rem)',
+        lineHeight: '1.2',
       }}
     >
-      <span style={{ fontSize: '1rem', marginRight: '0.5rem' }}>🎾</span>
-      <strong style={{ marginRight: '0.5rem' }}>{navn}</strong>
-      <span style={{ color: '#555', fontSize: '0.85rem' }}>ELO før: {startElo.toFixed(1)}</span>
+      <span style={{ fontSize: 'clamp(0.9rem, 3vw, 1rem)', marginRight: '0.4rem' }}>🎾</span>
+     <strong
+  style={{
+    marginRight: '0.5rem',
+    fontWeight: 800,
+    fontSize: '0.8rem', // eller fx '0.75rem'
+  }}
+>
+  {navn}
+</strong>
+
+      <span style={{ color: '#555', fontSize: '0.8em' }}>ELO før: {startElo.toFixed(1)}</span>
     </div>
   ))}
 </div>
+
 
 
             {/* Sætvisning */}
@@ -228,7 +261,7 @@ export default function SenesteKampeSide() {
                       justifyContent: 'space-between',
                       padding: '0.3rem 0',
                       borderBottom: index === sæt.length - 1 ? 'none' : '1px solid #ddd',
-                      fontSize: '0.95rem',
+                      fontSize: '0.8rem',
                     }}
                   >
                     <div style={{ flex: 1 }}>
@@ -237,7 +270,7 @@ export default function SenesteKampeSide() {
                     <div style={{ width: '70px', textAlign: 'center' }}>
                       {kamp.scoreA} - {kamp.scoreB}
                     </div>
-                    <div style={{ width: '50px', textAlign: 'right', fontWeight: '700', color: '#2e7d32' }}>
+                    <div style={{ width: '50px', textAlign: 'right', fontWeight: '500', color: '#2e7d32' }}>
                       {setElo.toFixed(1)}
                     </div>
                   </div>
@@ -262,11 +295,11 @@ export default function SenesteKampeSide() {
       style={{
         display: 'flex',
         alignItems: 'center',
-        fontSize: '0.95rem',
+        fontSize: '0.8rem',
         flexWrap: 'wrap',
       }}
     >
-      <span style={{ fontSize: '1rem', marginRight: '0.5rem' }}>🎾</span>
+      <span style={{ fontSize: '1rem', marginRight: '0.5rem' }}>{getEmojiForEloDiff(elo.diff)}</span>
       <strong style={{ marginRight: '0.5rem' }}>{navn}</strong>
       <span style={{ color: '#555', fontSize: '0.85rem', marginRight: '0.5rem' }}>
         Elo: {elo.after.toFixed(1)}
