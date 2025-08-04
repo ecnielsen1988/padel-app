@@ -10,11 +10,22 @@ export default function OpdaterAdgangskode() {
   const [besked, setBesked] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // 👇 Tjek om session findes, ellers vis advarsel
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      if (!data.session) {
+        setBesked(
+          "⚠️ Der mangler en aktiv session. Prøv at åbne linket direkte fra din e-mail igen."
+        );
+      }
+    });
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
-    const { data, error } = await supabase.auth.updateUser({
+    const { error } = await supabase.auth.updateUser({
       password: nyAdgangskode,
     });
 
@@ -22,7 +33,7 @@ export default function OpdaterAdgangskode() {
       setBesked("❌ Fejl: " + error.message);
       setLoading(false);
     } else {
-      setBesked("✅ Adgangskoden er opdateret. Du bliver omdirigeret...");
+      setBesked("✅ Adgangskoden er opdateret. Du bliver sendt videre...");
       setTimeout(() => {
         router.push("/startside");
       }, 3000);
@@ -85,3 +96,4 @@ const styles: { [key: string]: React.CSSProperties } = {
     marginTop: "1rem",
   },
 };
+
