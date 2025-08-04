@@ -12,7 +12,7 @@ export default function HeleRanglistenSide() {
         const data = await beregnHeleRanglisten()
         setRangliste(data)
       } catch (e) {
-        console.error('Fejl i hentHeleRangliste:', e)
+        console.error('Fejl i hentHeleRanglisten:', e)
       }
     }
     hentRangliste()

@@ -28,13 +28,18 @@ export default function StartSide() {
         if (error) {
           console.error('Fejl ved hentning af profil:', error)
         } else {
+          if (!profile.rolle) {
+            console.warn('Brugerprofil mangler rolle')
+            profile.rolle = 'ukendt'
+          }
+
           setBruger(profile)
 
           // Hvis admin: hent antal ulæste beskeder
           if (profile.rolle === 'admin') {
             const { count, error: beskedFejl } = await supabase
               .from('admin_messages')
-              .select('*', { count: 'exact', head: true })
+              .select('', { count: 'exact', head: true })
               .eq('læst', false)
 
             if (!beskedFejl && typeof count === 'number') {
@@ -42,6 +47,8 @@ export default function StartSide() {
             }
           }
         }
+      } else {
+        setBruger(null)
       }
 
       setLoading(false)
@@ -75,7 +82,25 @@ export default function StartSide() {
   return (
     <div className="p-8 max-w-xl mx-auto">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Velkommen, {bruger.visningsnavn} 👋</h1>
+        <div>
+          <h1 className="text-3xl font-bold">
+            Velkommen, {bruger.visningsnavn} 👋
+          </h1>
+          <p className="text-sm text-gray-400 mt-1">
+            Din rolle:{' '}
+            <span
+              className={
+                bruger.rolle === 'admin'
+                  ? 'text-yellow-400 font-bold'
+                  : bruger.rolle === 'bruger'
+                  ? 'text-green-400 font-bold'
+                  : 'text-red-400 font-bold'
+              }
+            >
+              {bruger.rolle}
+            </span>
+          </p>
+        </div>
         <button
           onClick={logUd}
           className="bg-gray-800 hover:bg-gray-900 text-white font-semibold py-2 px-4 rounded-xl shadow"
@@ -104,6 +129,12 @@ export default function StartSide() {
               className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
             >
               📊 Ranglisten
+            </Link>
+            <Link
+              href="/monthly"
+              className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
+            >
+              🌟 Månedens Spiller
             </Link>
           </>
         )}

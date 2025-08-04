@@ -7,6 +7,7 @@ import Link from "next/link";
 export default function VelkommenPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [besked, setBesked] = useState("");
   const [visLoginKnap, setVisLoginKnap] = useState(false);
 
@@ -15,11 +16,16 @@ export default function VelkommenPage() {
     setBesked("");
     setVisLoginKnap(false);
 
+    if (password !== confirmPassword) {
+      setBesked("❗ Adgangskoderne matcher ikke.");
+      return;
+    }
+
     const { error: signupError } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        emailRedirectTo: `${window.location.origin}/registrer`, // ⬅️ Ændret her
+        emailRedirectTo: `${window.location.origin}/registrer`,
       },
     });
 
@@ -28,7 +34,6 @@ export default function VelkommenPage() {
       return;
     }
 
-    // Forsøg at logge ind for at tjekke om brugeren allerede er bekræftet
     const { error: loginError } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -59,6 +64,14 @@ export default function VelkommenPage() {
           placeholder="Adgangskode"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
+          style={styles.input}
+          required
+        />
+        <input
+          type="password"
+          placeholder="Gentag adgangskode"
+          value={confirmPassword}
+          onChange={(e) => setConfirmPassword(e.target.value)}
           style={styles.input}
           required
         />
@@ -112,3 +125,4 @@ const styles: { [key: string]: React.CSSProperties } = {
     marginTop: "1rem",
   },
 };
+
