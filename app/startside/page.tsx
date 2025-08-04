@@ -136,6 +136,13 @@ export default function StartSide() {
             >
               🌟 Månedens Spiller
             </Link>
+            <Link
+  href="/active"
+  className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
+>
+  🏃‍♂️ Mest aktive
+</Link>
+
           </>
         )}
 
