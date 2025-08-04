@@ -46,6 +46,23 @@ export default function LoginPage() {
     }
   };
 
+  const handleForgotPassword = async () => {
+    if (!email) {
+      setMessage("❗ Indtast din e-mail for at nulstille adgangskoden.");
+      return;
+    }
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: "https://dinapp.dk/opdater-adgangskode", // Skift til din rigtige URL
+    });
+
+    if (error) {
+      setMessage("❌ Fejl ved nulstilling: " + error.message);
+    } else {
+      setMessage("📧 Tjek din e-mail for link til at nulstille adgangskoden.");
+    }
+  };
+
   return (
     <main style={styles.main}>
       <h1>Log ind</h1>
@@ -70,6 +87,21 @@ export default function LoginPage() {
           Log ind
         </button>
       </form>
+
+      <p style={{ marginTop: "1rem" }}>
+        <button
+          onClick={handleForgotPassword}
+          style={{
+            background: "none",
+            border: "none",
+            color: "#ff69b4",
+            textDecoration: "underline",
+            cursor: "pointer",
+          }}
+        >
+          Glemt adgangskode?
+        </button>
+      </p>
 
       {message && <p>{message}</p>}
 
