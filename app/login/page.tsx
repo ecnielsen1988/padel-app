@@ -53,7 +53,7 @@ export default function LoginPage() {
     }
 
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: "https://dinapp.dk/opdater-adgangskode", // Skift til din rigtige URL
+      redirectTo: "https://padelhuset-app.netlify.app/opdater-adgangskode", // Skift til din rigtige URL
     });
 
     if (error) {
