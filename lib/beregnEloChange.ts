@@ -1,7 +1,7 @@
 import { supabase } from './supabaseClient'
 import { beregnEloForKampe, Kamp, EloMap } from './beregnElo'
 
-interface MånedensSpiller {
+export interface MånedensSpiller {
   visningsnavn: string
   pluspoint: number
 }
