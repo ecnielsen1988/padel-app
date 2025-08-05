@@ -103,7 +103,7 @@ export default function ClientVisning() {
       </div>
 
       {/* Kolonner side om side */}
-      <div className="flex flex-row overflow-x-auto gap-2 whitespace-nowrap">
+      <div className="grid grid-cols-5 gap-2 px-2">
         {kolonne(top20, "Top 20", 1, (s) => `${Math.round(s.elo)} Elo`)}
         {kolonne(rangliste.slice(startIndex, startIndex + 20), `#${startIndex + 1}–${startIndex + 20}`, startIndex + 1, (s) => `${Math.round(s.elo)} Elo`)}
         {kolonne(rangliste.slice(startIndex + 20, startIndex + 40), `#${startIndex + 21}–${startIndex + 40}`, startIndex + 21, (s) => `${Math.round(s.elo)} Elo`)}
