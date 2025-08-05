@@ -64,7 +64,7 @@ export default function ClientVisning() {
     renderInfo: (s: any) => string
   ) => (
     <div className="p-2 min-w-[220px]">
-      <h2 className="text-center font-bold text-pink-500 text-sm mb-2">{title}</h2>
+      <h2 className="text-center font-bold text-pink-600 text-sm mb-2">{title}</h2>
       <ol className="space-y-1">
         {spillere.map((s, i) => {
           const placering = startNr + i
@@ -78,14 +78,14 @@ export default function ClientVisning() {
           return (
             <li
               key={s.visningsnavn}
-              className={`flex justify-between items-center rounded-xl px-2 py-1 shadow text-sm ${
+              className={`flex justify-between items-center rounded-xl px-2 py-1 shadow text-xs ${
                 i === 0
                   ? "bg-gradient-to-r from-pink-500 to-pink-400 text-white"
-                  : "bg-gray-100 text-black"
+                  : "bg-black bg-opacity-5 text-black"
               }`}
             >
               <span className="flex gap-1">
-                <span className="text-pink-500 font-semibold">#{placering}</span>
+                <span className="text-pink-600 font-semibold">#{placering}</span>
                 <span>{s.visningsnavn} {emoji}</span>
               </span>
               <span className="whitespace-nowrap">{renderInfo(s)}</span>
@@ -102,8 +102,8 @@ export default function ClientVisning() {
         <img src="/padelhuset-logo.png" alt="Padelhuset logo" className="mx-auto h-12 md:h-16 lg:h-20" />
       </div>
 
-      {/* Scrollbar og layoutfix */}
-      <div className="flex flex-row gap-1 overflow-x-auto whitespace-nowrap">
+      {/* Kolonner side om side */}
+      <div className="flex flex-row overflow-x-auto gap-2 whitespace-nowrap">
         {kolonne(top20, "Top 20", 1, (s) => `${Math.round(s.elo)} Elo`)}
         {kolonne(rangliste.slice(startIndex, startIndex + 20), `#${startIndex + 1}–${startIndex + 20}`, startIndex + 1, (s) => `${Math.round(s.elo)} Elo`)}
         {kolonne(rangliste.slice(startIndex + 20, startIndex + 40), `#${startIndex + 21}–${startIndex + 40}`, startIndex + 21, (s) => `${Math.round(s.elo)} Elo`)}
@@ -111,8 +111,8 @@ export default function ClientVisning() {
         {kolonne(mestAktive.slice(0, 15), "Mest aktive", 1, (s) => `${s.sæt} sæt 🏃‍♂️`)}
       </div>
 
-      {/* QR-kode i hjørnet */}
-      <div className="fixed bottom-4 right-4 bg-white p-1 shadow z-50">
+      {/* QR-kode fast nederst i højre hjørne */}
+      <div className="fixed bottom-4 right-4 bg-white p-2 shadow z-50">
         <QRCode value="https://padelhuset-app.netlify.app/signup" size={128} />
       </div>
     </main>
