@@ -60,8 +60,9 @@ export default function ClientVisning() {
     startNr: number,
     renderInfo: (s: any) => string
   ) => (
-    <td className="align-top p-2 w-[20%]">
-      <div className="space-y-1">
+    <td className="align-top p-2 w-[20%] h-full align-top">
+
+      <div className="space-y-1 flex flex-col justify-start h-full">
         {spillere.map((s, i) => {
           const placering = startNr + i
           const emoji =
