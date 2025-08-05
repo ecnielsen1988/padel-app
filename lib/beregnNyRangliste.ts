@@ -51,7 +51,7 @@ export async function beregnNyRangliste(): Promise<
 > {
   const { data, error } = await supabase
     .from('profiles')
-    .select('visningsnavn, startElo, koen')
+    .select('visningsnavn, startElo, koen, torsdagspadel')
 
   if (error) {
     console.error('❌ Fejl ved hentning af spillere:', error)

@@ -7,6 +7,7 @@ import Link from 'next/link'
 type Bruger = {
   visningsnavn: string
   rolle: string
+  torsdagspadel: boolean
 }
 
 export default function StartSide() {
@@ -21,7 +22,7 @@ export default function StartSide() {
       if (user) {
         const { data: profile, error } = await supabase
           .from('profiles')
-          .select('visningsnavn, rolle')
+          .select('visningsnavn, rolle, torsdagspadel')
           .eq('id', user.id)
           .single()
 
@@ -110,64 +111,74 @@ export default function StartSide() {
       </div>
 
       <div className="grid gap-4">
-        {(bruger.rolle === 'bruger' || bruger.rolle === 'admin') && (
-          <>
-            <Link
-              href="/newscore"
-              className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
-            >
-              ➕ Indtast Resultater
-            </Link>
-            <Link
-              href="/lastgames"
-              className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
-            >
-              🕓 Seneste Kampe
-            </Link>
-            <Link
-              href="/nyrangliste"
-              className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
-            >
-              📊 Ranglisten
-            </Link>
-            <Link
-              href="/monthly"
-              className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
-            >
-              🌟 Månedens Spiller
-            </Link>
-            <Link
-  href="/active"
-  className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
->
-  🏃‍♂️ Mest aktive
-</Link>
+{bruger.rolle === 'bruger' || bruger.rolle === 'admin' ? (
+  <>
+    <Link
+      href="/newscore"
+      className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
+    >
+      ➕ Indtast Resultater
+    </Link>
+    <Link
+      href="/lastgames"
+      className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
+    >
+      🕓 Seneste Kampe
+    </Link>
+    <Link
+      href="/nyrangliste"
+      className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
+    >
+      📊 Ranglisten
+    </Link>
+    <Link
+      href="/monthly"
+      className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
+    >
+      🌟 Månedens Spiller
+    </Link>
+    <Link
+      href="/active"
+      className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
+    >
+      🏃‍♂️ Mest aktive
+    </Link>
 
-          </>
-        )}
+    {/* 👇 Grøn knap kun for torsdagspadel-brugere */}
+    {bruger.torsdagspadel && (
+      <Link
+        href="/torsdagspadel"
+        className="bg-green-700 hover:bg-green-800 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
+      >
+        🏋️‍♂️ Torsdagspadel 🏋️‍♂️
+      </Link>
+    )}
+  </>
+) : null}
 
-        {bruger.rolle === 'admin' && (
-          <>
-            <Link
-              href="/admin"
-              className="bg-gray-800 hover:bg-gray-900 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
-            >
-              🛠 Adminpanel
-            </Link>
+{bruger.rolle === 'admin' && (
+  <>
+    <Link
+      href="/admin"
+      className="bg-gray-800 hover:bg-gray-900 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
+    >
+      🛠 Adminpanel
+    </Link>
 
-            <Link
-              href="/admin/beskeder"
-              className="bg-yellow-500 hover:bg-yellow-600 text-black font-semibold py-3 px-5 rounded-xl text-center shadow flex justify-between items-center"
-            >
-              🔔 Beskeder
-              {ulæsteAntal > 0 && (
-                <span className="ml-2 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded-full">
-                  {ulæsteAntal}
-                </span>
-              )}
-            </Link>
-          </>
-        )}
+    <Link
+      href="/admin/beskeder"
+      className="bg-yellow-500 hover:bg-yellow-600 text-black font-semibold py-3 px-5 rounded-xl text-center shadow flex justify-between items-center"
+    >
+      🔔 Beskeder
+      {ulæsteAntal > 0 && (
+        <span className="ml-2 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded-full">
+          {ulæsteAntal}
+        </span>
+      )}
+    </Link>
+  </>
+)}
+
       </div>
     </div>
   )
