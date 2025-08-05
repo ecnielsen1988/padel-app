@@ -103,7 +103,33 @@ export default function ClientVisning() {
       </div>
 
       {/* Kolonner side om side */}
-      <div className="grid grid-cols-5 gap-2 px-2">
+      <div
+  className="whitespace-nowrap overflow-x-auto"
+  style={{
+    width: "100%",
+  }}
+>
+  <div
+    className="inline-block align-top"
+    style={{ width: "20%", verticalAlign: "top" }}
+  >
+    {kolonne(top20, "Top 20", 1, (s) => `${Math.round(s.elo)} Elo`)}
+  </div>
+  <div className="inline-block align-top" style={{ width: "20%" }}>
+    {kolonne(rangliste.slice(startIndex, startIndex + 20), `#${startIndex + 1}–${startIndex + 20}`, startIndex + 1, (s) => `${Math.round(s.elo)} Elo`)}
+  </div>
+  <div className="inline-block align-top" style={{ width: "20%" }}>
+    {kolonne(rangliste.slice(startIndex + 20, startIndex + 40), `#${startIndex + 21}–${startIndex + 40}`, startIndex + 21, (s) => `${Math.round(s.elo)} Elo`)}
+  </div>
+  <div className="inline-block align-top" style={{ width: "20%" }}>
+    {kolonne(maanedens.slice(0, 15), "Månedens spillere", 1, (s) => `${s.pluspoint > 0 ? "+" : ""}${s.pluspoint.toFixed(1)} ${emojiForPluspoint(s.pluspoint)}`)}
+  </div>
+  <div className="inline-block align-top" style={{ width: "20%" }}>
+    {kolonne(mestAktive.slice(0, 15), "Mest aktive", 1, (s) => `${s.sæt} sæt 🏃‍♂️`)}
+  </div>
+</div>
+
+
         {kolonne(top20, "Top 20", 1, (s) => `${Math.round(s.elo)} Elo`)}
         {kolonne(rangliste.slice(startIndex, startIndex + 20), `#${startIndex + 1}–${startIndex + 20}`, startIndex + 1, (s) => `${Math.round(s.elo)} Elo`)}
         {kolonne(rangliste.slice(startIndex + 20, startIndex + 40), `#${startIndex + 21}–${startIndex + 40}`, startIndex + 21, (s) => `${Math.round(s.elo)} Elo`)}
