@@ -63,8 +63,8 @@ export default function ClientVisning() {
     startNr: number,
     renderInfo: (s: any) => string
   ) => (
-    <div className="flex-1 p-1">
-      <h2 className="text-center font-bold text-pink-400 text-sm mb-2">{title}</h2>
+    <div className="p-2 min-w-[220px]">
+      <h2 className="text-center font-bold text-pink-500 text-sm mb-2">{title}</h2>
       <ol className="space-y-1">
         {spillere.map((s, i) => {
           const placering = startNr + i
@@ -80,12 +80,12 @@ export default function ClientVisning() {
               key={s.visningsnavn}
               className={`flex justify-between items-center rounded-xl px-2 py-1 shadow text-sm ${
                 i === 0
-                  ? "bg-gradient-to-r from-pink-500 to-pink-400 text-black"
-                  : "bg-white bg-opacity-10 text-black"
+                  ? "bg-gradient-to-r from-pink-500 to-pink-400 text-white"
+                  : "bg-gray-100 text-black"
               }`}
             >
               <span className="flex gap-1">
-                <span className="text-pink-300 font-semibold">#{placering}</span>
+                <span className="text-pink-500 font-semibold">#{placering}</span>
                 <span>{s.visningsnavn} {emoji}</span>
               </span>
               <span className="whitespace-nowrap">{renderInfo(s)}</span>
@@ -97,25 +97,23 @@ export default function ClientVisning() {
   )
 
   return (
-    <main className="min-h-screen bg-white text-black flex flex-col px-2 pt-2 pb-4">
+    <main className="min-h-screen bg-white text-black px-2 pt-2 pb-4">
       <div className="p-4 text-center">
-  <img src="/padelhuset-logo.png" alt="Padelhuset logo" className="mx-auto h-12 md:h-16 lg:h-20" />
-</div>
+        <img src="/padelhuset-logo.png" alt="Padelhuset logo" className="mx-auto h-12 md:h-16 lg:h-20" />
+      </div>
 
-      
-      
-      
-      <div className="flex flex-1 flex-row overflow-hidden gap-1">
+      {/* Scrollbar og layoutfix */}
+      <div className="flex flex-row gap-1 overflow-x-auto whitespace-nowrap">
         {kolonne(top20, "Top 20", 1, (s) => `${Math.round(s.elo)} Elo`)}
         {kolonne(rangliste.slice(startIndex, startIndex + 20), `#${startIndex + 1}–${startIndex + 20}`, startIndex + 1, (s) => `${Math.round(s.elo)} Elo`)}
         {kolonne(rangliste.slice(startIndex + 20, startIndex + 40), `#${startIndex + 21}–${startIndex + 40}`, startIndex + 21, (s) => `${Math.round(s.elo)} Elo`)}
         {kolonne(maanedens.slice(0, 15), "Månedens spillere", 1, (s) => `${s.pluspoint > 0 ? "+" : ""}${s.pluspoint.toFixed(1)} ${emojiForPluspoint(s.pluspoint)}`)}
         {kolonne(mestAktive.slice(0, 15), "Mest aktive", 1, (s) => `${s.sæt} sæt 🏃‍♂️`)}
       </div>
-      <div className="text-right mt-2 pr-4">
-       <div className="fixed bottom-4 right-4 bg-white p-1 shadow z-50">
-  <QRCode value="https://padelhuset-app.netlify.app/signup" size={128} />
-</div>
+
+      {/* QR-kode i hjørnet */}
+      <div className="fixed bottom-4 right-4 bg-white p-1 shadow z-50">
+        <QRCode value="https://padelhuset-app.netlify.app/signup" size={128} />
       </div>
     </main>
   )
