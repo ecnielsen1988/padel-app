@@ -63,8 +63,10 @@ export default function ClientVisning() {
     startNr: number,
     renderInfo: (s: any) => string
   ) => (
-    <td className="align-top p-2 w-[20%]">
-      <h2 className="text-center font-bold text-pink-600 text-xs mb-1">{title}</h2>
+    <div className="p-2 w-full">
+      <div className="min-h-[40px] flex justify-center items-center mb-1">
+        <h2 className="font-bold text-pink-600 text-xs text-center">{title}</h2>
+      </div>
       <div className="space-y-1">
         {spillere.map((s, i) => {
           const placering = startNr + i
@@ -93,7 +95,7 @@ export default function ClientVisning() {
           )
         })}
       </div>
-    </td>
+    </div>
   )
 
   return (
@@ -103,20 +105,16 @@ export default function ClientVisning() {
         <img src="/padelhuset-logo.png" alt="Padelhuset logo" className="mx-auto h-12 md:h-16 lg:h-20" />
       </div>
 
-      {/* Layout med kolonner som virker på TV */}
-      <table className="table-fixed w-full">
-        <tbody>
-          <tr>
-            {kolonne(top20, "Top 20", 1, (s) => `${Math.round(s.elo)} Elo`)}
-            {kolonne(rangliste.slice(startIndex, startIndex + 20), `#${startIndex + 1}–${startIndex + 20}`, startIndex + 1, (s) => `${Math.round(s.elo)} Elo`)}
-            {kolonne(rangliste.slice(startIndex + 20, startIndex + 40), `#${startIndex + 21}–${startIndex + 40}`, startIndex + 21, (s) => `${Math.round(s.elo)} Elo`)}
-            {kolonne(maanedens.slice(0, 15), "Månedens spillere", 1, (s) => `${s.pluspoint > 0 ? "+" : ""}${s.pluspoint.toFixed(1)} ${emojiForPluspoint(s.pluspoint)}`)}
-            {kolonne(mestAktive.slice(0, 15), "Mest aktive", 1, (s) => `${s.sæt} sæt 🏃‍♂️`)}
-          </tr>
-        </tbody>
-      </table>
+      {/* Grid layout for TV */}
+      <div className="grid grid-cols-5 gap-2 px-2 flex-1">
+        {kolonne(top20, "Top 20", 1, (s) => `${Math.round(s.elo)} Elo`)}
+        {kolonne(rangliste.slice(startIndex, startIndex + 20), `#${startIndex + 1}–${startIndex + 20}`, startIndex + 1, (s) => `${Math.round(s.elo)} Elo`)}
+        {kolonne(rangliste.slice(startIndex + 20, startIndex + 40), `#${startIndex + 21}–${startIndex + 40}`, startIndex + 21, (s) => `${Math.round(s.elo)} Elo`)}
+        {kolonne(maanedens.slice(0, 15), "Månedens spillere", 1, (s) => `${s.pluspoint > 0 ? "+" : ""}${s.pluspoint.toFixed(1)} ${emojiForPluspoint(s.pluspoint)}`)}
+        {kolonne(mestAktive.slice(0, 15), "Mest aktive", 1, (s) => `${s.sæt} sæt 🏃‍♂️`)}
+      </div>
 
-      {/* QR Code i hjørnet */}
+      {/* QR Code */}
       <div className="fixed bottom-4 right-4 bg-white p-2 shadow z-50">
         <QRCode value="https://padelhuset-app.netlify.app/signup" size={128} />
       </div>
