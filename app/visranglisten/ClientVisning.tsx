@@ -65,7 +65,7 @@ export default function ClientVisning() {
   ) => (
     <td className="align-top p-2 w-[20%]">
       <h2 className="text-center font-bold text-pink-600 text-xs mb-1">{title}</h2>
-      <ol className="space-y-1">
+      <div className="space-y-1">
         {spillere.map((s, i) => {
           const placering = startNr + i
           const emoji =
@@ -76,7 +76,7 @@ export default function ClientVisning() {
               : ""
 
           return (
-            <li
+            <div
               key={s.visningsnavn}
               className={`flex justify-between items-center rounded-lg px-2 py-1 shadow text-xs ${
                 i === 0
@@ -89,20 +89,22 @@ export default function ClientVisning() {
                 <span>{s.visningsnavn} {emoji}</span>
               </span>
               <span className="whitespace-nowrap">{renderInfo(s)}</span>
-            </li>
+            </div>
           )
         })}
-      </ol>
+      </div>
     </td>
   )
 
   return (
-    <main className="min-h-screen bg-white text-black relative">
+    <main className="min-h-screen bg-white text-black flex flex-col">
+      {/* Logo */}
       <div className="p-4 text-center">
         <img src="/padelhuset-logo.png" alt="Padelhuset logo" className="mx-auto h-12 md:h-16 lg:h-20" />
       </div>
 
-      <table className="w-full table-fixed">
+      {/* Layout med kolonner som virker på TV */}
+      <table className="table-fixed w-full">
         <tbody>
           <tr>
             {kolonne(top20, "Top 20", 1, (s) => `${Math.round(s.elo)} Elo`)}
@@ -114,6 +116,7 @@ export default function ClientVisning() {
         </tbody>
       </table>
 
+      {/* QR Code i hjørnet */}
       <div className="fixed bottom-4 right-4 bg-white p-2 shadow z-50">
         <QRCode value="https://padelhuset-app.netlify.app/signup" size={128} />
       </div>
