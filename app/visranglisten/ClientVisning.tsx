@@ -26,10 +26,8 @@ export default function ClientVisning() {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setStartIndex((prev) => {
-        const max = Math.max(rangliste.length - 40, 20)
-        return prev >= max ? 20 : prev + 20
-      })
+      const max = Math.max(rangliste.length - 40, 20)
+      setStartIndex((prev) => (prev >= max ? 20 : prev + 20))
     }, 15000)
     return () => clearInterval(interval)
   }, [rangliste])
@@ -63,8 +61,8 @@ export default function ClientVisning() {
     startNr: number,
     renderInfo: (s: any) => string
   ) => (
-    <div className="p-2 min-w-[220px]">
-      <h2 className="text-center font-bold text-pink-600 text-sm mb-2">{title}</h2>
+    <div className="w-[20%] p-2 min-w-[220px]">
+      <h2 className="text-center font-bold text-pink-500 text-sm mb-2">{title}</h2>
       <ol className="space-y-1">
         {spillere.map((s, i) => {
           const placering = startNr + i
@@ -78,10 +76,10 @@ export default function ClientVisning() {
           return (
             <li
               key={s.visningsnavn}
-              className={`flex justify-between items-center rounded-xl px-2 py-1 shadow text-xs ${
+              className={`flex justify-between items-center rounded-lg px-2 py-1 shadow text-sm ${
                 i === 0
                   ? "bg-gradient-to-r from-pink-500 to-pink-400 text-white"
-                  : "bg-black bg-opacity-5 text-black"
+                  : "bg-gray-100 text-black"
               }`}
             >
               <span className="flex gap-1">
@@ -97,39 +95,14 @@ export default function ClientVisning() {
   )
 
   return (
-    <main className="min-h-screen bg-white text-black px-2 pt-2 pb-4">
+    <main className="min-h-screen bg-white text-black flex flex-col">
+      {/* Logo */}
       <div className="p-4 text-center">
         <img src="/padelhuset-logo.png" alt="Padelhuset logo" className="mx-auto h-12 md:h-16 lg:h-20" />
       </div>
 
-      {/* Kolonner side om side */}
-      <div
-  className="whitespace-nowrap overflow-x-auto"
-  style={{
-    width: "100%",
-  }}
->
-  <div
-    className="inline-block align-top"
-    style={{ width: "20%", verticalAlign: "top" }}
-  >
-    {kolonne(top20, "Top 20", 1, (s) => `${Math.round(s.elo)} Elo`)}
-  </div>
-  <div className="inline-block align-top" style={{ width: "20%" }}>
-    {kolonne(rangliste.slice(startIndex, startIndex + 20), `#${startIndex + 1}–${startIndex + 20}`, startIndex + 1, (s) => `${Math.round(s.elo)} Elo`)}
-  </div>
-  <div className="inline-block align-top" style={{ width: "20%" }}>
-    {kolonne(rangliste.slice(startIndex + 20, startIndex + 40), `#${startIndex + 21}–${startIndex + 40}`, startIndex + 21, (s) => `${Math.round(s.elo)} Elo`)}
-  </div>
-  <div className="inline-block align-top" style={{ width: "20%" }}>
-    {kolonne(maanedens.slice(0, 15), "Månedens spillere", 1, (s) => `${s.pluspoint > 0 ? "+" : ""}${s.pluspoint.toFixed(1)} ${emojiForPluspoint(s.pluspoint)}`)}
-  </div>
-  <div className="inline-block align-top" style={{ width: "20%" }}>
-    {kolonne(mestAktive.slice(0, 15), "Mest aktive", 1, (s) => `${s.sæt} sæt 🏃‍♂️`)}
-  </div>
-</div>
-
-
+      {/* Kolonner - brug grid for max browserkompatibilitet */}
+      <div className="flex flex-wrap justify-center items-start gap-2 px-2">
         {kolonne(top20, "Top 20", 1, (s) => `${Math.round(s.elo)} Elo`)}
         {kolonne(rangliste.slice(startIndex, startIndex + 20), `#${startIndex + 1}–${startIndex + 20}`, startIndex + 1, (s) => `${Math.round(s.elo)} Elo`)}
         {kolonne(rangliste.slice(startIndex + 20, startIndex + 40), `#${startIndex + 21}–${startIndex + 40}`, startIndex + 21, (s) => `${Math.round(s.elo)} Elo`)}
@@ -137,7 +110,7 @@ export default function ClientVisning() {
         {kolonne(mestAktive.slice(0, 15), "Mest aktive", 1, (s) => `${s.sæt} sæt 🏃‍♂️`)}
       </div>
 
-      {/* QR-kode fast nederst i højre hjørne */}
+      {/* QR-kode */}
       <div className="fixed bottom-4 right-4 bg-white p-2 shadow z-50">
         <QRCode value="https://padelhuset-app.netlify.app/signup" size={128} />
       </div>
