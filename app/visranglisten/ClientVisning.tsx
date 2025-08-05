@@ -60,9 +60,8 @@ export default function ClientVisning() {
     startNr: number,
     renderInfo: (s: any) => string
   ) => (
-    <td className="align-top p-2 w-[20%] h-full align-top">
-
-      <div className="space-y-1 flex flex-col justify-start h-full">
+    <td className="align-top p-2 w-[20%] h-full">
+      <div className="space-y-1 flex flex-col items-start h-full">
         {spillere.map((s, i) => {
           const placering = startNr + i
           const emoji =
@@ -75,7 +74,7 @@ export default function ClientVisning() {
           return (
             <div
               key={s.visningsnavn}
-              className={`flex justify-between items-center rounded-lg px-2 py-1 shadow text-xs ${
+              className={`flex justify-between items-center rounded-lg px-2 py-1 shadow text-xs w-full ${
                 i === 0
                   ? "bg-gradient-to-r from-pink-500 to-pink-400 text-white"
                   : "bg-black bg-opacity-5 text-black"
@@ -101,22 +100,22 @@ export default function ClientVisning() {
       </div>
 
       {/* Layout med kolonner som virker på TV */}
-      <table className="table-fixed w-full">
+      <table className="table-fixed w-full h-full">
         <thead>
-          <tr>
-            <th className="text-pink-600 text-xs font-bold text-center py-2">Top 20</th>
-            <th className="text-pink-600 text-xs font-bold text-center py-2">
+          <tr className="h-12">
+            <th className="text-pink-600 text-xs font-bold text-center align-top">Top 20</th>
+            <th className="text-pink-600 text-xs font-bold text-center align-top">
               #{startIndex + 1}–{startIndex + 20}
             </th>
-            <th className="text-pink-600 text-xs font-bold text-center py-2">
+            <th className="text-pink-600 text-xs font-bold text-center align-top">
               #{startIndex + 21}–{startIndex + 40}
             </th>
-            <th className="text-pink-600 text-xs font-bold text-center py-2">Månedens spillere</th>
-            <th className="text-pink-600 text-xs font-bold text-center py-2">Mest aktive</th>
+            <th className="text-pink-600 text-xs font-bold text-center align-top">Månedens spillere</th>
+            <th className="text-pink-600 text-xs font-bold text-center align-top">Mest aktive</th>
           </tr>
         </thead>
         <tbody>
-          <tr>
+          <tr className="align-top h-full">
             {kolonne(top20, 1, (s) => `${Math.round(s.elo)} Elo`)}
             {kolonne(rangliste.slice(startIndex, startIndex + 20), startIndex + 1, (s) => `${Math.round(s.elo)} Elo`)}
             {kolonne(rangliste.slice(startIndex + 20, startIndex + 40), startIndex + 21, (s) => `${Math.round(s.elo)} Elo`)}
