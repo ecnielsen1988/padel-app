@@ -60,8 +60,9 @@ export default function TorsdagStartside() {
     }
 
     const { error } = await supabase
-      .from('event_signups')
-      .upsert(payload, { onConflict: ['user_id', 'event_dato'] })
+  .from('event_signups')
+  .upsert([payload], { onConflict: 'user_id, event_dato' }) // ✅ virker
+
 
     if (!error) {
       setTilmelding({ kan_spille: kanSpille, tidligste_tid: tidligsteTid })
