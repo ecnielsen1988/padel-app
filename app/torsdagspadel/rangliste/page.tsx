@@ -7,7 +7,7 @@ type Spiller = {
   visningsnavn: string
   elo: number
   koen: string | null
-  torsdagspadel: boolean
+  
 }
 
 export default async function TorsdagspadelRangliste() {

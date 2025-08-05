@@ -13,12 +13,14 @@ type Resultat = {
   finish: boolean
   event: boolean
   tiebreak: 'ingen' | 'tiebreak' | 'matchtiebreak'
+  torsdagspadel: boolean
 }
 
 type Profil = {
   visningsnavn: string
   startElo: number | null
   koen: string | null
+  torsdagspadel: boolean
 }
 
 type EloMap = Record<string, number>
@@ -159,6 +161,7 @@ export async function beregnNyRangliste(): Promise<
         visningsnavn,
         elo,
         koen: profil?.koen ?? null,
+        torsdagspadel: profil?.torsdagspadel ?? false, // ✅ Tilføjet!
       }
     })
     .sort((a, b) => b.elo - a.elo)
