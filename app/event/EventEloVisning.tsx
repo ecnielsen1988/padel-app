@@ -1,6 +1,6 @@
 'use client'
 
-import { Kamp, beregnEloForKampe } from '@/lib/beregnElo'
+import type { Kamp } from "./EventLayout"
 import React from 'react'
 
 type Props = {
