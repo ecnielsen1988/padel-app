@@ -202,7 +202,8 @@ export default function EventLayout() {
   };
 
   return (
-    <div className="flex gap-4 p-4 min-h-screen bg-white text-black dark:bg-zinc-900 dark:text-white">
+    <div className="flex gap-4 p-4 h-screen overflow-auto bg-white text-black dark:bg-zinc-900 dark:text-white">
+
       {/* Venstre kolonne */}
       <div className="w-1/5 p-3 rounded shadow bg-zinc-100 dark:bg-zinc-800">
         <h2 className="font-semibold mb-2">👥 Spillere</h2>
@@ -380,7 +381,8 @@ export default function EventLayout() {
       </div>
 
       {/* Højre kolonne */}
-      <div className="w-1/5 p-3 rounded shadow bg-zinc-100 dark:bg-zinc-800">
+     <div className="w-1/5 p-3 rounded shadow bg-zinc-100 dark:bg-zinc-800 sticky top-4 self-start h-fit">
+
   <h2 className="font-semibold mb-2">📈 Elo-ændringer</h2>
   {Object.entries(samletDiff)
     .sort(([, a], [, b]) => b - a)
