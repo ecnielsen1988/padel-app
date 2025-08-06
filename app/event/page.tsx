@@ -1,8 +1,10 @@
+// Entire /event page component with player picker, Elo shown, editable scores, editable court/time, +point on set, no point for 0-0, dark/light mode friendly
+
 "use client";
 
 import React, { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { beregnEloForKampe, EloChange } from "@/lib/beregnElo";
+import { beregnEloForKampe } from "@/lib/beregnElo";
 
 export type Spiller = {
   visningsnavn: string;
@@ -26,6 +28,35 @@ export type Kamp = {
   sæt: Sæt[];
 };
 
+const erFærdigtSæt = (a: number, b: number) => {
+  const max = Math.max(a, b);
+  const min = Math.min(a, b);
+  return (
+    (max === 6 && min <= 4) ||
+    (max === 7 && (min === 5 || min === 6))
+  );
+};
+
+function emojiForPluspoint(p: number) {
+  if (p >= 100) return '🍾';
+  if (p >= 50) return '🏆';
+  if (p >= 40) return '🏅';
+  if (p >= 30) return '☄️';
+  if (p >= 20) return '🚀';
+  if (p >= 10) return '🔥';
+  if (p >= 5) return '📈';
+  if (p >= 0) return '💪';
+  if (p > -5) return '🎲';
+  if (p > -10) return '📉';
+  if (p > -20) return '🧯';
+  if (p > -30) return '🪂';
+  if (p > -40) return '❄️';
+  if (p > -50) return '💩';
+  if (p > -100) return '🥊';
+  return '🙈';
+}
+
+
 export default function EventLayout() {
   const [alleSpillere, setAlleSpillere] = useState<Spiller[]>([]);
   const [valgteSpillere, setValgteSpillere] = useState<Spiller[]>([]);
@@ -36,10 +67,9 @@ export default function EventLayout() {
   useEffect(() => {
     const hentData = async () => {
       const res = await fetch("/api/rangliste");
-      const rangliste: { visningsnavn: string; elo: number }[] = await res.json();
-
+      const rangliste = await res.json();
       const map: Record<string, number> = {};
-      rangliste.forEach((s) => {
+      rangliste.forEach((s: any) => {
         map[s.visningsnavn] = s.elo;
       });
       setEloMap(map);
@@ -77,14 +107,12 @@ export default function EventLayout() {
 
   const lavEventFraSpillere = () => {
     const nyeKampe: Kamp[] = [];
-
     for (let i = 0; i < valgteSpillere.length; i += 4) {
       const gruppe = valgteSpillere.slice(i, i + 4);
       if (gruppe.length < 4) continue;
 
       const [p1, p2, p3, p4] = gruppe.map((s) => s.visningsnavn);
-
-      const kamp: Kamp = {
+      nyeKampe.push({
         id: `kamp${i / 4 + 1}`,
         bane: `Bane ${i / 4 + 1}`,
         starttid: "17:00",
@@ -94,101 +122,100 @@ export default function EventLayout() {
           { holdA1: p1, holdA2: p3, holdB1: p2, holdB2: p4, scoreA: 0, scoreB: 0 },
           { holdA1: p1, holdA2: p4, holdB1: p2, holdB2: p3, scoreA: 0, scoreB: 0 },
         ],
-      };
-
-      nyeKampe.push(kamp);
+      });
     }
-
     setKampe(nyeKampe);
   };
 
-  const ScoreEditor = ({ value, onChange }: { value: number; onChange: (val: number) => void }) => {
-    const [editing, setEditing] = useState(false);
-    const [temp, setTemp] = useState(value.toString());
+  const genererNæsteSæt = (kampIndex: number) => {
+  setKampe((prev) => {
+    const kamp = prev[kampIndex];
+    const baseSpillere = kamp.sæt[0];
 
-    return editing ? (
-      <input
-        autoFocus
-        value={temp}
-        onChange={(e) => setTemp(e.target.value)}
-        onBlur={() => {
-          const parsed = parseInt(temp);
-          onChange(isNaN(parsed) ? 0 : parsed);
-          setEditing(false);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            const parsed = parseInt(temp);
-            onChange(isNaN(parsed) ? 0 : parsed);
-            setEditing(false);
-          }
-        }}
-        className="w-10 text-center border border-gray-300 rounded text-xs py-[1px]"
-      />
-    ) : (
-      <span
-        className="w-10 text-center cursor-pointer"
-        onClick={() => setEditing(true)}
-      >
-        {value}
-      </span>
-    );
-  };
+    const rotation = [
+      [baseSpillere.holdA1, baseSpillere.holdA2, baseSpillere.holdB1, baseSpillere.holdB2],
+      [baseSpillere.holdA1, baseSpillere.holdB1, baseSpillere.holdA2, baseSpillere.holdB2],
+      [baseSpillere.holdA1, baseSpillere.holdB2, baseSpillere.holdA2, baseSpillere.holdB1],
+    ];
 
-  // 💡 Midlertidige IDs for Elo-beregning
+    const næsteRotation = rotation[kamp.sæt.length % 3];
+
+    const nytSæt = {
+      holdA1: næsteRotation[0],
+      holdA2: næsteRotation[1],
+      holdB1: næsteRotation[2],
+      holdB2: næsteRotation[3],
+      scoreA: 0,
+      scoreB: 0,
+    };
+
+    const opdateretKamp = {
+      ...kamp,
+      sæt: [...kamp.sæt, nytSæt],
+    };
+
+    const opdateretKampe = [...prev];
+    opdateretKampe[kampIndex] = opdateretKamp;
+    return opdateretKampe;
+  });
+};
+
+
   const sætMedId = kampe.flatMap((kamp, kampIndex) =>
-    kamp.sæt.map((sæt, sætIndex) => ({
-      ...sæt,
-      id: 1_000_000 + kampIndex * 10 + sætIndex, // højt numerisk ID
-      kampid: 999999,
-      date: "2025-01-01",
-      finish: true,
-      event: true,
-      tiebreak: "false",
-    }))
+    kamp.sæt.map((sæt, sætIndex) => {
+        
+      const score = [sæt.scoreA, sæt.scoreB];
+      const finish = score[0] === 0 && score[1] === 0 ? false : erFærdigtSæt(score[0], score[1]);
+
+      return {
+        ...sæt,
+        id: 1_000_000 + kampIndex * 10 + sætIndex,
+        kampid: 999999,
+        date: "2025-01-01",
+        finish,
+        event: true,
+        tiebreak: "false",
+      };
+    })
   );
 
   const { eloChanges } = beregnEloForKampe(sætMedId, eloMap);
 
   const samletDiff: Record<string, number> = {};
-  Object.values(eloChanges).forEach((ændringer) => {
-    Object.entries(ændringer).forEach(([navn, change]) => {
-      samletDiff[navn] = (samletDiff[navn] ?? 0) + change.diff;
-    });
+  sætMedId.forEach((sæt) => {
+  if (sæt.scoreA === 0 && sæt.scoreB === 0) return; // Ignorer 0-0 sæt
+  const ændringer = eloChanges[sæt.id];
+  if (!ændringer) return;
+  Object.entries(ændringer).forEach(([navn, change]) => {
+    samletDiff[navn] = (samletDiff[navn] ?? 0) + change.diff;
   });
+});
 
-  function getEmojiForEloDiff(diff: number): string {
-    if (diff >= 100) return "🍾";
-    if (diff >= 50) return "🏆";
-    if (diff >= 40) return "🥇";
-    if (diff >= 30) return "☄️";
-    if (diff >= 20) return "🏸";
-    if (diff >= 10) return "🔥";
-    if (diff >= 5) return "📈";
-    if (diff >= 0) return "💪";
-    if (diff > -5) return "🎲";
-    if (diff > -10) return "📉";
-    if (diff > -20) return "🧯";
-    if (diff > -30) return "🪂";
-    if (diff > -40) return "❄️";
-    if (diff > -50) return "💩";
-    if (diff > -100) return "🥊";
-    return "🙈";
-  }
+
+  const visPoint = (id: number) => {
+    const ændringer = eloChanges[id];
+    if (!ændringer) return null;
+    const score = sætMedId.find((s) => s.id === id);
+    if (!score || (score.scoreA === 0 && score.scoreB === 0)) return null;
+    const max = Math.max(...Object.values(ændringer).map((e) => e.diff).filter((v) => v > 0));
+    return max > 0 ? `+${max.toFixed(1)}` : null;
+  };
 
   return (
-    <div className="flex flex-row gap-4 p-4 h-screen overflow-hidden font-sans text-xs">
-      <div className="w-1/5 bg-white rounded-xl shadow p-3 flex flex-col">
-        <h2 className="text-sm font-semibold mb-2">👥 Spillere</h2>
+    <div className="flex gap-4 p-4 min-h-screen bg-white text-black dark:bg-zinc-900 dark:text-white">
+      {/* Venstre kolonne */}
+      <div className="w-1/5 p-3 rounded shadow bg-zinc-100 dark:bg-zinc-800">
+        <h2 className="font-semibold mb-2">👥 Spillere</h2>
+
         <input
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Tilføj spiller..."
-          className="w-full border border-gray-300 rounded px-2 py-1 text-xs mb-2"
+          className="w-full mb-2 p-1 rounded border bg-white dark:bg-zinc-700 dark:text-white"
         />
-        {search.length > 0 && (
-          <div className="bg-white border border-gray-200 rounded max-h-48 overflow-y-auto shadow text-xs">
+        {search && (
+          <div className="bg-white dark:bg-zinc-700 border rounded shadow max-h-48 overflow-y-auto text-sm">
             {alleSpillere
               .filter(
                 (s) =>
@@ -199,127 +226,185 @@ export default function EventLayout() {
                 <div
                   key={spiller.visningsnavn}
                   onClick={() => tilføjSpiller(spiller)}
-                  className="px-2 py-1 hover:bg-pink-100 cursor-pointer"
+                  className="px-2 py-1 hover:bg-pink-100 dark:hover:bg-zinc-600 cursor-pointer flex justify-between text-sm"
                 >
-                  {spiller.visningsnavn} ({Math.round(spiller.elo ?? 1000)})
+                  <span>{spiller.visningsnavn}</span>
+                  <span className="text-gray-500 dark:text-gray-300">
+                    {Math.round(spiller.elo ?? 1000)}
+                  </span>
                 </div>
               ))}
           </div>
         )}
-        <div className="flex-1 overflow-y-auto space-y-1 mt-2 max-h-[calc(100vh-200px)]">
+
+        <div className="mt-3 space-y-1">
           {valgteSpillere.map((spiller) => (
             <div
               key={spiller.visningsnavn}
-              className="flex justify-between bg-pink-100 rounded px-2 py-1"
+              className="flex justify-between items-center bg-pink-100 dark:bg-zinc-700 rounded px-2 py-1 text-xs"
             >
-              <span className="truncate">
-                {spiller.visningsnavn} ({Math.round(spiller.elo ?? 1000)})
-              </span>
-              <button
-                onClick={() => fjernSpiller(spiller.visningsnavn)}
-                className="text-red-500 text-sm"
-              >
-                🗑
-              </button>
+              <span>{spiller.visningsnavn}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-600 dark:text-gray-300">
+                  {Math.round(spiller.elo ?? 1000)}
+                </span>
+                <button
+                  onClick={() => fjernSpiller(spiller.visningsnavn)}
+                  className="text-red-500"
+                >
+                  🗑
+                </button>
+              </div>
             </div>
           ))}
         </div>
+
         <button
-          onClick={lavEventFraSpillere}
-          className="mt-2 bg-green-600 text-white text-xs rounded px-2 py-1 hover:bg-green-700"
-        >
-          ✅ Lav event
-        </button>
+  onClick={lavEventFraSpillere}
+  disabled={kampe.some((kamp) =>
+    kamp.sæt.some((sæt) => sæt.scoreA !== 0 || sæt.scoreB !== 0)
+  )}
+  className={`mt-2 text-xs rounded px-2 py-1 font-semibold transition
+    ${kampe.some((kamp) =>
+      kamp.sæt.some((sæt) => sæt.scoreA !== 0 || sæt.scoreB !== 0)
+    )
+      ? "bg-gray-400 text-white cursor-not-allowed"
+      : "bg-green-600 text-white hover:bg-green-700"
+    }`}
+>
+  ✅ Lav event
+</button>
+
       </div>
 
-      <div className="w-4/5 flex gap-4">
-        <div className="w-3/4 bg-white rounded-xl shadow p-3 overflow-y-auto text-xs">
-          <h2 className="text-sm font-semibold mb-2">🎾 Kampe</h2>
-
-          {kampe.map((kamp, kampIndex) => (
-            <div key={kamp.id} className="mb-4 border border-pink-300 rounded p-2">
-              <div className="text-[10px] text-gray-500 mb-1">
-                🏟 {kamp.bane} ⏰ {kamp.starttid} - {kamp.sluttid}
-              </div>
-              {kamp.sæt.map((sæt, sætIndex) => {
-                const sætId = 1_000_000 + kampIndex * 10 + sætIndex;
-                const ændringer = eloChanges[sætId];
-                const vinderPoint =
-                  ændringer &&
-                  Math.max(
-                    ...Object.values(ændringer)
-                      .map((e) => e.diff)
-                      .filter((d) => d > 0)
-                  );
-
-                return (
-                  <div key={sætIndex} className="flex items-center gap-1 relative">
-                    <div className="w-[240px] truncate">{sæt.holdA1} & {sæt.holdA2}</div>
-                    <ScoreEditor
-                      value={sæt.scoreA}
-                      onChange={(val) => {
-                        setKampe((prev) =>
-                          prev.map((k, i) =>
-                            i === kampIndex
-                              ? {
-                                  ...k,
-                                  sæt: k.sæt.map((s, j) =>
-                                    j === sætIndex ? { ...s, scoreA: val } : s
-                                  ),
-                                }
-                              : k
-                          )
-                        );
-                      }}
-                    />
-                    <span>-</span>
-                    <ScoreEditor
-                      value={sæt.scoreB}
-                      onChange={(val) => {
-                        setKampe((prev) =>
-                          prev.map((k, i) =>
-                            i === kampIndex
-                              ? {
-                                  ...k,
-                                  sæt: k.sæt.map((s, j) =>
-                                    j === sætIndex ? { ...s, scoreB: val } : s
-                                  ),
-                                }
-                              : k
-                          )
-                        );
-                      }}
-                    />
-                    <div className="w-[240px] truncate text-right">{sæt.holdB1} & {sæt.holdB2}</div>
-
-                    {vinderPoint > 0 && (
-                      <div className="absolute right-0 text-pink-600 text-[10px] font-bold">
-                        +{vinderPoint}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+      {/* Midterste kolonne */}
+      <div className="w-3/5 space-y-4">
+        {kampe.map((kamp, kampIndex) => (
+          <div key={kamp.id} className="p-3 rounded bg-zinc-100 dark:bg-zinc-800">
+            <div className="mb-2">
+              <input
+                type="text"
+                value={kamp.bane}
+                onChange={(e) => {
+                  const updated = [...kampe];
+                  updated[kampIndex].bane = e.target.value;
+                  setKampe(updated);
+                }}
+                className="text-sm mr-2 border px-1 bg-white dark:bg-zinc-700 dark:text-white"
+              />
+              <input
+                type="time"
+                value={kamp.starttid}
+                onChange={(e) => {
+                  const updated = [...kampe];
+                  updated[kampIndex].starttid = e.target.value;
+                  setKampe(updated);
+                }}
+                className="text-sm mr-2 border px-1 bg-white dark:bg-zinc-700 dark:text-white"
+              />
+              -
+              <input
+                type="time"
+                value={kamp.sluttid}
+                onChange={(e) => {
+                  const updated = [...kampe];
+                  updated[kampIndex].sluttid = e.target.value;
+                  setKampe(updated);
+                }}
+                className="text-sm ml-2 border px-1 bg-white dark:bg-zinc-700 dark:text-white"
+              />
             </div>
-          ))}
-        </div>
-
-        <div className="w-1/4 bg-white rounded-xl shadow p-3 overflow-y-auto text-xs">
-          <h2 className="text-sm font-semibold mb-2">📈 Elo-ændringer</h2>
-          {Object.entries(samletDiff)
-            .sort(([, a], [, b]) => b - a)
-            .map(([navn, diff]) => (
-              <div key={navn} className="flex justify-between items-center mb-1">
-                <div className="truncate">{navn}</div>
-                <div className={`font-semibold ${diff >= 0 ? "text-green-600" : "text-red-500"}`}>
-                  {getEmojiForEloDiff(diff)} {diff > 0 ? "+" : ""}
-                  {diff}
+            {kamp.sæt.map((sæt, sætIndex) => {
+                
+              const sætId = 1_000_000 + kampIndex * 10 + sætIndex;
+              return (
+                <div key={sætIndex} className="flex items-center gap-2 text-xs">
+                  <div className="w-1/3 truncate">{sæt.holdA1} & {sæt.holdA2}</div>
+                  <input
+                  
+  type="text"
+  inputMode="numeric"
+  maxLength={1}
+  value={sæt.scoreA.toString()}
+  onFocus={(e) => e.target.select()}
+  onChange={(e) => {
+    const val = parseInt(e.target.value);
+    if (!isNaN(val) && val >= 0 && val <= 7) {
+      const updated = [...kampe];
+      updated[kampIndex].sæt[sætIndex].scoreA = val;
+      setKampe(updated);
+    } else if (e.target.value === "") {
+      const updated = [...kampe];
+      updated[kampIndex].sæt[sætIndex].scoreA = 0;
+      setKampe(updated);
+    }
+  }}
+  className="w-8 border text-center text-xs bg-white dark:bg-zinc-700 dark:text-white"
+/>
+                  -
+                  <input
+  type="text"
+  inputMode="numeric"
+  maxLength={1}
+  value={sæt.scoreB.toString()}
+  onFocus={(e) => e.target.select()}
+  onChange={(e) => {
+    const val = parseInt(e.target.value);
+    if (!isNaN(val) && val >= 0 && val <= 7) {
+      const updated = [...kampe];
+      updated[kampIndex].sæt[sætIndex].scoreB = val;
+      setKampe(updated);
+    } else if (e.target.value === "") {
+      const updated = [...kampe];
+      updated[kampIndex].sæt[sætIndex].scoreB = 0;
+      setKampe(updated);
+    }
+  }}
+  className="w-8 border text-center text-xs bg-white dark:bg-zinc-700 dark:text-white"
+/>
+                  <div className="w-1/3 truncate text-right">{sæt.holdB1} & {sæt.holdB2}</div>
+                  <div className="text-pink-600 text-xs font-bold">{visPoint(sætId)}</div>
                 </div>
-              </div>
-            ))}
-        </div>
+              );
+            })}
+            {/* Tilføj sæt-knap skal være her – uden for map */}
+<button
+  onClick={() => genererNæsteSæt(kampIndex)}
+  className="mt-2 text-xs text-pink-600 hover:underline"
+>
+  ➕ Tilføj sæt
+</button>
+
+          </div>
+        ))}
       </div>
+
+      {/* Højre kolonne */}
+      <div className="w-1/5 p-3 rounded shadow bg-zinc-100 dark:bg-zinc-800">
+  <h2 className="font-semibold mb-2">📈 Elo-ændringer</h2>
+  {Object.entries(samletDiff)
+    .sort(([, a], [, b]) => b - a)
+    .map(([navn, diff], index) => {
+      let emoji = emojiForPluspoint(diff);
+      if (index === 0) emoji = '🥇';
+      else if (index === 1) emoji = '🥈';
+      else if (index === 2) emoji = '🥉';
+
+      const sizeClass =
+        index === 0 ? 'text-xl' : index === 1 ? 'text-lg' : index === 2 ? 'text-sm' : 'text-xs';
+
+      return (
+        <div key={navn} className={`flex justify-between items-center ${sizeClass}`}>
+  <span className="truncate max-w-[180px] block">{navn}</span>
+  <span className={diff >= 0 ? 'text-green-600' : 'text-red-500'}>
+    {emoji} {diff >= 0 ? '+' : ''}
+    {diff.toFixed(1)}
+  </span>
+</div>
+      );
+    })}
+</div>
+
     </div>
   );
 }
-
