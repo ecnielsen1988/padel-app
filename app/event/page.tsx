@@ -144,7 +144,7 @@ export default function EventLayout() {
       date: "2025-01-01",
       finish: true,
       event: true,
-      tiebreak: false,
+      tiebreak: "false",
     }))
   );
 
