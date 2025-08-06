@@ -135,18 +135,18 @@ export default function EventLayout() {
     );
   };
 
-  // 💡 Midlertidige IDs til beregning
+  // 💡 Midlertidige IDs for Elo-beregning
   const sætMedId = kampe.flatMap((kamp, kampIndex) =>
-  kamp.sæt.map((sæt, sætIndex) => ({
-    ...sæt,
-    id: `event-kamp${kampIndex}-sæt${sætIndex}`,
-    date: "2025-01-01",          // Dummy værdi
-    kampid: 999999,              // Midlertidigt kampid
-    finish: true,                // Angiv at sættet er færdigspillet
-    event: null,                 // Hvis du ikke bruger event endnu
-    tiebreak: false              // Antag ingen tiebreak som default
-  }))
-);
+    kamp.sæt.map((sæt, sætIndex) => ({
+      ...sæt,
+      id: 1_000_000 + kampIndex * 10 + sætIndex, // højt numerisk ID
+      kampid: 999999,
+      date: "2025-01-01",
+      finish: true,
+      event: null,
+      tiebreak: false,
+    }))
+  );
 
   const { eloChanges } = beregnEloForKampe(sætMedId, eloMap);
 
@@ -242,8 +242,8 @@ export default function EventLayout() {
                 🏟 {kamp.bane} ⏰ {kamp.starttid} - {kamp.sluttid}
               </div>
               {kamp.sæt.map((sæt, sætIndex) => {
-                const id = `event-kamp${kampIndex}-sæt${sætIndex}`;
-                const ændringer = eloChanges[id];
+                const sætId = 1_000_000 + kampIndex * 10 + sætIndex;
+                const ændringer = eloChanges[sætId];
                 const vinderPoint =
                   ændringer &&
                   Math.max(
