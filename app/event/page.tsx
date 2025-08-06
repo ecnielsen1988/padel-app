@@ -143,7 +143,7 @@ export default function EventLayout() {
       kampid: 999999,
       date: "2025-01-01",
       finish: true,
-      event: null,
+      event: true,
       tiebreak: false,
     }))
   );
