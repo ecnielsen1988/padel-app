@@ -68,22 +68,29 @@ if (sessionError) {
     setBruger(null)
   }
 
-  if (loading) return <p>Indlæser...</p>
+  if (loading) {
+  return (
+    <div className="p-8 max-w-xl mx-auto text-center">
+      <p className="text-lg">⏳ Indlæser...</p>
+    </div>
+  )
+}
 
-  if (!bruger) {
-    return (
-      <div className="p-8 max-w-xl mx-auto text-center">
-        <h1 className="text-2xl font-bold mb-4">Velkommen til Padel-appen</h1>
-        <p className="mb-6">Du skal være logget ind for at bruge systemet.</p>
-        <Link
-          href="/login"
-          className="inline-block bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-6 rounded-xl shadow"
-        >
-          Log ind
-        </Link>
-      </div>
-    )
-  }
+if (!bruger) {
+  return (
+    <div className="p-8 max-w-xl mx-auto text-center">
+      <h1 className="text-2xl font-bold mb-4">Du er ikke logget ind</h1>
+      <p className="mb-6">Log ind for at få adgang til padelsystemet.</p>
+      <Link
+        href="/login"
+        className="inline-block bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-6 rounded-xl shadow"
+      >
+        Log ind
+      </Link>
+    </div>
+  )
+}
+
 
   return (
     <div className="p-8 max-w-xl mx-auto">
