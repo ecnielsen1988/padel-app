@@ -17,7 +17,12 @@ export default function StartSide() {
 
   useEffect(() => {
     const hentBruger = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+const user = session?.user
+
+if (sessionError) {
+  console.error("Fejl ved hentning af session:", sessionError)
+}
 
       if (user) {
         const { data: profile, error } = await supabase
