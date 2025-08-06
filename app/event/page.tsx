@@ -191,6 +191,91 @@ export default function EventLayout() {
   });
 });
 
+const sendEventResultater = async () => {
+  const confirm = window.confirm(
+    "Er du sikker på, at du vil indsende alle resultater?\n\nDette vil slette event-data og indsende alle sæt permanent til ranglisten."
+  );
+  if (!confirm) return;
+
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    alert("❌ Du skal være logget ind for at indsende resultater.");
+    return;
+  }
+
+  const { data: profil, error: profilError } = await supabase
+    .from("profiles")
+    .select("visningsnavn")
+    .eq("id", user.id)
+    .single();
+
+  if (profilError || !profil?.visningsnavn) {
+    alert("❌ Kunne ikke finde dit brugernavn.");
+    return;
+  }
+
+  const visningsnavn = profil.visningsnavn;
+  const { data: maxData, error: maxError } = await supabase
+    .from("newresults")
+    .select("kampid")
+    .not("kampid", "is", null)
+    .order("kampid", { ascending: false })
+    .limit(1);
+
+  const startKampid = (maxData?.[0]?.kampid || 0) + 1;
+
+  // Saml alle sæt i én flad liste
+  const alleSaet = kampe.flatMap((kamp, kampIndex) =>
+    kamp.sæt
+      .filter((s) => !(s.scoreA === 0 && s.scoreB === 0))
+      .map((sæt, sætIndex) => {
+        const score = [sæt.scoreA, sæt.scoreB];
+        const finish = score[0] === 0 && score[1] === 0 ? false : erFærdigtSæt(score[0], score[1]);
+
+        return {
+          ...sæt,
+          finish,
+          date: new Date().toISOString().split("T")[0],
+          event: true,
+          tiebreak: "false",
+        };
+      })
+  );
+
+  // Gruppér sæt efter de samme spillere
+  const grupper: Record<string, any[]> = {};
+  for (const sæt of alleSaet) {
+    const key = [sæt.holdA1, sæt.holdA2, sæt.holdB1, sæt.holdB2].sort().join("-");
+    if (!grupper[key]) grupper[key] = [];
+    grupper[key].push(sæt);
+  }
+
+  // Lav resultater med kampid
+  const resultater = Object.values(grupper)
+    .map((saetGruppe, i) =>
+      saetGruppe.map((sæt) => ({
+        ...sæt,
+        kampid: startKampid + i,
+        indberettet_af: visningsnavn,
+      }))
+    )
+    .flat();
+
+  const { error } = await supabase.from("newresults").insert(resultater);
+
+  if (error) {
+    alert("❌ Noget gik galt: " + error.message);
+  } else {
+    alert("✅ Resultaterne er indsendt! 🎉");
+    setKampe([]);
+    setValgteSpillere([]);
+  }
+};
+
 
   const visPoint = (id: number) => {
     const ændringer = eloChanges[id];
@@ -206,7 +291,10 @@ export default function EventLayout() {
 
       {/* Venstre kolonne */}
       <div className="w-1/5 p-3 rounded shadow bg-zinc-100 dark:bg-zinc-800">
-        <h2 className="font-semibold mb-2">👥 Spillere</h2>
+        <h2 className="font-semibold mb-2">
+  👥 Spillere ({valgteSpillere.length})
+</h2>
+
 
         <input
           type="text"
@@ -385,26 +473,31 @@ export default function EventLayout() {
 
   <h2 className="font-semibold mb-2">📈 Elo-ændringer</h2>
   {Object.entries(samletDiff)
-    .sort(([, a], [, b]) => b - a)
-    .map(([navn, diff], index) => {
-      let emoji = emojiForPluspoint(diff);
-      if (index === 0) emoji = '🥇';
-      else if (index === 1) emoji = '🥈';
-      else if (index === 2) emoji = '🥉';
+  .sort(([, a], [, b]) => b - a)
+  .map(([navn, diff], index) => {
+    const emoji = index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : emojiForPluspoint(diff);
+    const sizeClass = index === 0 ? "text-base font-bold" : index === 1 ? "text-sm font-semibold" : index === 2 ? "text-sm" : "text-xs";
+    return (
+      <div key={navn} className={`flex justify-between items-center ${sizeClass}`}>
+        <span className="truncate max-w-[180px] block">{navn}</span>
+        <span className={diff >= 0 ? 'text-green-600' : 'text-red-500'}>
+          {emoji} {diff >= 0 ? '+' : ''}
+          {diff.toFixed(1)}
+        </span>
+      </div>
+    );
+  })}
 
-      const sizeClass =
-        index === 0 ? 'text-xl' : index === 1 ? 'text-lg' : index === 2 ? 'text-sm' : 'text-xs';
-
-      return (
-        <div key={navn} className={`flex justify-between items-center ${sizeClass}`}>
-  <span className="truncate max-w-[180px] block">{navn}</span>
-  <span className={diff >= 0 ? 'text-green-600' : 'text-red-500'}>
-    {emoji} {diff >= 0 ? '+' : ''}
-    {diff.toFixed(1)}
-  </span>
+{/* 👇 Tilføj knappen her – uden for .map men inden for højre kolonne */}
+<div className="mt-4 text-center">
+  <button
+    onClick={sendEventResultater}
+    className="bg-pink-600 text-white px-3 py-1 rounded text-sm hover:bg-pink-700"
+  >
+    ✅ Indsend resultater
+  </button>
 </div>
-      );
-    })}
+
 </div>
 
     </div>
