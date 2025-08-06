@@ -137,12 +137,16 @@ export default function EventLayout() {
 
   // 💡 Midlertidige IDs til beregning
   const sætMedId = kampe.flatMap((kamp, kampIndex) =>
-    kamp.sæt.map((sæt, sætIndex) => ({
-      ...sæt,
-      id: `event-kamp${kampIndex}-sæt${sætIndex}`,
-      date: "2025-01-01", // dummy dato
-    }))
-  );
+  kamp.sæt.map((sæt, sætIndex) => ({
+    ...sæt,
+    id: `event-kamp${kampIndex}-sæt${sætIndex}`,
+    date: "2025-01-01",          // Dummy værdi
+    kampid: 999999,              // Midlertidigt kampid
+    finish: true,                // Angiv at sættet er færdigspillet
+    event: null,                 // Hvis du ikke bruger event endnu
+    tiebreak: false              // Antag ingen tiebreak som default
+  }))
+);
 
   const { eloChanges } = beregnEloForKampe(sætMedId, eloMap);
 
