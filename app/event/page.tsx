@@ -115,8 +115,8 @@ export default function EventLayout() {
       nyeKampe.push({
         id: `kamp${i / 4 + 1}`,
         bane: `Bane ${i / 4 + 1}`,
-        starttid: "17:00",
-        sluttid: "17:45",
+        starttid: "15:00",
+        sluttid: "16:30",
         sæt: [
           { holdA1: p1, holdA2: p2, holdB1: p3, holdB2: p4, scoreA: 0, scoreB: 0 },
           { holdA1: p1, holdA2: p3, holdB1: p2, holdB2: p4, scoreA: 0, scoreB: 0 },
@@ -190,6 +190,15 @@ export default function EventLayout() {
     samletDiff[navn] = (samletDiff[navn] ?? 0) + change.diff;
   });
 });
+
+const moveKampUp = (kampIndex: number) => {
+  if (kampIndex === 0) return; // øverste kan ikke rykkes op
+  setKampe((prev) => {
+    const arr = [...prev];
+    [arr[kampIndex - 1], arr[kampIndex]] = [arr[kampIndex], arr[kampIndex - 1]];
+    return arr;
+  });
+};
 
 const sendEventResultater = async () => {
   const confirm = window.confirm(
@@ -370,39 +379,53 @@ const sendEventResultater = async () => {
       <div className="w-3/5 space-y-4">
         {kampe.map((kamp, kampIndex) => (
           <div key={kamp.id} className="p-3 rounded bg-zinc-100 dark:bg-zinc-800">
-            <div className="mb-2">
-              <input
-                type="text"
-                value={kamp.bane}
-                onChange={(e) => {
-                  const updated = [...kampe];
-                  updated[kampIndex].bane = e.target.value;
-                  setKampe(updated);
-                }}
-                className="text-sm mr-2 border px-1 bg-white dark:bg-zinc-700 dark:text-white"
-              />
-              <input
-                type="time"
-                value={kamp.starttid}
-                onChange={(e) => {
-                  const updated = [...kampe];
-                  updated[kampIndex].starttid = e.target.value;
-                  setKampe(updated);
-                }}
-                className="text-sm mr-2 border px-1 bg-white dark:bg-zinc-700 dark:text-white"
-              />
-              -
-              <input
-                type="time"
-                value={kamp.sluttid}
-                onChange={(e) => {
-                  const updated = [...kampe];
-                  updated[kampIndex].sluttid = e.target.value;
-                  setKampe(updated);
-                }}
-                className="text-sm ml-2 border px-1 bg-white dark:bg-zinc-700 dark:text-white"
-              />
-            </div>
+            <div className="mb-2 flex items-center justify-between">
+  <div>
+    <input
+      type="text"
+      value={kamp.bane}
+      onChange={(e) => {
+        const updated = [...kampe];
+        updated[kampIndex].bane = e.target.value;
+        setKampe(updated);
+      }}
+      className="text-sm mr-2 border px-1 bg-white dark:bg-zinc-700 dark:text-white"
+    />
+    <input
+      type="time"
+      value={kamp.starttid}
+      onChange={(e) => {
+        const updated = [...kampe];
+        updated[kampIndex].starttid = e.target.value;
+        setKampe(updated);
+      }}
+      className="text-sm mr-2 border px-1 bg-white dark:bg-zinc-700 dark:text-white"
+    />
+    -
+    <input
+      type="time"
+      value={kamp.sluttid}
+      onChange={(e) => {
+        const updated = [...kampe];
+        updated[kampIndex].sluttid = e.target.value;
+        setKampe(updated);
+      }}
+      className="text-sm ml-2 border px-1 bg-white dark:bg-zinc-700 dark:text-white"
+    />
+  </div>
+
+  <button
+    onClick={() => moveKampUp(kampIndex)}
+    disabled={kampIndex === 0}
+    className="ml-3 inline-flex items-center rounded-xl border px-3 py-1 text-xs
+               disabled:opacity-40 disabled:cursor-not-allowed"
+    aria-label="Ryk kampen én plads op"
+    title="Ryk kampen én plads op"
+  >
+    ▲
+  </button>
+</div>
+
             {kamp.sæt.map((sæt, sætIndex) => {
                 
               const sætId = 1_000_000 + kampIndex * 10 + sætIndex;
