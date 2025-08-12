@@ -60,8 +60,8 @@ export default function ClientVisning() {
     startNr: number,
     renderInfo: (s: any) => string
   ) => (
-    <td className="align-top p-2 w-[20%] h-full">
-      <div className="space-y-1 flex flex-col items-start h-full">
+    <td className="p-2 w-[20%]">
+      <div className="space-y-1 flex flex-col items-start">
         {spillere.map((s, i) => {
           const placering = startNr + i
           const emoji =
@@ -99,19 +99,19 @@ export default function ClientVisning() {
         <img src="/padelhuset-logo.png" alt="Padelhuset logo" className="mx-auto h-12 md:h-16 lg:h-20" />
       </div>
 
-      {/* Layout med kolonner som virker på TV */}
-      <table className="table-fixed w-full h-full">
+      {/* Layout med kolonner (kun til TV/desktop) */}
+      <table className="table-fixed w-full">
         <thead>
           <tr className="h-12">
-            <th className="text-pink-600 text-xs font-bold text-center align-top">Top 20</th>
-            <th className="text-pink-600 text-xs font-bold text-center align-top">
+            <th className="text-pink-600 text-xs font-bold text-center">Top 20</th>
+            <th className="text-pink-600 text-xs font-bold text-center">
               #{startIndex + 1}–{startIndex + 20}
             </th>
-            <th className="text-pink-600 text-xs font-bold text-center align-top">
+            <th className="text-pink-600 text-xs font-bold text-center">
               #{startIndex + 21}–{startIndex + 40}
             </th>
-            <th className="text-pink-600 text-xs font-bold text-center align-top">Månedens spillere</th>
-            <th className="text-pink-600 text-xs font-bold text-center align-top">Mest aktive</th>
+            <th className="text-pink-600 text-xs font-bold text-center">Månedens spillere</th>
+            <th className="text-pink-600 text-xs font-bold text-center">Mest aktive</th>
           </tr>
         </thead>
         <tbody>
