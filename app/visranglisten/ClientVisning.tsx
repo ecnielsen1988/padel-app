@@ -60,7 +60,7 @@ export default function ClientVisning() {
     startNr: number,
     renderInfo: (s: any) => string
   ) => (
-    <td className="p-2" style={{ width: "30%" }}>
+    <td className="p-2" style={{ width: "20%" }}> {/* Ændret fra 30% til 20% for at få mere plads til andre kolonner */}
       <div className="space-y-1 flex flex-col items-start">
         {spillere.map((s, i) => {
           const placering = startNr + i
@@ -74,19 +74,17 @@ export default function ClientVisning() {
           return (
             <div
               key={s.visningsnavn}
-              className={`flex justify-between items-start rounded-lg px-2 py-1 shadow text-xs w-full ${
+              className={`flex justify-between items-center rounded-lg px-2 py-1 shadow text-xs w-full ${
                 i === 0
                   ? "bg-gradient-to-r from-pink-500 to-pink-400 text-white"
                   : "bg-black bg-opacity-5 text-black"
               }`}
             >
-              {/* Flex for at holde navn og Elo på én linje */}
-              <div className="flex flex-col w-full">
-                <div className="flex justify-between w-full">
-                  <span className="text-pink-500 font-semibold">#{placering}</span>
-                  <span className="bg-pink-200 rounded-xl px-3 py-1 text-sm">{s.visningsnavn} {emoji}</span>
-                </div>
-                <span className="text-sm text-right">{renderInfo(s)}</span> {/* Elo til højre, men lodret under */}
+              {/* Brug af flex for at placere navn og Elo på én linje */}
+              <div className="flex w-full justify-between">
+                <span className="text-pink-500 font-semibold">#{placering}</span>
+                <span className="bg-pink-200 rounded-xl px-3 py-1 text-sm">{s.visningsnavn} {emoji}</span>
+                <span className="text-sm text-right">{renderInfo(s)}</span> {/* Elo til højre, på samme linje */}
               </div>
             </div>
           )
@@ -106,6 +104,7 @@ export default function ClientVisning() {
       <table className="table-fixed w-full" style={{ tableLayout: "fixed" }}>
         <thead>
           <tr className="h-12">
+            {/* Juster bredde for kolonne 1, 2 og 3 (30%) */}
             <th className="text-pink-600 text-xs font-bold text-center" style={{ width: "30%" }}>Top 20</th>
             <th className="text-pink-600 text-xs font-bold text-center" style={{ width: "30%" }}>
               #{startIndex + 1}–{startIndex + 20}
@@ -113,6 +112,7 @@ export default function ClientVisning() {
             <th className="text-pink-600 text-xs font-bold text-center" style={{ width: "30%" }}>
               #{startIndex + 21}–{startIndex + 40}
             </th>
+            {/* Øg bredde for kolonne 4 og 5 til 20% */}
             <th className="text-pink-600 text-xs font-bold text-center" style={{ width: "20%" }}>Månedens spillere</th>
             <th className="text-pink-600 text-xs font-bold text-center" style={{ width: "20%" }}>Mest aktive</th>
           </tr>
