@@ -80,11 +80,13 @@ export default function ClientVisning() {
                   : "bg-black bg-opacity-5 text-black"
               }`}
             >
-              <span className="flex gap-1">
+              <span className="flex gap-1 items-center">
                 <span className="text-pink-500 font-semibold">#{placering}</span>
-                <span>{s.visningsnavn} {emoji}</span>
+                <span className="bg-pink-200 rounded-xl px-3 py-1 text-sm">{s.visningsnavn} {emoji}</span>
               </span>
-              <span className="whitespace-nowrap">{renderInfo(s)}</span>
+              <div className="text-right">
+                <span className="block text-sm">{renderInfo(s)}</span>
+              </div>
             </div>
           )
         })}
