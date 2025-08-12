@@ -60,7 +60,7 @@ export default function ClientVisning() {
     startNr: number,
     renderInfo: (s: any) => string
   ) => (
-    <td className="p-2" style={{ width: "35%" }}> {/* Angiver kolonnebredde direkte */}
+    <td className="p-2" style={{ width: "35%" }}>
       <div className="space-y-1 flex flex-col items-start">
         {spillere.map((s, i) => {
           const placering = startNr + i
@@ -80,12 +80,10 @@ export default function ClientVisning() {
                   : "bg-black bg-opacity-5 text-black"
               }`}
             >
-              <span className="flex gap-1 items-center">
+              <div className="flex justify-between w-full">
                 <span className="text-pink-500 font-semibold">#{placering}</span>
                 <span className="bg-pink-200 rounded-xl px-3 py-1 text-sm">{s.visningsnavn} {emoji}</span>
-              </span>
-              <div className="text-right">
-                <span className="block text-sm">{renderInfo(s)}</span>
+                <span className="text-sm text-right">{renderInfo(s)}</span> {/* Elo til højre */}
               </div>
             </div>
           )
