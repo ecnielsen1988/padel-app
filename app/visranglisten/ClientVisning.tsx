@@ -60,7 +60,7 @@ export default function ClientVisning() {
     startNr: number,
     renderInfo: (s: any) => string
   ) => (
-    <div className="p-2" style={{ flex: "0 0 30%" }}> {/* Skift til flexbox for bedre kontrol */}
+    <td className="p-2" style={{ width: "35%" }}> {/* Angiver kolonnebredde direkte */}
       <div className="space-y-1 flex flex-col items-start">
         {spillere.map((s, i) => {
           const placering = startNr + i
@@ -91,7 +91,7 @@ export default function ClientVisning() {
           )
         })}
       </div>
-    </div>
+    </td>
   )
 
   return (
@@ -101,14 +101,31 @@ export default function ClientVisning() {
         <img src="/padelhuset-logo.png" alt="Padelhuset logo" className="mx-auto h-12 md:h-16 lg:h-20" />
       </div>
 
-      {/* Layout med Grid */}
-      <div className="grid grid-cols-5 gap-4 w-full px-4"> {/* Opretter et grid-layout med 5 kolonner */}
-        {kolonne(top20, 1, (s) => `${Math.round(s.elo)} Elo`)}
-        {kolonne(rangliste.slice(startIndex, startIndex + 20), startIndex + 1, (s) => `${Math.round(s.elo)} Elo`)}
-        {kolonne(rangliste.slice(startIndex + 20, startIndex + 40), startIndex + 21, (s) => `${Math.round(s.elo)} Elo`)}
-        {kolonne(maanedens.slice(0, 15), 1, (s) => `${s.pluspoint > 0 ? "+" : ""}${s.pluspoint.toFixed(1)} ${emojiForPluspoint(s.pluspoint)}`)}
-        {kolonne(mestAktive.slice(0, 15), 1, (s) => `${s.sæt} sæt 🏃‍♂️`)}
-      </div>
+      {/* Layout med tabel (med faste kolonnebredder) */}
+      <table className="table-fixed w-full" style={{ tableLayout: "fixed" }}>
+        <thead>
+          <tr className="h-12">
+            <th className="text-pink-600 text-xs font-bold text-center">Top 20</th>
+            <th className="text-pink-600 text-xs font-bold text-center">
+              #{startIndex + 1}–{startIndex + 20}
+            </th>
+            <th className="text-pink-600 text-xs font-bold text-center">
+              #{startIndex + 21}–{startIndex + 40}
+            </th>
+            <th className="text-pink-600 text-xs font-bold text-center">Månedens spillere</th>
+            <th className="text-pink-600 text-xs font-bold text-center">Mest aktive</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr className="align-top h-full">
+            {kolonne(top20, 1, (s) => `${Math.round(s.elo)} Elo`)}
+            {kolonne(rangliste.slice(startIndex, startIndex + 20), startIndex + 1, (s) => `${Math.round(s.elo)} Elo`)}
+            {kolonne(rangliste.slice(startIndex + 20, startIndex + 40), startIndex + 21, (s) => `${Math.round(s.elo)} Elo`)}
+            {kolonne(maanedens.slice(0, 15), 1, (s) => `${s.pluspoint > 0 ? "+" : ""}${s.pluspoint.toFixed(1)} ${emojiForPluspoint(s.pluspoint)}`)}
+            {kolonne(mestAktive.slice(0, 15), 1, (s) => `${s.sæt} sæt 🏃‍♂️`)}
+          </tr>
+        </tbody>
+      </table>
 
       {/* QR Code i hjørnet */}
       <div className="fixed bottom-4 right-4 bg-white p-2 shadow z-50">
