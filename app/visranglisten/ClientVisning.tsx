@@ -60,7 +60,7 @@ export default function ClientVisning() {
     startNr: number,
     renderInfo: (s: any) => string
   ) => (
-    <td className="p-2 w-[20%]">
+    <td className="p-2 w-[35%]">
       <div className="space-y-1 flex flex-col items-start">
         {spillere.map((s, i) => {
           const placering = startNr + i
