@@ -60,7 +60,7 @@ export default function ClientVisning() {
     startNr: number,
     renderInfo: (s: any) => string
   ) => (
-    <td className="p-2" style={{ width: "20%" }}> {/* Ændret fra 30% til 20% for at få mere plads til andre kolonner */}
+    <div className="p-2" style={{ width: "30%" }}>
       <div className="space-y-1 flex flex-col items-start">
         {spillere.map((s, i) => {
           const placering = startNr + i
@@ -81,16 +81,16 @@ export default function ClientVisning() {
               }`}
             >
               {/* Brug af flex for at placere navn og Elo på én linje */}
-              <div className="flex w-full justify-between">
+              <div className="flex justify-between w-full">
                 <span className="text-pink-500 font-semibold">#{placering}</span>
                 <span className="bg-pink-200 rounded-xl px-3 py-1 text-sm">{s.visningsnavn} {emoji}</span>
-                <span className="text-sm text-right">{renderInfo(s)}</span> {/* Elo til højre, på samme linje */}
+                <span className="text-sm text-right">{renderInfo(s)}</span> {/* Elo til højre */}
               </div>
             </div>
           )
         })}
       </div>
-    </td>
+    </div>
   )
 
   return (
@@ -100,33 +100,14 @@ export default function ClientVisning() {
         <img src="/padelhuset-logo.png" alt="Padelhuset logo" className="mx-auto h-12 md:h-16 lg:h-20" />
       </div>
 
-      {/* Layout med tabel (med faste kolonnebredder) */}
-      <table className="table-fixed w-full" style={{ tableLayout: "fixed" }}>
-        <thead>
-          <tr className="h-12">
-            {/* Juster bredde for kolonne 1, 2 og 3 (30%) */}
-            <th className="text-pink-600 text-xs font-bold text-center" style={{ width: "30%" }}>Top 20</th>
-            <th className="text-pink-600 text-xs font-bold text-center" style={{ width: "30%" }}>
-              #{startIndex + 1}–{startIndex + 20}
-            </th>
-            <th className="text-pink-600 text-xs font-bold text-center" style={{ width: "30%" }}>
-              #{startIndex + 21}–{startIndex + 40}
-            </th>
-            {/* Øg bredde for kolonne 4 og 5 til 20% */}
-            <th className="text-pink-600 text-xs font-bold text-center" style={{ width: "20%" }}>Månedens spillere</th>
-            <th className="text-pink-600 text-xs font-bold text-center" style={{ width: "20%" }}>Mest aktive</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr className="align-top h-full">
-            {kolonne(top20, 1, (s) => `${Math.round(s.elo)} Elo`)}
-            {kolonne(rangliste.slice(startIndex, startIndex + 20), startIndex + 1, (s) => `${Math.round(s.elo)} Elo`)}
-            {kolonne(rangliste.slice(startIndex + 20, startIndex + 40), startIndex + 21, (s) => `${Math.round(s.elo)} Elo`)}
-            {kolonne(maanedens.slice(0, 15), 1, (s) => `${s.pluspoint > 0 ? "+" : ""}${s.pluspoint.toFixed(1)} ${emojiForPluspoint(s.pluspoint)}`)}
-            {kolonne(mestAktive.slice(0, 15), 1, (s) => `${s.sæt} sæt 🏃‍♂️`)}
-          </tr>
-        </tbody>
-      </table>
+      {/* Layout med Grid */}
+      <div className="grid grid-cols-5 gap-4 w-full px-4">
+        {kolonne(top20, 1, (s) => `${Math.round(s.elo)} Elo`)}
+        {kolonne(rangliste.slice(startIndex, startIndex + 20), startIndex + 1, (s) => `${Math.round(s.elo)} Elo`)}
+        {kolonne(rangliste.slice(startIndex + 20, startIndex + 40), startIndex + 21, (s) => `${Math.round(s.elo)} Elo`)}
+        {kolonne(maanedens.slice(0, 15), 1, (s) => `${s.pluspoint > 0 ? "+" : ""}${s.pluspoint.toFixed(1)} ${emojiForPluspoint(s.pluspoint)}`)}
+        {kolonne(mestAktive.slice(0, 15), 1, (s) => `${s.sæt} sæt 🏃‍♂️`)}
+      </div>
 
       {/* QR Code i hjørnet */}
       <div className="fixed bottom-4 right-4 bg-white p-2 shadow z-50">
