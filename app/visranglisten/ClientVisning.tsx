@@ -74,10 +74,10 @@ export default function ClientVisning() {
           return (
             <div
               key={s.visningsnavn}
-              className={`flex justify-between items-center rounded-lg px-2 py-1 shadow text-xs ${
+              className={`flex justify-between items-center rounded-lg px-2 py-1 shadow text-xs text-white ${
                 i === 0
-                  ? "bg-white bg-opacity-30 text-white font-bold"
-                  : "bg-white bg-opacity-10 text-white"
+                  ? "bg-pink-400 bg-opacity-50 font-bold"
+                  : "bg-pink-800"
               }`}
             >
               <span className="flex gap-1">
@@ -99,7 +99,7 @@ export default function ClientVisning() {
         <img src="/padelhuset-logo.png" alt="Padelhuset logo" className="mx-auto h-12 md:h-16 lg:h-20" />
       </div>
 
-      {/* Layout med kolonner som virker på TV */}
+      {/* Kolonner */}
       <table className="table-fixed w-full">
         <thead>
           <tr>
@@ -125,7 +125,7 @@ export default function ClientVisning() {
         </tbody>
       </table>
 
-      {/* QR Code i hjørnet */}
+      {/* QR Code */}
       <div className="fixed bottom-4 right-4 bg-white p-2 shadow z-50">
         <QRCode value="https://padelhuset-app.netlify.app/signup" size={128} />
       </div>
