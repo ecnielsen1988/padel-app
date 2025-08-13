@@ -60,7 +60,7 @@ export default function ClientVisning() {
     startNr: number,
     renderInfo: (s: any) => string
   ) => (
-    <td className="align-top p-2 w-[20%] h-full align-top">
+    <td className="align-top p-2 w-[20%] h-full">
       <div className="space-y-1 flex flex-col justify-start h-full">
         {spillere.map((s, i) => {
           const placering = startNr + i
@@ -76,12 +76,12 @@ export default function ClientVisning() {
               key={s.visningsnavn}
               className={`flex justify-between items-center rounded-lg px-2 py-1 shadow text-xs ${
                 i === 0
-                  ? "bg-pink-500 text-white"
-                  : "bg-white text-black border"
+                  ? "bg-white bg-opacity-30 text-white font-bold"
+                  : "bg-white bg-opacity-10 text-white"
               }`}
             >
               <span className="flex gap-1">
-                <span className="text-pink-500 font-semibold">#{placering}</span>
+                <span className="font-semibold">#{placering}</span>
                 <span>{s.visningsnavn} {emoji}</span>
               </span>
               <span className="whitespace-nowrap">{renderInfo(s)}</span>
@@ -93,25 +93,25 @@ export default function ClientVisning() {
   )
 
   return (
-    <main className="min-h-screen bg-white text-black flex flex-col">
+    <main className="min-h-screen bg-pink-600 text-white flex flex-col">
       {/* Logo */}
       <div className="p-4 text-center">
         <img src="/padelhuset-logo.png" alt="Padelhuset logo" className="mx-auto h-12 md:h-16 lg:h-20" />
       </div>
 
-      {/* Layout med kolonner */}
+      {/* Layout med kolonner som virker på TV */}
       <table className="table-fixed w-full">
         <thead>
-          <tr className="h-12">
-            <th className="!bg-white !text-pink-600 text-xs font-bold text-center align-top border-b border-gray-300">Top 20</th>
-            <th className="!bg-white !text-pink-600 text-xs font-bold text-center align-top border-b border-gray-300">
+          <tr>
+            <th className="text-white text-xs font-bold text-center py-2">Top 20</th>
+            <th className="text-white text-xs font-bold text-center py-2">
               #{startIndex + 1}–{startIndex + 20}
             </th>
-            <th className="!bg-white !text-pink-600 text-xs font-bold text-center align-top border-b border-gray-300">
+            <th className="text-white text-xs font-bold text-center py-2">
               #{startIndex + 21}–{startIndex + 40}
             </th>
-            <th className="!bg-white !text-pink-600 text-xs font-bold text-center align-top border-b border-gray-300">Månedens spillere</th>
-            <th className="!bg-white !text-pink-600 text-xs font-bold text-center align-top border-b border-gray-300">Mest aktive</th>
+            <th className="text-white text-xs font-bold text-center py-2">Månedens spillere</th>
+            <th className="text-white text-xs font-bold text-center py-2">Mest aktive</th>
           </tr>
         </thead>
         <tbody>
@@ -125,7 +125,7 @@ export default function ClientVisning() {
         </tbody>
       </table>
 
-      {/* QR-kode */}
+      {/* QR Code i hjørnet */}
       <div className="fixed bottom-4 right-4 bg-white p-2 shadow z-50">
         <QRCode value="https://padelhuset-app.netlify.app/signup" size={128} />
       </div>
