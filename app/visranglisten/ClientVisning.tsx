@@ -136,10 +136,19 @@ export default function ClientVisning() {
 
       {/* QR Code */}
       <div className="fixed bottom-4 right-4 flex items-center space-x-4 z-50">
-  <div className="bg-white text-pink-600 font-bold px-6 py-3 rounded-full shadow-lg text-lg">
+  <div
+    className="font-bold px-6 py-3 rounded-full shadow-lg text-lg"
+    style={{
+      backgroundColor: "#f472b6", // svarer til pink-400
+      color: "white",
+    }}
+  >
     👉 Tilmeld dig ranglisten
   </div>
-  <div className="bg-white p-2 shadow-lg rounded-xl">
+  <div
+    className="p-2 shadow-lg rounded-xl"
+    style={{ backgroundColor: "white" }}
+  >
     <QRCode value="https://padelhuset-app.netlify.app/signup" size={128} />
   </div>
 </div>
