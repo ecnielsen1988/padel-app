@@ -76,7 +76,7 @@ export default function ClientVisning() {
               key={s.visningsnavn}
               className={`flex justify-between items-center rounded-lg px-2 py-1 shadow text-xs ${
                 i === 0
-                  ? "bg-gradient-to-r from-pink-500 to-pink-400 text-white"
+                  ? "bg-pink-500 text-white"
                   : "bg-white text-black border"
               }`}
             >
