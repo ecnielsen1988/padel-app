@@ -60,8 +60,8 @@ export default function ClientVisning() {
     startNr: number,
     renderInfo: (s: any) => string
   ) => (
-    <div className="p-2" style={{ width: "30%" }}>
-      <div className="space-y-1 flex flex-col items-start">
+    <td className="align-top p-2 w-[20%] h-full">
+      <div className="space-y-1 flex flex-col items-start h-full">
         {spillere.map((s, i) => {
           const placering = startNr + i
           const emoji =
@@ -80,17 +80,16 @@ export default function ClientVisning() {
                   : "bg-black bg-opacity-5 text-black"
               }`}
             >
-              {/* Brug af flex for at placere navn og Elo på én linje */}
-              <div className="flex justify-between w-full">
+              <span className="flex gap-1">
                 <span className="text-pink-500 font-semibold">#{placering}</span>
-                <span className="bg-pink-200 rounded-xl px-3 py-1 text-sm">{s.visningsnavn} {emoji}</span>
-                <span className="text-sm text-right">{renderInfo(s)}</span> {/* Elo til højre */}
-              </div>
+                <span>{s.visningsnavn} {emoji}</span>
+              </span>
+              <span className="whitespace-nowrap">{renderInfo(s)}</span>
             </div>
           )
         })}
       </div>
-    </div>
+    </td>
   )
 
   return (
@@ -100,14 +99,31 @@ export default function ClientVisning() {
         <img src="/padelhuset-logo.png" alt="Padelhuset logo" className="mx-auto h-12 md:h-16 lg:h-20" />
       </div>
 
-      {/* Layout med Grid */}
-      <div className="grid grid-cols-5 gap-4 w-full px-4">
-        {kolonne(top20, 1, (s) => `${Math.round(s.elo)} Elo`)}
-        {kolonne(rangliste.slice(startIndex, startIndex + 20), startIndex + 1, (s) => `${Math.round(s.elo)} Elo`)}
-        {kolonne(rangliste.slice(startIndex + 20, startIndex + 40), startIndex + 21, (s) => `${Math.round(s.elo)} Elo`)}
-        {kolonne(maanedens.slice(0, 15), 1, (s) => `${s.pluspoint > 0 ? "+" : ""}${s.pluspoint.toFixed(1)} ${emojiForPluspoint(s.pluspoint)}`)}
-        {kolonne(mestAktive.slice(0, 15), 1, (s) => `${s.sæt} sæt 🏃‍♂️`)}
-      </div>
+      {/* Layout med kolonner som virker på TV */}
+      <table className="table-fixed w-full h-full">
+        <thead>
+          <tr className="h-12">
+            <th className="text-pink-600 text-xs font-bold text-center align-top">Top 20</th>
+            <th className="text-pink-600 text-xs font-bold text-center align-top">
+              #{startIndex + 1}–{startIndex + 20}
+            </th>
+            <th className="text-pink-600 text-xs font-bold text-center align-top">
+              #{startIndex + 21}–{startIndex + 40}
+            </th>
+            <th className="text-pink-600 text-xs font-bold text-center align-top">Månedens spillere</th>
+            <th className="text-pink-600 text-xs font-bold text-center align-top">Mest aktive</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr className="align-top h-full">
+            {kolonne(top20, 1, (s) => `${Math.round(s.elo)} Elo`)}
+            {kolonne(rangliste.slice(startIndex, startIndex + 20), startIndex + 1, (s) => `${Math.round(s.elo)} Elo`)}
+            {kolonne(rangliste.slice(startIndex + 20, startIndex + 40), startIndex + 21, (s) => `${Math.round(s.elo)} Elo`)}
+            {kolonne(maanedens.slice(0, 15), 1, (s) => `${s.pluspoint > 0 ? "+" : ""}${s.pluspoint.toFixed(1)} ${emojiForPluspoint(s.pluspoint)}`)}
+            {kolonne(mestAktive.slice(0, 15), 1, (s) => `${s.sæt} sæt 🏃‍♂️`)}
+          </tr>
+        </tbody>
+      </table>
 
       {/* QR Code i hjørnet */}
       <div className="fixed bottom-4 right-4 bg-white p-2 shadow z-50">
