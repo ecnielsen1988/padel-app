@@ -106,35 +106,52 @@ export default function SenesteKampeSide() {
 
 
 
-  async function sendBeskedTilAdmin(kampid: number) {
-    const besked = kommentarer[kampid]
-    if (!besked) return
+ async function sendBeskedTilAdmin(kampid: number) {
+  const besked = kommentarer[kampid]
+  if (!besked) return
 
-    const { data: userData } = await supabase.auth.getUser()
-const visningsnavn = userData?.user?.user_metadata?.visningsnavn
+  // 1. Hent den aktuelle bruger
+  const { data: userData, error: authError } = await supabase.auth.getUser()
+  const brugerId = userData?.user?.id
 
-if (!visningsnavn) {
-  alert('Du skal være logget ind for at sende besked.')
-  return
+  if (authError || !brugerId) {
+    alert('Du skal være logget ind for at sende besked.')
+    return
+  }
+
+  // 2. Hent visningsnavn fra 'profiles' baseret på brugerens id
+  const { data: profileData, error: profileError } = await supabase
+    .from('profiles')
+    .select('visningsnavn')
+    .eq('id', brugerId)
+    .single()
+
+  if (profileError || !profileData?.visningsnavn) {
+    alert('Kunne ikke finde dit visningsnavn i profiler.')
+    return
+  }
+
+  const visningsnavn = profileData.visningsnavn
+
+  // 3. Indsæt beskeden i admin_messages
+  const { error } = await supabase.from('admin_messages').insert([
+    {
+      kampid,
+      besked,
+      tidspunkt: new Date().toISOString(),
+      visningsnavn,
+    },
+  ])
+
+  if (error) {
+    alert('Kunne ikke sende besked: ' + error.message)
+  } else {
+    alert('Besked sendt til admin.')
+    setKommentarer((prev) => ({ ...prev, [kampid]: '' }))
+  }
 }
 
-const { error } = await supabase.from('admin_messages').insert([
-  {
-    kampid,
-    besked,
-    tidspunkt: new Date().toISOString(),
-    visningsnavn,
-  },
-])
 
-
-    if (error) {
-      alert('Kunne ikke sende besked: ' + error.message)
-    } else {
-      alert('Besked sendt til admin.')
-      setKommentarer((prev) => ({ ...prev, [kampid]: '' }))
-    }
-  }
 
   function redigerKamp(kampid: number) {
     window.location.href = `/rediger/${kampid}`
