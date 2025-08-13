@@ -45,6 +45,14 @@ function formatDanishDate(isoDate: string): string {
   })
 }
 
+function getThisThursdayISO(): string | null {
+  const nowCph = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Copenhagen' }))
+  return nowCph.getDay() === 4
+    ? `${nowCph.getFullYear()}-${String(nowCph.getMonth()+1).padStart(2,'0')}-${String(nowCph.getDate()).padStart(2,'0')}`
+    : null
+}
+
+
 export default function TorsdagStartside() {
   const [bruger, setBruger] = useState<Bruger | null>(null)
   const [loading, setLoading] = useState(true)
@@ -55,8 +63,14 @@ export default function TorsdagStartside() {
   const [mineSaet, setMineSaet] = useState<EventSet[] | null>(null)
   const [loadingSaet, setLoadingSaet] = useState(true)
 
-  const eventDato = useMemo(() => getNextThursdayISO(), [])
-  const eventDatoTekst = useMemo(() => formatDanishDate(eventDato), [eventDato])
+  // Tilmelding: ALTID næste torsdag
+const signupDato = useMemo(() => getNextThursdayISO(), [])
+const signupDatoTekst = useMemo(() => formatDanishDate(signupDato), [signupDato])
+
+// Planvisning: I DAG hvis det er torsdag – ellers næste torsdag
+const thisThursday = useMemo(() => getThisThursdayISO(), [])
+const planDato = thisThursday ?? signupDato
+const planDatoTekst = useMemo(() => formatDanishDate(planDato), [planDato])
 
   const tider = ['17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00']
 
@@ -90,7 +104,8 @@ export default function TorsdagStartside() {
           .from('event_signups')
           .select('kan_spille, tidligste_tid')
           .eq('visningsnavn', profile.visningsnavn)
-          .eq('event_dato', eventDato)
+          .eq('event_dato', signupDato)
+
           .single()
 
         if (tilmeldingData) {
@@ -104,7 +119,8 @@ export default function TorsdagStartside() {
         const { data: setsData, error: setsError } = await supabase
           .from('event_sets')
           .select('*')
-          .eq('event_dato', eventDato)
+         .eq('event_dato', planDato)
+
           .order('kamp_nr', { ascending: true })
           .order('saet_nr', { ascending: true })
 
@@ -130,7 +146,8 @@ export default function TorsdagStartside() {
     }
 
     hentBruger()
-  }, [eventDato])
+ }, [signupDato, planDato])
+
 
   const sendTilmelding = async (kanSpille: boolean, tidligsteTid?: string) => {
     setStatus('updating')
@@ -140,7 +157,8 @@ export default function TorsdagStartside() {
 
     const payload = {
       visningsnavn: bruger.visningsnavn,
-      event_dato: eventDato, // dynamisk næste torsdag
+      event_dato: signupDato,
+ // dynamisk næste torsdag
       kan_spille: kanSpille,
       tidligste_tid: kanSpille ? (tidligsteTid ?? null) : null,
     }
@@ -188,13 +206,15 @@ export default function TorsdagStartside() {
       {/* Tilmeldingssektion */}
       <div className="mb-8 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 p-4 rounded-xl">
         <h2 className="text-xl font-semibold mb-3 text-green-700 dark:text-green-300">
-          📅 Kan du spille torsdag d. {eventDatoTekst}?
+         📅 Kan du spille torsdag d. {signupDatoTekst}?
+
         </h2>
 
         {tilmelding && status !== 'updating' && status !== 'editing' ? (
           <>
             <p className="text-green-800 dark:text-green-200 mb-2">
-              ✅ Du er registreret d. {eventDatoTekst}{' '}
+             ✅ Du er registreret d. {signupDatoTekst}
+{' '}
               {tilmelding.kan_spille
                 ? `– du kan starte tidligst kl. ${tilmelding.tidligste_tid}`
                 : '– du har meldt afbud'}
@@ -243,7 +263,8 @@ export default function TorsdagStartside() {
 
       {/* Din kamp */}
       <div className="mb-8 border border-zinc-200 dark:border-zinc-700 rounded-xl p-4">
-        <h2 className="text-xl font-semibold mb-3">🎾 Din kamp – {eventDatoTekst}</h2>
+        <h2 className="text-xl font-semibold mb-3">🎾 Din kamp – {planDatoTekst}
+</h2>
 
         {loadingSaet ? (
           <p className="text-sm text-gray-600 dark:text-gray-300">Henter kampplan...</p>
