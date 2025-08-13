@@ -334,66 +334,49 @@ export default function SenesteKampeSide() {
 
             {/* Rediger eller kommentar */}
             <div style={{ marginTop: '1.5rem' }}>
-              {(() => {
-                const kampTidspunkt = new Date(førsteSæt.date)
-                const nu = new Date()
-                const forskelIMs = nu.getTime() - kampTidspunkt.getTime()
-                const kanRedigeres = forskelIMs < 24 * 60 * 60 * 1000
+              <div>
+  <label
+    style={{
+      display: 'block',
+      marginBottom: '0.3rem',
+      fontSize: '0.85rem',
+      fontWeight: 'bold',
+    }}
+  >
+    🚫 Indberet fejl i kampen:
+  </label>
+  <textarea
+    placeholder="Skriv hvad der er forkert..."
+    value={kommentarer[kampid] || ''}
+    onChange={(e) =>
+      setKommentarer((prev) => ({ ...prev, [kampid]: e.target.value }))
+    }
+    style={{
+      width: '100%',
+      padding: '0.5rem',
+      borderRadius: '6px',
+      border: '1px solid #ccc',
+      minHeight: '60px',
+      marginBottom: '0.5rem',
+      fontFamily: 'inherit',
+    }}
+  />
+  <button
+    onClick={() => sendBeskedTilAdmin(kampid)}
+    style={{
+      backgroundColor: '#ec407a',
+      color: '#fff',
+      padding: '0.4rem 0.8rem',
+      borderRadius: '6px',
+      border: 'none',
+      cursor: 'pointer',
+      fontWeight: 'bold',
+    }}
+  >
+    📩 Send besked
+  </button>
+</div>
 
-                if (kanRedigeres) {
-                  return (
-                    <button
-                      onClick={() => redigerKamp(kampid)}
-                      style={{
-                        backgroundColor: '#ec407a',
-                        color: '#fff',
-                        padding: '0.4rem 0.8rem',
-                        borderRadius: '6px',
-                        border: 'none',
-                        cursor: 'pointer',
-                        fontWeight: 'bold',
-                      }}
-                    >
-                      ✏️ Rediger kamp
-                    </button>
-                  )
-                } else {
-                  return (
-                    <div>
-                      <textarea
-                        placeholder="Skriv en kommentar til administrator..."
-                        value={kommentarer[kampid] || ''}
-                        onChange={(e) =>
-                          setKommentarer((prev) => ({ ...prev, [kampid]: e.target.value }))
-                        }
-                        style={{
-                          width: '100%',
-                          padding: '0.5rem',
-                          borderRadius: '6px',
-                          border: '1px solid #ccc',
-                          minHeight: '60px',
-                          marginBottom: '0.5rem',
-                          fontFamily: 'inherit',
-                        }}
-                      />
-                      <button
-                        onClick={() => sendBeskedTilAdmin(kampid)}
-                        style={{
-                          backgroundColor: '#ec407a',
-                          color: '#fff',
-                          padding: '0.4rem 0.8rem',
-                          borderRadius: '6px',
-                          border: 'none',
-                          cursor: 'pointer',
-                          fontWeight: 'bold',
-                        }}
-                      >
-                        📩 Send kommentar til administrator
-                      </button>
-                    </div>
-                  )
-                }
-              })()}
             </div>
           </div>
         )
