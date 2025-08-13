@@ -160,6 +160,15 @@ export default function EventLayout() {
   });
 };
 
+const moveSpillerUp = (index: number) => {
+  if (index === 0) return; // øverste kan ikke rykkes op
+  setValgteSpillere((prev) => {
+    const arr = [...prev];
+    [arr[index - 1], arr[index]] = [arr[index], arr[index - 1]];
+    return arr;
+  });
+};
+
 
   const sætMedId = kampe.flatMap((kamp, kampIndex) =>
     kamp.sæt.map((sæt, sætIndex) => {
@@ -336,16 +345,23 @@ const sendEventResultater = async () => {
         )}
 
         <div className="mt-3 space-y-1">
-          {valgteSpillere.map((spiller) => (
-            <div
-              key={spiller.visningsnavn}
-              className="flex justify-between items-center bg-pink-100 dark:bg-zinc-700 rounded px-2 py-1 text-xs"
-            >
+          {valgteSpillere.map((spiller, idx) => (
+            <div key={spiller.visningsnavn} className="flex justify-between items-center bg-pink-100 dark:bg-zinc-700 rounded px-2 py-1 text-xs">
               <span>{spiller.visningsnavn}</span>
               <div className="flex items-center gap-2">
                 <span className="text-xs text-gray-600 dark:text-gray-300">
                   {Math.round(spiller.elo ?? 1000)}
                 </span>
+
+                <button
+         onClick={() => moveSpillerUp(idx)}
+         disabled={idx === 0}
+         className="text-xs inline-flex items-center rounded border px-2 py-0.5 disabled:opacity-40"
+         title="Ryk spilleren én plads op"
+       >
+         ▲
+      </button>
+
                 <button
                   onClick={() => fjernSpiller(spiller.visningsnavn)}
                   className="text-red-500"
