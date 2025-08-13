@@ -125,11 +125,28 @@ export default function ClientVisning() {
         </thead>
         <tbody>
           <tr>
-            {kolonne(top20, 1, (s) => `${Math.round(s.elo)} Elo`)}
-            {kolonne(rangliste.slice(startIndex, startIndex + 20), startIndex + 1, (s) => `${Math.round(s.elo)} Elo`)}
-            {kolonne(rangliste.slice(startIndex + 20, startIndex + 40), startIndex + 21, (s) => `${Math.round(s.elo)} Elo`)}
+            {kolonne(top20, 1, (s) => `${Math.round(s.elo)} 🎾`)}
+            {kolonne(rangliste.slice(startIndex, startIndex + 20), startIndex + 1, (s) => `${Math.round(s.elo)} 🎾`)}
+            {kolonne(rangliste.slice(startIndex + 20, startIndex + 40), startIndex + 21, (s) => `${Math.round(s.elo)} 🎾`)}
             {kolonne(maanedens.slice(0, 15), 1, (s) => `${s.pluspoint > 0 ? "+" : ""}${s.pluspoint.toFixed(1)} ${emojiForPluspoint(s.pluspoint)}`)}
-            {kolonne(mestAktive.slice(0, 15), 1, (s) => `${s.sæt} sæt 🏃‍♂️`)}
+            {kolonne(
+  [...mestAktive]
+    .map((spiller) => {
+      const match = maanedens.find((m) => m.visningsnavn === spiller.visningsnavn)
+      return {
+        ...spiller,
+        pluspoint: match?.pluspoint || 0,
+      }
+    })
+    .sort((a, b) => {
+      if (b["sæt"] !== a["sæt"]) return b["sæt"] - a["sæt"]
+      return b.pluspoint - a.pluspoint
+    })
+    .slice(0, 15),
+  1,
+  (s) => `${s.sæt} sæt 🏃‍♂️`
+)}
+
           </tr>
         </tbody>
       </table>

@@ -1,26 +1,27 @@
-
-
 'use client'
 
 export const dynamic = 'force-dynamic'
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
+import { beregnEloÆndringerForIndeværendeMåned } from '@/lib/beregnEloChange'
 
-type MestAktivSpiller = {
+type AktivSpiller = {
   visningsnavn: string
   sæt: number
+  pluspoint: number
 }
 
 export default function MestAktiveSide() {
-  const [mestAktive, setMestAktive] = useState<MestAktivSpiller[]>([])
+  const [mestAktive, setMestAktive] = useState<AktivSpiller[]>([])
 
   useEffect(() => {
-    const hentMestAktiveSpillere = async () => {
+    const hentData = async () => {
+      const eloData = await beregnEloÆndringerForIndeværendeMåned()
+
       const now = new Date()
       const year = now.getFullYear()
       const month = now.getMonth() + 1
-
       const startDato = `${year}-${month.toString().padStart(2, '0')}-01`
       const slutMonth = month === 12 ? 1 : month + 1
       const slutYear = month === 12 ? year + 1 : year
@@ -48,15 +49,20 @@ export default function MestAktiveSide() {
         })
       })
 
-      const top20 = Object.entries(tæller)
-        .map(([visningsnavn, sæt]) => ({ visningsnavn, sæt }))
-        .sort((a, b) => b.sæt - a.sæt)
-        .slice(0, 20)
+      const samlet: AktivSpiller[] = Object.entries(tæller).map(([visningsnavn, sæt]) => {
+        const elo = eloData.find(e => e.visningsnavn === visningsnavn)?.pluspoint ?? 0
+        return { visningsnavn, sæt, pluspoint: elo }
+      })
 
-      setMestAktive(top20)
+      samlet.sort((a, b) => {
+        if (b.sæt !== a.sæt) return b.sæt - a.sæt
+        return b.pluspoint - a.pluspoint
+      })
+
+      setMestAktive(samlet.slice(0, 20))
     }
 
-    hentMestAktiveSpillere()
+    hentData()
   }, [])
 
   const emojiForPlacering = (index: number) => {
