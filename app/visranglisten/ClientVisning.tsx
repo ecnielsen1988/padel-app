@@ -60,8 +60,8 @@ export default function ClientVisning() {
     startNr: number,
     renderInfo: (s: any) => string
   ) => (
-    <td className="align-top p-2 w-[20%] h-full">
-      <div className="space-y-1 flex flex-col justify-start h-full">
+    <td className="align-top p-2 w-[20%]">
+      <div className="space-y-1 flex flex-col justify-start">
         {spillere.map((s, i) => {
           const placering = startNr + i
           const emoji =
@@ -74,14 +74,14 @@ export default function ClientVisning() {
           return (
             <div
               key={s.visningsnavn}
-              className={`flex justify-between items-center rounded-lg px-2 py-1 shadow text-xs text-white ${
-                i === 0
-                  ? "bg-pink-400 bg-opacity-50 font-bold"
-                  : "bg-pink-800"
-              }`}
+              className="flex justify-between items-center rounded-lg px-2 py-1 shadow text-xs"
+              style={{
+                backgroundColor: i === 0 ? "#f472b6" : "#be185d", // pink-400 vs pink-800
+                color: "white",
+              }}
             >
               <span className="flex gap-1">
-                <span className="font-semibold">#{placering}</span>
+                <span style={{ fontWeight: "bold" }}>#{placering}</span>
                 <span>{s.visningsnavn} {emoji}</span>
               </span>
               <span className="whitespace-nowrap">{renderInfo(s)}</span>
@@ -93,23 +93,22 @@ export default function ClientVisning() {
   )
 
   return (
-    <main className="min-h-screen bg-pink-600 text-white flex flex-col">
+    <main
+      className="min-h-screen text-white flex flex-col"
+      style={{ backgroundColor: "#ec4899" }} // pink-500
+    >
       {/* Logo */}
       <div className="p-4 text-center">
         <img src="/padelhuset-logo.png" alt="Padelhuset logo" className="mx-auto h-12 md:h-16 lg:h-20" />
       </div>
 
-      {/* Kolonner */}
+      {/* Layout med kolonner */}
       <table className="table-fixed w-full">
         <thead>
           <tr>
             <th className="text-white text-xs font-bold text-center py-2">Top 20</th>
-            <th className="text-white text-xs font-bold text-center py-2">
-              #{startIndex + 1}–{startIndex + 20}
-            </th>
-            <th className="text-white text-xs font-bold text-center py-2">
-              #{startIndex + 21}–{startIndex + 40}
-            </th>
+            <th className="text-white text-xs font-bold text-center py-2">#{startIndex + 1}–{startIndex + 20}</th>
+            <th className="text-white text-xs font-bold text-center py-2">#{startIndex + 21}–{startIndex + 40}</th>
             <th className="text-white text-xs font-bold text-center py-2">Månedens spillere</th>
             <th className="text-white text-xs font-bold text-center py-2">Mest aktive</th>
           </tr>
