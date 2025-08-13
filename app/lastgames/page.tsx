@@ -111,21 +111,22 @@ export default function SenesteKampeSide() {
     if (!besked) return
 
     const { data: userData } = await supabase.auth.getUser()
-    const senderId = userData?.user?.id
+const visningsnavn = userData?.user?.user_metadata?.visningsnavn
 
-    if (!senderId) {
-      alert('Du skal være logget ind for at sende besked.')
-      return
-    }
+if (!visningsnavn) {
+  alert('Du skal være logget ind for at sende besked.')
+  return
+}
 
-    const { error } = await supabase.from('admin_messages').insert([
-      {
-        kampid,
-        besked,
-        tidspunkt: new Date().toISOString(),
-        sender_id: senderId,
-      },
-    ])
+const { error } = await supabase.from('admin_messages').insert([
+  {
+    kampid,
+    besked,
+    tidspunkt: new Date().toISOString(),
+    visningsnavn,
+  },
+])
+
 
     if (error) {
       alert('Kunne ikke sende besked: ' + error.message)
