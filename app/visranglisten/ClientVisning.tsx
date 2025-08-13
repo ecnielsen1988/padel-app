@@ -106,11 +106,21 @@ export default function ClientVisning() {
       <table className="table-fixed w-full">
         <thead>
           <tr>
-            <th className="text-white text-xs font-bold text-center py-2">Top 20</th>
-            <th className="text-white text-xs font-bold text-center py-2">#{startIndex + 1}–{startIndex + 20}</th>
-            <th className="text-white text-xs font-bold text-center py-2">#{startIndex + 21}–{startIndex + 40}</th>
-            <th className="text-white text-xs font-bold text-center py-2">Månedens spillere</th>
-            <th className="text-white text-xs font-bold text-center py-2">Mest aktive</th>
+            <th className="text-white text-lg font-extrabold text-center py-4 tracking-wide">
+  Top 20
+</th>
+<th className="text-white text-lg font-extrabold text-center py-4 tracking-wide">
+  #{startIndex + 1}–{startIndex + 20}
+</th>
+<th className="text-white text-lg font-extrabold text-center py-4 tracking-wide">
+  #{startIndex + 21}–{startIndex + 40}
+</th>
+<th className="text-white text-lg font-extrabold text-center py-4 tracking-wide">
+  Månedens spillere
+</th>
+<th className="text-white text-lg font-extrabold text-center py-4 tracking-wide">
+  Mest aktive
+</th>
           </tr>
         </thead>
         <tbody>
@@ -125,9 +135,15 @@ export default function ClientVisning() {
       </table>
 
       {/* QR Code */}
-      <div className="fixed bottom-4 right-4 bg-white p-2 shadow z-50">
-        <QRCode value="https://padelhuset-app.netlify.app/signup" size={128} />
-      </div>
+      <div className="fixed bottom-4 right-4 flex items-center space-x-4 z-50">
+  <div className="bg-white text-pink-600 font-bold px-6 py-3 rounded-full shadow-lg text-lg">
+    👉 Tilmeld dig ranglisten
+  </div>
+  <div className="bg-white p-2 shadow-lg rounded-xl">
+    <QRCode value="https://padelhuset-app.netlify.app/signup" size={128} />
+  </div>
+</div>
+
     </main>
   )
 }
