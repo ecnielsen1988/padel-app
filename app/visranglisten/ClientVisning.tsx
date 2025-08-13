@@ -149,7 +149,7 @@ export default function ClientVisning() {
     className="p-2 shadow-lg rounded-xl"
     style={{ backgroundColor: "white" }}
   >
-    <QRCode value="https://padelhuset-app.netlify.app/signup" size={128} />
+    <QRCode value="https://padelhuset-app.netlify.app/signup" size={96} />
   </div>
 </div>
 
