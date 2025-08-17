@@ -46,9 +46,9 @@ export default function ClientVisning() {
     if (p > -20) return "🧯"
     if (p > -30) return "🪂"
     if (p > -40) return "❄️"
-    if (p > -50) return "💩"
+    if (p > -50) return "🙈"
     if (p > -100) return "🥊"
-    return "🙈"
+    return "💩"
   }
 
   const top20 = rangliste.slice(0, 20)
