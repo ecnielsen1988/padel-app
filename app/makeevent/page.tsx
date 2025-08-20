@@ -71,9 +71,10 @@ function emojiForPluspoint(p: number) {
   if (p > -20) return '🧯';
   if (p > -30) return '🪂';
   if (p > -40) return '❄️';
-  if (p > -50) return '💩';
+  if (p > -50) return '🙈';
   if (p > -100) return '🥊';
-  return '🙈';
+  if (p > -150) return '💩'
+    return '💩💩'
 }
 
 export default function EventLayout() {

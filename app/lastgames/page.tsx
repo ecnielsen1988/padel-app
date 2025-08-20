@@ -98,9 +98,10 @@ export default function SenesteKampeSide() {
     if (diff > -20) return '🧯'
     if (diff > -30) return '🪂'
     if (diff > -40) return '❄️'
-    if (diff > -50) return '💩'
+    if (diff > -50) return '🙈'
     if (diff > -100) return '🥊'
-    return '🙈'
+   if (diff > -150) return '💩'
+    return '💩💩'
   }
 
 

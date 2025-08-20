@@ -26,6 +26,7 @@ export default async function MånedensSpillerSide() {
     if (p > -40) return '❄️'
     if (p > -50) return '🙈'
     if (p > -100) return '🥊'
+    if (p > -150) return '💩'
     return '💩💩'
   }
 
