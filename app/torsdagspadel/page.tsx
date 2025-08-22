@@ -52,6 +52,11 @@ function getThisThursdayISO(): string | null {
     : null
 }
 
+// Beløb i øre → DKK
+function oreToDKK(ore: any): number {
+  const n = Number(ore ?? 0)
+  return Number.isFinite(n) ? n / 100 : 0
+}
 
 export default function TorsdagStartside() {
   const [bruger, setBruger] = useState<Bruger | null>(null)
@@ -63,14 +68,17 @@ export default function TorsdagStartside() {
   const [mineSaet, setMineSaet] = useState<EventSet[] | null>(null)
   const [loadingSaet, setLoadingSaet] = useState(true)
 
-  // Tilmelding: ALTID næste torsdag
-const signupDato = useMemo(() => getNextThursdayISO(), [])
-const signupDatoTekst = useMemo(() => formatDanishDate(signupDato), [signupDato])
+  // NYT: total regnskab i DKK (samme som i /regnskab-boksen)
+  const [totalDKK, setTotalDKK] = useState<number>(0)
 
-// Planvisning: I DAG hvis det er torsdag – ellers næste torsdag
-const thisThursday = useMemo(() => getThisThursdayISO(), [])
-const planDato = thisThursday ?? signupDato
-const planDatoTekst = useMemo(() => formatDanishDate(planDato), [planDato])
+  // Tilmelding: ALTID næste torsdag
+  const signupDato = useMemo(() => getNextThursdayISO(), [])
+  const signupDatoTekst = useMemo(() => formatDanishDate(signupDato), [signupDato])
+
+  // Planvisning: I DAG hvis det er torsdag – ellers næste torsdag
+  const thisThursday = useMemo(() => getThisThursdayISO(), [])
+  const planDato = thisThursday ?? signupDato
+  const planDatoTekst = useMemo(() => formatDanishDate(planDato), [planDato])
 
   const tider = ['17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00']
 
@@ -105,7 +113,6 @@ const planDatoTekst = useMemo(() => formatDanishDate(planDato), [planDato])
           .select('kan_spille, tidligste_tid')
           .eq('visningsnavn', profile.visningsnavn)
           .eq('event_dato', signupDato)
-
           .single()
 
         if (tilmeldingData) {
@@ -115,12 +122,10 @@ const planDatoTekst = useMemo(() => formatDanishDate(planDato), [planDato])
 
         // Hent "din kamp" fra event_sets
         setLoadingSaet(true)
-        // RLS sørger for at du kun får dine egne rækker (eller alle, hvis du er admin).
         const { data: setsData, error: setsError } = await supabase
           .from('event_sets')
           .select('*')
-         .eq('event_dato', planDato)
-
+          .eq('event_dato', planDato)
           .order('kamp_nr', { ascending: true })
           .order('saet_nr', { ascending: true })
 
@@ -128,7 +133,6 @@ const planDatoTekst = useMemo(() => formatDanishDate(planDato), [planDato])
           console.error('Fejl ved hentning af event_sets:', setsError)
           setMineSaet([])
         } else {
-          // Ekstra client-filter så admin også kun ser "sin" kamp her
           const rows = (setsData as EventSet[]) ?? []
           const mine = rows.filter(
             r =>
@@ -139,6 +143,20 @@ const planDatoTekst = useMemo(() => formatDanishDate(planDato), [planDato])
           )
           setMineSaet(mine)
         }
+
+        // Hent bar_entries for at vise Samlet status (identisk med /regnskab-boksen)
+        const { data: barData, error: barErr } = await supabase
+          .from('bar_entries')
+          .select('amount_ore')
+          .eq('visningsnavn', profile.visningsnavn)
+
+        if (barErr) {
+          console.error('Fejl ved hentning af bar_entries:', barErr)
+          setTotalDKK(0)
+        } else {
+          const total = (barData ?? []).reduce((sum: number, r: any) => sum + oreToDKK(r.amount_ore), 0)
+          setTotalDKK(total)
+        }
       } finally {
         setLoading(false)
         setLoadingSaet(false)
@@ -146,8 +164,7 @@ const planDatoTekst = useMemo(() => formatDanishDate(planDato), [planDato])
     }
 
     hentBruger()
- }, [signupDato, planDato])
-
+  }, [signupDato, planDato])
 
   const sendTilmelding = async (kanSpille: boolean, tidligsteTid?: string) => {
     setStatus('updating')
@@ -157,8 +174,7 @@ const planDatoTekst = useMemo(() => formatDanishDate(planDato), [planDato])
 
     const payload = {
       visningsnavn: bruger.visningsnavn,
-      event_dato: signupDato,
- // dynamisk næste torsdag
+      event_dato: signupDato, // dynamisk næste torsdag
       kan_spille: kanSpille,
       tidligste_tid: kanSpille ? (tidligsteTid ?? null) : null,
     }
@@ -197,24 +213,47 @@ const planDatoTekst = useMemo(() => formatDanishDate(planDato), [planDato])
     return m
   }, new Map())
 
+  // Labels/klasse til statusboksen (samme logik som /regnskab)
+  const totalLabel =
+    totalDKK > 0 ? 'Du har til gode'
+    : totalDKK < 0 ? 'Du skylder'
+    : 'Alt i nul'
+
+  const totalClass =
+    totalDKK > 0 ? 'text-green-700'
+    : totalDKK < 0 ? 'text-red-600'
+    : 'text-zinc-700 dark:text-zinc-300'
+
   return (
     <main className="max-w-xl mx-auto p-8 text-gray-900 dark:text-white">
       <h1 className="text-3xl font-bold mb-6 text-center">
         💪 Torsdagspadel – velkommen, {bruger.visningsnavn}!
       </h1>
 
+      {/* NYT: Samlet status (identisk med /regnskab) */}
+      <div className="mb-8 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4">
+        <div className="flex items-center justify-between">
+          <div className="text-sm opacity-70">Samlet status</div>
+          <div className={`text-lg font-semibold ${totalClass}`}>
+            {totalLabel}:{' '}
+            {totalDKK.toLocaleString('da-DK', { style: 'currency', currency: 'DKK' })}
+          </div>
+        </div>
+        <div className="mt-2 text-md text-zinc-600 dark:text-zinc-400 italic">
+          Indbetalinger kan ske til MobilePay Box 2033WT
+        </div>
+      </div>
+
       {/* Tilmeldingssektion */}
       <div className="mb-8 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 p-4 rounded-xl">
         <h2 className="text-xl font-semibold mb-3 text-green-700 dark:text-green-300">
-         📅 Kan du spille torsdag d. {signupDatoTekst}?
-
+          📅 Kan du spille torsdag d. {signupDatoTekst}?
         </h2>
 
         {tilmelding && status !== 'updating' && status !== 'editing' ? (
           <>
             <p className="text-green-800 dark:text-green-200 mb-2">
-             ✅ Du er registreret d. {signupDatoTekst}
-{' '}
+              ✅ Du er registreret d. {signupDatoTekst}{' '}
               {tilmelding.kan_spille
                 ? `– du kan starte tidligst kl. ${tilmelding.tidligste_tid}`
                 : '– du har meldt afbud'}
@@ -263,8 +302,7 @@ const planDatoTekst = useMemo(() => formatDanishDate(planDato), [planDato])
 
       {/* Din kamp */}
       <div className="mb-8 border border-zinc-200 dark:border-zinc-700 rounded-xl p-4">
-        <h2 className="text-xl font-semibold mb-3">🎾 Din kamp – {planDatoTekst}
-</h2>
+        <h2 className="text-xl font-semibold mb-3">🎾 Din kamp – {planDatoTekst}</h2>
 
         {loadingSaet ? (
           <p className="text-sm text-gray-600 dark:text-gray-300">Henter kampplan...</p>
@@ -290,13 +328,12 @@ const planDatoTekst = useMemo(() => formatDanishDate(planDato), [planDato])
                   <div className="space-y-1 text-sm">
                     {saet.map((r) => (
                       <div key={r.saet_nr} className="flex items-start gap-3">
-  <span className="font-medium shrink-0">Sæt {r.saet_nr}:</span>
-  <span className="leading-tight break-words text-left">
-    {r.holda1} & {r.holda2} <span className="opacity-60">vs</span><br />
-    {r.holdb1} & {r.holdb2}
-  </span>
-</div>
-
+                        <span className="font-medium shrink-0">Sæt {r.saet_nr}:</span>
+                        <span className="leading-tight break-words text-left">
+                          {r.holda1} & {r.holda2} <span className="opacity-60">vs</span><br />
+                          {r.holdb1} & {r.holdb2}
+                        </span>
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -319,6 +356,12 @@ const planDatoTekst = useMemo(() => formatDanishDate(planDato), [planDato])
           className="bg-green-700 hover:bg-green-800 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
         >
           🌟 Månedens Torsdagsspiller
+        </Link>
+        <Link
+          href="/torsdagspadel/regnskab"
+          className="bg-green-700 hover:bg-green-800 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
+        >
+          💸 Regnskab
         </Link>
         <Link
           href="/torsdagspadel/events"

@@ -1,169 +1,190 @@
-"use client";
+'use client'
 
-import React, { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import Link from 'next/link'
+import { useEffect, useMemo, useState } from 'react'
+import { supabase } from '@/lib/supabaseClient'
 
-// ---------- utils ----------
-const fmt = (ore: number) => new Intl.NumberFormat("da-DK", { style: "currency", currency: "DKK" }).format((ore ?? 0) / 100);
-const today = new Date();
-const ym = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-const firstOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth(), 1);
-const nextMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth() + 1, 1);
-const isoDate = (d: Date) => d.toISOString().slice(0, 10);
+type Bruger = { visningsnavn: string; torsdagspadel: boolean }
+type BarEntry = Record<string, any>
 
-// ---------- types ----------
-type Entry = {
-  id: number;
-  event_date: string; // YYYY-MM-DD
-  visningsnavn: string;
-  product: "stor_fadoel" | "lille_fadoel" | "stor_oel" | "lille_oel" | "sodavand" | "boede" | "indbetaling" | "rabat" | string;
-  qty: number;
-  amount_ore: number; // køb/bøde negative, indbetaling/rabat positive
-  note: string | null;
-  created_at: string;
-};
+function formatDKDate(isoOrDate: string | Date | null | undefined) {
+  if (!isoOrDate) return ''
+  const d = typeof isoOrDate === 'string'
+    ? new Date(isoOrDate.includes('T') ? isoOrDate : `${isoOrDate}T00:00:00`)
+    : isoOrDate
+  return d.toLocaleDateString('da-DK', {
+    timeZone: 'Europe/Copenhagen',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
+}
+
+function extractAmountDKK(row: BarEntry): number | null {
+  if (row.amount_ore === null || row.amount_ore === undefined) return null
+  const ore = Number(row.amount_ore)
+  return Number.isFinite(ore) ? ore / 100 : null
+}
+
+function extractDate(row: BarEntry) {
+  return row.event_date ?? row.date ?? row.created_at ?? null
+}
+
+function productToEmojiText(productRaw?: string | null, note?: string | null, qty?: number | null) {
+  const product = (productRaw ?? '').trim()
+  const p = product.toLowerCase()
+  const n = (note ?? '').trim()
+  const qtyStr = qty && qty > 1 ? ` x${qty}` : '' // fjern x1
+
+  const add = (base: string, keepNote = false) =>
+    base + qtyStr + (keepNote && n ? ` — ${n}` : '')
+
+  // ===== PRÆMIER =====
+  if (p.includes('praemie_aften_1')) return add('🥇 Aftenens spiller')
+  if (p.includes('praemie_aften_2')) return add('🥈 Aftenens nr. 2')
+  if (p.includes('praemie_aften_3')) return add('🥉 Aftenens nr. 3')
+
+  if (p.includes('praemie_maaned_mest_aktive') || p.includes('præmie_måned_mest_aktive'))
+    return add('🏆 Månedens mest aktive')
+
+  if (p.includes('praemie_maaned_1') || p.includes('præmie_måned_1'))
+    return add('🏆 Månedens spiller')
+  if (p.includes('praemie_maaned_2') || p.includes('præmie_måned_2'))
+    return add('🥈 Månedens nr. 2')
+  if (p.includes('praemie_maaned_3') || p.includes('præmie_måned_3'))
+    return add('🥉 Månedens nr. 3')
+
+  // ===== Øvrige varer/handlinger =====
+  if (p.includes('bøde') || p.includes('bode')) return add('💰', true)         // behold note
+ if (p.includes('indbetaling'))             return add('💸', true)  // behold note
+  if (p.includes('sodavand'))                return add('🥤')
+  if (p.includes('chips'))                   return add('🍿')
+  if (p.includes('øl') || p.includes('oel')) return add('🍺')
+  if (p.includes('rabat'))                   return add('🤑', true)            // money eyes + evt. note
+
+  // fallback
+  return product ? product + (n ? ` — ${n}` : '') : (n || '(ingen tekst)')
+}
 
 export default function RegnskabPage() {
-  const [userName, setUserName] = useState<string>("");
-  const [loadingUser, setLoadingUser] = useState(true);
+  const [loading, setLoading] = useState(true)
+  const [bruger, setBruger] = useState<Bruger | null>(null)
+  const [entries, setEntries] = useState<BarEntry[] | null>(null)
 
-  // månedssigt
-  const [month, setMonth] = useState<Date>(firstOfMonth(today));
-
-  // data
-  const [entries, setEntries] = useState<Entry[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // totals
-  const totals = useMemo(() => {
-    let sales = 0; // alt der er negative beløb (køb + bøder)
-    let payments = 0; // indbetalinger (positive)
-    let discounts = 0; // rabat (positive)
-    let net = 0;
-    for (const e of entries) {
-      net += e.amount_ore;
-      if (e.amount_ore < 0) sales += -e.amount_ore;
-      if (e.product === "indbetaling" && e.amount_ore > 0) payments += e.amount_ore;
-      if (e.product === "rabat" && e.amount_ore > 0) discounts += e.amount_ore;
-    }
-    return { sales, payments, discounts, net };
-  }, [entries]);
-
-  // fetch user
   useEffect(() => {
-    (async () => {
-      setLoadingUser(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      const visningsnavn = (user?.user_metadata as any)?.visningsnavn as string | undefined;
-      if (visningsnavn) setUserName(visningsnavn);
-      setLoadingUser(false);
-    })();
-  }, []);
+    const run = async () => {
+      try {
+        const { data: auth } = await supabase.auth.getUser()
+        const user = auth?.user
+        if (!user) { setLoading(false); return }
 
-  // fetch entries (kun egne – RLS håndhæver også det)
-  async function loadEntries(m: Date, name?: string) {
-    if (!name) return;
-    setLoading(true);
-    setError(null);
-    const from = isoDate(firstOfMonth(m));
-    const to = isoDate(nextMonth(m));
-    const { data, error } = await supabase
-      .from("bar_entries")
-      .select("id, event_date, visningsnavn, product, qty, amount_ore, note, created_at")
-      .eq("visningsnavn", name) // ekstra filter; RLS beskytter uanset
-      .gte("event_date", from)
-      .lt("event_date", to)
-      .order("created_at", { ascending: false });
-    if (error) setError(error.message);
-    if (data) setEntries(data as Entry[]);
-    setLoading(false);
-  }
+        const { data: profile, error: pErr } = await supabase
+          .from('profiles')
+          .select('visningsnavn, torsdagspadel')
+          .eq('id', user.id)
+          .single()
 
-  useEffect(() => { if (userName) loadEntries(month, userName); }, [userName, month]);
+        if (pErr || !profile?.torsdagspadel) { setLoading(false); return }
+        setBruger(profile as Bruger)
 
-  function labelForProduct(key: Entry["product"]) {
-    switch (key) {
-      case "stor_fadoel": return "Stor Fadøl";
-      case "lille_fadoel": return "Lille Fadøl";
-      case "stor_oel": return "Stor Øl";
-      case "lille_oel": return "Lille Øl";
-      case "sodavand": return "Sodavand";
-      case "boede": return "Bøde";
-      case "indbetaling": return "Indbetaling";
-      case "rabat": return "Rabat (første drik)";
-      default: return key;
+        const { data, error } = await supabase
+          .from('bar_entries')
+          .select('*')
+          .eq('visningsnavn', profile.visningsnavn)
+          .order('event_date', { ascending: false })
+
+        if (error) { console.error('Fejl ved hentning af bar_entries:', error); setEntries([]); return }
+        setEntries((data as BarEntry[]) ?? [])
+      } finally {
+        setLoading(false)
+      }
     }
+    run()
+  }, [])
+
+  const totalDKK = useMemo(() => {
+    return (entries ?? []).reduce((sum, row) => sum + (extractAmountDKK(row) ?? 0), 0)
+  }, [entries])
+
+  if (loading) {
+    return (
+      <main className="max-w-xl mx-auto p-8 text-gray-900 dark:text-white">
+        <p>Indlæser dit regnskab…</p>
+      </main>
+    )
   }
 
-  const monthLabel = useMemo(() => new Intl.DateTimeFormat("da-DK", { year: "numeric", month: "long" }).format(month), [month]);
+  if (!bruger) {
+    return (
+      <main className="max-w-xl mx-auto p-8 text-gray-900 dark:text-white">
+        <p>Du har ikke adgang til denne side.</p>
+        <div className="mt-4">
+          <Link href="/torsdagspadel" className="inline-block bg-green-700 hover:bg-green-800 text-white font-semibold py-2 px-4 rounded-lg">
+            ⬅ Tilbage til Torsdagspadel
+          </Link>
+        </div>
+      </main>
+    )
+  }
+
+  const totalLabel = totalDKK > 0 ? 'Du har til gode' : totalDKK < 0 ? 'Du skylder' : 'Alt i nul'
+  const totalClass = totalDKK > 0 ? 'text-green-700' : totalDKK < 0 ? 'text-red-600' : 'text-zinc-700 dark:text-zinc-300'
 
   return (
-    <div className="mx-auto max-w-3xl p-4">
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <div className="text-xl font-semibold">Mit regnskab</div>
-          <div className="text-sm text-gray-500">{loadingUser ? "Henter profil…" : userName}</div>
-        </div>
-        <button onClick={() => window.print()} className="rounded-xl border px-3 py-2 text-sm hover:bg-gray-50">Print</button>
-      </div>
+    <main className="max-w-xl mx-auto p-8 text-gray-900 dark:text-white">
+      <h1 className="text-3xl font-bold mb-6 text-center">💸 Dit regnskab</h1>
 
-      {/* månedsvælger */}
-      <div className="mb-4 flex items-center gap-2">
-        <button className="rounded-xl border px-3 py-2 text-sm hover:bg-gray-50" onClick={() => setMonth(firstOfMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1)))}>{"←"}</button>
-        <div className="min-w-[160px] text-center text-sm text-gray-700">{monthLabel}</div>
-        <button className="rounded-xl border px-3 py-2 text-sm hover:bg-gray-50" onClick={() => setMonth(firstOfMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1)))}>{"→"}</button>
-      </div>
-
-      {/* totals */}
-      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="rounded-2xl border bg-white p-3 text-center shadow-sm">
-          <div className="text-[11px] uppercase text-gray-500">Køb</div>
-          <div className="text-lg font-semibold text-rose-600">{fmt(totals.sales)}</div>
-        </div>
-        <div className="rounded-2xl border bg-white p-3 text-center shadow-sm">
-          <div className="text-[11px] uppercase text-gray-500">Rabat</div>
-          <div className="text-lg font-semibold text-emerald-700">{fmt(totals.discounts)}</div>
-        </div>
-        <div className="rounded-2xl border bg-white p-3 text-center shadow-sm">
-          <div className="text-[11px] uppercase text-gray-500">Indbetalinger</div>
-          <div className="text-lg font-semibold text-emerald-700">{fmt(totals.payments)}</div>
-        </div>
-        <div className="rounded-2xl border bg-white p-3 text-center shadow-sm">
-          <div className="text-[11px] uppercase text-gray-500">Netto</div>
-          <div className={`text-lg font-semibold ${totals.net < 0 ? "text-rose-600" : "text-emerald-700"}`}>{fmt(totals.net)}</div>
-        </div>
-      </div>
-
-      {/* liste */}
-      <div className="rounded-2xl border bg-white shadow-sm">
-        <div className="border-b p-3 text-sm font-semibold">Dine transaktioner (måned)</div>
-        {loading ? (
-          <div className="p-3 text-sm text-gray-500">Henter…</div>
-        ) : entries.length === 0 ? (
-          <div className="p-3 text-sm text-gray-500">Ingen transaktioner i denne måned.</div>
-        ) : (
-          <ul className="divide-y">
-            {entries.map((e) => (
-              <li key={e.id} className="grid grid-cols-12 items-center gap-2 p-3 text-sm">
-                <div className="col-span-5 truncate">
-                  {labelForProduct(e.product)}{e.note ? ` – ${e.note}` : ""}
-                </div>
-                <div className="col-span-4 text-gray-500">
-                  {new Date(e.created_at).toLocaleString("da-DK", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
-                </div>
-                <div className={`col-span-3 text-right font-medium ${e.amount_ore < 0 ? "text-rose-600" : "text-emerald-700"}`}>{fmt(e.amount_ore)}</div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      {error && <div className="mt-3 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
-
-      <div className="mt-4 text-[11px] text-gray-500">
-        Bemærk: Første drikkevare pr. aften registreres som rabat og modregnes automatisk i din saldo.
-      </div>
+      {/* Samlet skyld/tilgode */}
+      <div className="mb-6 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4">
+  <div className="flex items-center justify-between">
+    <div className="text-sm opacity-70">Samlet status</div>
+    <div className={`text-lg font-semibold ${totalClass}`}>
+      {totalLabel}:{' '}
+      {totalDKK.toLocaleString('da-DK', { style: 'currency', currency: 'DKK' })}
     </div>
-  );
+  </div>
+
+
+  {/* 👇 NY linje */}
+  <div className="mt-2 text-md text-zinc-600 dark:text-zinc-400 italic">
+    Indbetalinger kan ske til MobilePay Box 2033WT
+  </div>
+</div>
+
+      {/* Liste */}
+      {(!entries || entries.length === 0) ? (
+        <div className="text-sm text-gray-700 dark:text-gray-300">
+          <p>Ingen transaktioner fundet.</p>
+        </div>
+      ) : (
+        <ul className="divide-y divide-zinc-200 dark:divide-zinc-700 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900">
+          {entries.map((row, idx) => {
+            const dateVal = extractDate(row)
+            const label = productToEmojiText(row.Product ?? row.product, row.note, row.qty)
+            const amount = extractAmountDKK(row)
+            return (
+              <li key={`${row.event_date ?? 'row'}-${row.Product ?? 'p'}-${idx}`} className="p-4 flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="text-xs opacity-70">{formatDKDate(dateVal)}</div>
+                  <div className="font-medium truncate">{label}</div>
+                </div>
+                <div className="shrink-0 text-right">
+                  <div className={`font-semibold ${amount !== null ? (amount < 0 ? 'text-red-600' : 'text-green-700') : ''}`}>
+                    {amount !== null ? amount.toLocaleString('da-DK', { style: 'currency', currency: 'DKK' }) : '—'}
+                  </div>
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+
+      <div className="mt-6">
+        <Link href="/torsdagspadel" className="inline-block bg-green-700 hover:bg-green-800 text-white font-semibold py-2 px-4 rounded-lg">
+          ⬅ Tilbage til Torsdagspadel
+        </Link>
+      </div>
+    </main>
+  )
 }
+
