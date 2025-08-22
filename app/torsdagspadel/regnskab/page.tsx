@@ -55,7 +55,7 @@ function productToEmojiText(productRaw?: string | null, note?: string | null, qt
     return add('🥉 Månedens nr. 3')
 
   // ===== Øvrige varer/handlinger =====
-  if (p.includes('bøde') || p.includes('bode')) return add('💰', true)         // behold note
+  if (p.includes('bøde') || p.includes('boede')) return add('💰', true)         // behold note
  if (p.includes('indbetaling'))             return add('💸', true)  // behold note
   if (p.includes('sodavand'))                return add('🥤')
   if (p.includes('chips'))                   return add('🍿')
