@@ -1,11 +1,13 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 
-type Bruger = { visningsnavn: string; torsdagspadel: boolean }
+type Bruger = { id: string; visningsnavn: string; torsdagspadel: boolean; rolle?: string }
 type BarEntry = Record<string, any>
+type Player = { visningsnavn: string }
 
 function formatDKDate(isoOrDate: string | Date | null | undefined) {
   if (!isoOrDate) return ''
@@ -20,10 +22,9 @@ function formatDKDate(isoOrDate: string | Date | null | undefined) {
   })
 }
 
-function extractAmountDKK(row: BarEntry): number | null {
-  if (row.amount_ore === null || row.amount_ore === undefined) return null
-  const ore = Number(row.amount_ore)
-  return Number.isFinite(ore) ? ore / 100 : null
+function extractAmountDKK(row: BarEntry): number {
+  const ore = Number(row?.amount_ore ?? 0)
+  return Number.isFinite(ore) ? ore / 100 : 0
 }
 
 function extractDate(row: BarEntry) {
@@ -55,56 +56,91 @@ function productToEmojiText(productRaw?: string | null, note?: string | null, qt
     return add('🥉 Månedens nr. 3')
 
   // ===== Øvrige varer/handlinger =====
-  if (p.includes('bøde') || p.includes('boede')) return add('💰', true)         // behold note
- if (p.includes('indbetaling'))             return add('💸', true)  // behold note
+  if (p.includes('bøde') || p.includes('boede')) return add('💰', true)   // behold note
+  if (p.includes('indbetaling'))             return add('💸', true)      // behold note
   if (p.includes('sodavand'))                return add('🥤')
   if (p.includes('chips'))                   return add('🍿')
   if (p.includes('øl') || p.includes('oel')) return add('🍺')
-  if (p.includes('rabat'))                   return add('🤑', true)            // money eyes + evt. note
+  if (p.includes('rabat'))                   return add('🤑', true)      // behold note
 
   // fallback
   return product ? product + (n ? ` — ${n}` : '') : (n || '(ingen tekst)')
 }
 
 export default function RegnskabPage() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const paramUser = searchParams.get('user') // kan være null
+
   const [loading, setLoading] = useState(true)
-  const [bruger, setBruger] = useState<Bruger | null>(null)
+  const [me, setMe] = useState<Bruger | null>(null)
+  const [isAdmin, setIsAdmin] = useState(false)
+
   const [entries, setEntries] = useState<BarEntry[] | null>(null)
+  const [players, setPlayers] = useState<Player[]>([])
+  const [selectedName, setSelectedName] = useState<string | null>(null)
 
   useEffect(() => {
     const run = async () => {
       try {
+        // Auth
         const { data: auth } = await supabase.auth.getUser()
         const user = auth?.user
         if (!user) { setLoading(false); return }
 
+        // Hent egen profil + rolle
         const { data: profile, error: pErr } = await supabase
           .from('profiles')
-          .select('visningsnavn, torsdagspadel')
+          .select('id, visningsnavn, torsdagspadel, rolle')
           .eq('id', user.id)
           .single()
+        if (pErr) { setLoading(false); return }
 
-        if (pErr || !profile?.torsdagspadel) { setLoading(false); return }
-        setBruger(profile as Bruger)
+        // Admin-check (JWT eller profiles)
+        const jwtRole = (user.app_metadata as any)?.rolle
+        const admin = jwtRole === 'admin' || profile?.rolle === 'admin'
+        setIsAdmin(admin)
+        setMe(profile as Bruger)
 
-        const { data, error } = await supabase
-          .from('bar_entries')
-          .select('*')
-          .eq('visningsnavn', profile.visningsnavn)
-          .order('event_date', { ascending: false })
+        // Hent alle torsdagsspillere til dropdown (kun admin)
+        if (admin) {
+          const { data: pls } = await supabase
+            .from('profiles')
+            .select('visningsnavn')
+            .eq('torsdagspadel', true)
+          setPlayers((pls as Player[] ?? []).sort((a,b) => a.visningsnavn.localeCompare(b.visningsnavn, 'da-DK')))
+        }
 
-        if (error) { console.error('Fejl ved hentning af bar_entries:', error); setEntries([]); return }
-        setEntries((data as BarEntry[]) ?? [])
+        // Bestem hvilket navn vi kigger på
+        const target = (admin && paramUser && paramUser.trim().length > 0)
+          ? paramUser
+          : (profile?.visningsnavn ?? null)
+        setSelectedName(target)
+
+        // Hent entries for target
+        if (target) {
+          const { data, error } = await supabase
+            .from('bar_entries')
+            .select('*')
+            .eq('visningsnavn', target)
+            .order('event_date', { ascending: false })
+          if (!error) setEntries(data as BarEntry[] ?? [])
+          else setEntries([])
+        } else {
+          setEntries([])
+        }
       } finally {
         setLoading(false)
       }
     }
     run()
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paramUser]) // ændrer når ?user= skifter
 
-  const totalDKK = useMemo(() => {
-    return (entries ?? []).reduce((sum, row) => sum + (extractAmountDKK(row) ?? 0), 0)
-  }, [entries])
+  // Total
+  const totalDKK = (entries ?? []).reduce((sum, row) => sum + extractAmountDKK(row), 0)
+  const totalLabel = totalDKK > 0 ? 'Du har til gode' : totalDKK < 0 ? 'Du skylder' : 'Alt i nul'
+  const totalClass = totalDKK > 0 ? 'text-green-700' : totalDKK < 0 ? 'text-red-600' : 'text-zinc-700 dark:text-zinc-300'
 
   if (loading) {
     return (
@@ -114,7 +150,8 @@ export default function RegnskabPage() {
     )
   }
 
-  if (!bruger) {
+  // Adgang: alm. bruger må kun se sin egen (men det håndteres af at vi ignorerer ?user= hvis ikke admin)
+  if (!me) {
     return (
       <main className="max-w-xl mx-auto p-8 text-gray-900 dark:text-white">
         <p>Du har ikke adgang til denne side.</p>
@@ -127,29 +164,50 @@ export default function RegnskabPage() {
     )
   }
 
-  const totalLabel = totalDKK > 0 ? 'Du har til gode' : totalDKK < 0 ? 'Du skylder' : 'Alt i nul'
-  const totalClass = totalDKK > 0 ? 'text-green-700' : totalDKK < 0 ? 'text-red-600' : 'text-zinc-700 dark:text-zinc-300'
+  // Hjælper: skift bruger via dropdown (admin)
+  const onPick = (name: string) => {
+    setSelectedName(name)
+    const sp = new URLSearchParams(Array.from(searchParams.entries()))
+    if (name) sp.set('user', name); else sp.delete('user')
+    router.replace(`/torsdagspadel/regnskab?${sp.toString()}`)
+  }
 
   return (
     <main className="max-w-xl mx-auto p-8 text-gray-900 dark:text-white">
-      <h1 className="text-3xl font-bold mb-6 text-center">💸 Dit regnskab</h1>
+      <h1 className="text-3xl font-bold mb-6 text-center">
+        💸 {isAdmin && selectedName && selectedName !== me.visningsnavn ? `Regnskab – ${selectedName}` : 'Dit regnskab'}
+      </h1>
+
+      {/* Admin: vælg spiller */}
+      {isAdmin && (
+        <div className="mb-4 flex items-center gap-2">
+          <label className="text-sm opacity-70">Vælg spiller:</label>
+          <select
+            className="px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900"
+            value={selectedName ?? ''}
+            onChange={(e) => onPick(e.target.value)}
+          >
+            <option value="" disabled>— vælg —</option>
+            {players.map(p => (
+              <option key={p.visningsnavn} value={p.visningsnavn}>{p.visningsnavn}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* Samlet skyld/tilgode */}
       <div className="mb-6 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4">
-  <div className="flex items-center justify-between">
-    <div className="text-sm opacity-70">Samlet status</div>
-    <div className={`text-lg font-semibold ${totalClass}`}>
-      {totalLabel}:{' '}
-      {totalDKK.toLocaleString('da-DK', { style: 'currency', currency: 'DKK' })}
-    </div>
-  </div>
-
-
-  {/* 👇 NY linje */}
-  <div className="mt-2 text-md text-zinc-600 dark:text-zinc-400 italic">
-    Indbetalinger kan ske til MobilePay Box 2033WT
-  </div>
-</div>
+        <div className="flex items-center justify-between">
+          <div className="text-sm opacity-70">Samlet status</div>
+          <div className={`text-lg font-semibold ${totalClass}`}>
+            {totalLabel}:{' '}
+            {totalDKK.toLocaleString('da-DK', { style: 'currency', currency: 'DKK' })}
+          </div>
+        </div>
+        <div className="mt-2 text-md text-zinc-600 dark:text-zinc-400 italic">
+          Indbetalinger kan ske til MobilePay Box 2033WT
+        </div>
+      </div>
 
       {/* Liste */}
       {(!entries || entries.length === 0) ? (
@@ -169,8 +227,8 @@ export default function RegnskabPage() {
                   <div className="font-medium truncate">{label}</div>
                 </div>
                 <div className="shrink-0 text-right">
-                  <div className={`font-semibold ${amount !== null ? (amount < 0 ? 'text-red-600' : 'text-green-700') : ''}`}>
-                    {amount !== null ? amount.toLocaleString('da-DK', { style: 'currency', currency: 'DKK' }) : '—'}
+                  <div className={`font-semibold ${amount < 0 ? 'text-red-600' : amount > 0 ? 'text-green-700' : ''}`}>
+                    {amount.toLocaleString('da-DK', { style: 'currency', currency: 'DKK' })}
                   </div>
                 </div>
               </li>
