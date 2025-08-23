@@ -18,11 +18,11 @@ export default function StartSide() {
   useEffect(() => {
     const hentBruger = async () => {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-const user = session?.user
+      const user = session?.user
 
-if (sessionError) {
-  console.error("Fejl ved hentning af session:", sessionError)
-}
+      if (sessionError) {
+        console.error('Fejl ved hentning af session:', sessionError)
+      }
 
       if (user) {
         const { data: profile, error } = await supabase
@@ -69,28 +69,27 @@ if (sessionError) {
   }
 
   if (loading) {
-  return (
-    <div className="p-8 max-w-xl mx-auto text-center">
-      <p className="text-lg">⏳ Indlæser...</p>
-    </div>
-  )
-}
+    return (
+      <div className="p-8 max-w-xl mx-auto text-center">
+        <p className="text-lg">⏳ Indlæser...</p>
+      </div>
+    )
+  }
 
-if (!bruger) {
-  return (
-    <div className="p-8 max-w-xl mx-auto text-center">
-      <h1 className="text-2xl font-bold mb-4">Du er ikke logget ind</h1>
-      <p className="mb-6">Log ind for at få adgang til padelsystemet.</p>
-      <Link
-        href="/login"
-        className="inline-block bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-6 rounded-xl shadow"
-      >
-        Log ind
-      </Link>
-    </div>
-  )
-}
-
+  if (!bruger) {
+    return (
+      <div className="p-8 max-w-xl mx-auto text-center">
+        <h1 className="text-2xl font-bold mb-4">Du er ikke logget ind</h1>
+        <p className="mb-6">Log ind for at få adgang til padelsystemet.</p>
+        <Link
+          href="/login"
+          className="inline-block bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-6 rounded-xl shadow"
+        >
+          Log ind
+        </Link>
+      </div>
+    )
+  }
 
   return (
     <div className="p-8 max-w-xl mx-auto">
@@ -123,76 +122,94 @@ if (!bruger) {
       </div>
 
       <div className="grid gap-4">
-{bruger.rolle === 'bruger' || bruger.rolle === 'admin' ? (
-  <>
-    <Link
-      href="/newscore"
-      className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
-    >
-      ➕ Indtast Resultater
-    </Link>
-    <Link
-      href="/lastgames"
-      className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
-    >
-      🕓 Seneste Kampe
-    </Link>
-    <Link
-      href="/nyrangliste"
-      className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
-    >
-      📊 Ranglisten
-    </Link>
-    <Link
-      href="/monthly"
-      className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
-    >
-      🌟 Månedens Spiller
-    </Link>
-    <Link
-      href="/active"
-      className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
-    >
-      🏃‍♂️ Mest aktive
-    </Link>
+        {(bruger.rolle === 'bruger' || bruger.rolle === 'admin') && (
+          <>
+            <Link
+              href="/newscore"
+              className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
+            >
+              ➕ Indtast Resultater
+            </Link>
 
-    {/* 👇 Grøn knap kun for torsdagspadel-brugere */}
-    {bruger.torsdagspadel && (
-      <Link
-        href="/torsdagspadel"
-        className="bg-green-700 hover:bg-green-800 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
-      >
-        🏋️‍♂️ Torsdagspadel 🏋️‍♂️
-      </Link>
-    )}
-  </>
-) : null}
+            {/* NYT: Mine resultater */}
+            <Link
+              href="/mine"  // ← ret evt. til din faktiske route for “Mine Seneste Kampe”
+              className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
+            >
+              🧾 Mine resultater
+            </Link>
 
-{bruger.rolle === 'admin' && (
-  <>
-    <Link
-      href="/admin"
-      className="bg-gray-800 hover:bg-gray-900 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
-    >
-      🛠 Adminpanel
-    </Link>
+            <Link
+              href="/lastgames"
+              className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
+            >
+              🕓 Seneste Kampe
+            </Link>
 
-    <Link
-      href="/admin/beskeder"
-      className="bg-yellow-500 hover:bg-yellow-600 text-black font-semibold py-3 px-5 rounded-xl text-center shadow flex justify-between items-center"
-    >
-      🔔 Beskeder
-      {ulæsteAntal > 0 && (
-        <span className="ml-2 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded-full">
-          {ulæsteAntal}
-        </span>
-      )}
-    </Link>
-  </>
-)}
+            <Link
+              href="/nyrangliste"
+              className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
+            >
+              📊 Ranglisten
+            </Link>
 
+            <Link
+              href="/monthly"
+              className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
+            >
+              🌟 Månedens Spiller
+            </Link>
+
+            <Link
+              href="/active"
+              className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
+            >
+              🏃‍♂️ Mest aktive
+            </Link>
+
+            {/* NYT: Kommende kampe */}
+            <Link
+              href="/kommende" // ← matcher siden vi lavede tidligere
+              className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
+            >
+              📅 Kommende kampe
+            </Link>
+
+            {/* Grøn knap kun for torsdagspadel-brugere */}
+            {bruger.torsdagspadel && (
+              <Link
+                href="/torsdagspadel"
+                className="bg-green-700 hover:bg-green-800 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
+              >
+                🏋️‍♂️ Torsdagspadel 🏋️‍♂️
+              </Link>
+            )}
+          </>
+        )}
+
+        {bruger.rolle === 'admin' && (
+          <>
+            <Link
+              href="/admin"
+              className="bg-gray-800 hover:bg-gray-900 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
+            >
+              🛠 Adminpanel
+            </Link>
+
+            <Link
+              href="/admin/beskeder"
+              className="bg-yellow-500 hover:bg-yellow-600 text-black font-semibold py-3 px-5 rounded-xl text-center shadow flex justify-between items-center"
+            >
+              🔔 Beskeder
+              {ulæsteAntal > 0 && (
+                <span className="ml-2 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded-full">
+                  {ulæsteAntal}
+                </span>
+              )}
+            </Link>
+          </>
+        )}
       </div>
     </div>
   )
 }
-
