@@ -260,8 +260,10 @@ export default function SundaysPage() {
 
   const sendEventResultater = async () => {
     const confirm = window.confirm(
-  `Er du sikker på, at du vil indsende alle resultater?\n\nDette vil slette event-data og indsende alle sæt permanent til ranglisten.`
-);
+      `Er du sikker på, at du vil indsende alle resultater?
+
+Dette vil slette event-data og indsende alle sæt permanent til ranglisten.`
+    );
     if (!confirm) return;
 
     const {
@@ -531,10 +533,21 @@ export default function SundaysPage() {
         <h1 className="font-bold mb-1">🌞 Søndagsrangliste</h1>
         <p className="text-[11px] text-zinc-500 mb-2">Næste event: {eventDatoLabel}</p>
 
-        <div className="mb-2 text-[11px] text-zinc-600 dark:text-zinc-300">
+                <div className="mb-2 text-[11px] text-zinc-600 dark:text-zinc-300">
           <span className="font-medium mr-1">Timeslots:</span>
           {SLOTS.map((s) => (
             <span key={s.id} className="mr-2">{s.id}: {s.label}</span>
+          ))}
+        </div>
+
+        {/* Overblik over tilmeldinger pr. slot */}
+        <div className="mb-3 p-2 rounded bg-zinc-50 dark:bg-zinc-700">
+          <h3 className="font-semibold text-sm mb-1">🕒 Tilmeldinger pr. slot</h3>
+          {SLOTS.map((s) => (
+            <div key={s.id} className="flex justify-between text-xs">
+              <span>{`Slot ${s.id} (${s.label})`}</span>
+              <span>{slotCounts[s.id] ?? 0}</span>
+            </div>
           ))}
         </div>
 
@@ -768,17 +781,6 @@ export default function SundaysPage() {
 
       {/* Højre kolonne */}
       <div className="w-1/5 p-3 rounded shadow bg-zinc-100 dark:bg-zinc-800 sticky top-4 self-start h-fit">
-        {/* Overblik over tilmeldinger pr. slot */}
-        <div className="mb-3 p-2 rounded bg-zinc-50 dark:bg-zinc-700">
-          <h3 className="font-semibold text-sm mb-1">🕒 Tilmeldinger pr. slot</h3>
-          {SLOTS.map((s) => (
-            <div key={s.id} className="flex justify-between text-xs">
-              <span>{`Slot ${s.id} (${s.label})`}</span>
-              <span>{slotCounts[s.id] ?? 0}</span>
-            </div>
-          ))}
-        </div>
-
         <h2 className="font-semibold mb-2">📈 Elo-ændringer</h2>
         {Object.entries(samletDiff)
           .sort(([, a], [, b]) => b - a)
