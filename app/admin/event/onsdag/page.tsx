@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { beregnEloForKampe } from '@/lib/beregnElo';
+import { notifyUser } from "@/lib/notify"; // din notify.ts
 
 // ===== Baner (standard for onsdag) =====
 const COURTS = ['Bane 1', 'Bane 2', 'Bane 3'] as const;
@@ -477,12 +478,52 @@ export default function OnsdagPage() {
     // Slet eksisterende plan for datoen (undgå konflikt)
     await supabase.from('event_sets').delete().eq('event_dato', eventDatoISO);
 
-    const { error } = await supabase.from('event_sets').insert(rows);
-    if (error) {
-      alert('❌ Kunne ikke publicere planen: ' + error.message);
-    } else {
-      alert('📢 Onsdagsplan publiceret – spillerne kan nu se deres kampe!');
+    const { error } = await supabase.from("event_sets").insert(rows);
+if (error) {
+  alert("❌ Kunne ikke publicere planen: " + error.message);
+} else {
+  // ✅ Publiceret
+  alert("📢 Plan publiceret – spillerne kan nu se deres kampe!");
+
+  // --- NYT: Send push til den loggede bruger, hvis vedkommende deltager ---
+  try {
+    // 1) Hent logget bruger + visningsnavn
+    const { data: auth } = await supabase.auth.getUser();
+    const me = auth?.user;
+    if (me) {
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("visningsnavn")
+        .eq("id", me.id)
+        .single();
+
+      const myName = prof?.visningsnavn;
+
+      // 2) Udtræk alle navne fra kampe/sæt
+      const participants = Array.from(
+        new Set(
+          kampe.flatMap((k) =>
+            k.sæt.flatMap((s) => [s.holdA1, s.holdA2, s.holdB1, s.holdB2])
+          )
+        )
+      );
+
+      // 3) Hvis jeg deltager → push
+      if (myName && participants.includes(myName)) {
+        await notifyUser({
+          user_id: me.id,
+          title: "📢 Dine kampe er klar",
+          body: `Planen for ${new Date(eventDatoISO + "T00:00:00").toLocaleDateString("da-DK")} er publiceret.`,
+          url: `/event?date=${encodeURIComponent(eventDatoISO)}`,
+        });
+      }
     }
+  } catch (e) {
+    // Valgfrit: log men lad publiceringen være succesfuld
+    console.error("notifyUser error", e);
+  }
+}
+
   };
 
   const sendEventResultater = async () => {
