@@ -142,6 +142,15 @@ export default function AdminHomePage() {
         >
           💸 Admin · Regnskab
         </Link>
+
+         {/* NY: Link til Admin · Event */}
+  <Link
+    href="/admin/event"
+    className="bg-zinc-800 hover:bg-zinc-900 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
+  >
+    📅 Admin · Event
+  </Link>
+  
         {/* Tilpas/udvid gerne flere admin-links her */}
       </div>
 
