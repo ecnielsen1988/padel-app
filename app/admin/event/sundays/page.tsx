@@ -7,17 +7,11 @@ import { beregnEloForKampe } from '@/lib/beregnElo';
 // ===== Baner =====
 const COURTS = ['Bane 1', 'Bane 2', 'Bane 3', 'Bane 5', 'Bane 6'] as const;
 
-// ===== Slots (standard fra næste weekend) =====
+// ===== Slots (altid de oprindelige) =====
 const DEFAULT_SLOTS = [
   { id: 1, label: '13:00–14:40', start: '13:00', end: '14:40' },
   { id: 2, label: '14:40–16:20', start: '14:40', end: '16:20' },
   { id: 3, label: '16:20–18:00', start: '16:20', end: '18:00' },
-] as const;
-
-// ===== Slots (kun for den kommende søndag – “denne gang”) =====
-const SPECIAL_SLOTS = [
-  { id: 1, label: '15:00–16:30', start: '15:00', end: '16:30' },
-  { id: 2, label: '16:30–18:00', start: '16:30', end: '18:00' },
 ] as const;
 
 // Draft-key adskilt fra /makeevent
@@ -111,24 +105,9 @@ export default function SundaysPage() {
   const [busy, setBusy] = useState<null | 'saving' | 'loading'>(null);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
 
-  // Vælg slots: SPECIAL for netop den KOMMENDE søndag én gang, ellers DEFAULT
+  // Altid brug de tre faste søndags-slots
   useEffect(() => {
-    try {
-      const key = 'sunday_special_date';
-      const stored = typeof window !== 'undefined' ? localStorage.getItem(key) : null;
-
-      if (!stored) {
-        // Første gang på maskinen: markér netop den kommende søndag som “special”
-        localStorage.setItem(key, eventDato);
-        setSlots([...SPECIAL_SLOTS]);
-      } else {
-        // Hvis den kommende søndag = gemt special-dato -> brug SPECIAL, ellers DEFAULT
-        setSlots(stored === eventDato ? [...SPECIAL_SLOTS] : [...DEFAULT_SLOTS]);
-      }
-    } catch {
-      // Hvis localStorage ikke virker af en eller anden grund, brug SPECIAL for netop den søndag
-      setSlots([...SPECIAL_SLOTS]);
-    }
+    setSlots([...DEFAULT_SLOTS]);
   }, [eventDato]);
 
   // Hent ELO + profiler

@@ -4,24 +4,17 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { beregnEloForKampe } from '@/lib/beregnElo';
 
-// ===== Baner =====
-const COURTS = ['Bane 1', 'Bane 2', 'Bane 3', 'Bane 5', 'Bane 6'] as const;
+// ===== Baner (standard for onsdag) =====
+const COURTS = ['Bane 1', 'Bane 2', 'Bane 3'] as const;
 
-// ===== Slots (standard fra næste weekend) =====
+// ===== Slots (onsdag) =====
 const DEFAULT_SLOTS = [
-  { id: 1, label: '13:00–14:40', start: '13:00', end: '14:40' },
-  { id: 2, label: '14:40–16:20', start: '14:40', end: '16:20' },
-  { id: 3, label: '16:20–18:00', start: '16:20', end: '18:00' },
+  { id: 1, label: '17:00–18:30', start: '17:00', end: '18:30' },
+  { id: 2, label: '18:30–20:00', start: '18:30', end: '20:00' },
 ] as const;
 
-// ===== Slots (kun for den kommende søndag – “denne gang”) =====
-const SPECIAL_SLOTS = [
-  { id: 1, label: '15:00–16:30', start: '15:00', end: '16:30' },
-  { id: 2, label: '16:30–18:00', start: '16:30', end: '18:00' },
-] as const;
-
-// Draft-key adskilt fra /makeevent
-const DRAFT_KEY = 'sundays';
+// Draft-key for onsdag
+const DRAFT_KEY = 'onsdag';
 
 // ===== Typer =====
 export type Spiller = {
@@ -61,11 +54,12 @@ const erFærdigtSæt = (a: number, b: number) => {
   return (max === 6 && min <= 4) || (max === 7 && (min === 5 || min === 6));
 };
 
-function getNextSundayISO(): string {
+function getNextWednesdayISO(): string {
+  // Find næste onsdag (3) i Europe/Copenhagen
   const nowCph = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Copenhagen' }));
-  const day = nowCph.getDay(); // 0 = søndag
-  let addDays = (7 - day) % 7;
-  if (addDays === 0) addDays = 7; // altid NÆSTE søndag
+  const day = nowCph.getDay(); // 0= søn, 1=man, 2=tirs, 3=ons, ...
+  let addDays = (3 - day + 7) % 7;
+  if (addDays === 0) addDays = 7; // altid NÆSTE onsdag
   const d = new Date(nowCph);
   d.setDate(nowCph.getDate() + addDays);
   const yyyy = d.getFullYear();
@@ -94,9 +88,9 @@ function emojiForPluspoint(p: number) {
   return '💩💩';
 }
 
-export default function SundaysPage() {
-  // Dato + slots for netop den kommende søndag
-  const [eventDato, setEventDato] = useState<string>(() => getNextSundayISO());
+export default function OnsdagPage() {
+  // Dato + slots for netop den kommende onsdag
+  const [eventDato, setEventDato] = useState<string>(() => getNextWednesdayISO());
   const [slots, setSlots] = useState<{ id: number; label: string; start: string; end: string }[]>(
     DEFAULT_SLOTS as any
   );
@@ -111,24 +105,9 @@ export default function SundaysPage() {
   const [busy, setBusy] = useState<null | 'saving' | 'loading'>(null);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
 
-  // Vælg slots: SPECIAL for netop den KOMMENDE søndag én gang, ellers DEFAULT
+  // Onsdag: brug altid de to faste slots
   useEffect(() => {
-    try {
-      const key = 'sunday_special_date';
-      const stored = typeof window !== 'undefined' ? localStorage.getItem(key) : null;
-
-      if (!stored) {
-        // Første gang på maskinen: markér netop den kommende søndag som “special”
-        localStorage.setItem(key, eventDato);
-        setSlots([...SPECIAL_SLOTS]);
-      } else {
-        // Hvis den kommende søndag = gemt special-dato -> brug SPECIAL, ellers DEFAULT
-        setSlots(stored === eventDato ? [...SPECIAL_SLOTS] : [...DEFAULT_SLOTS]);
-      }
-    } catch {
-      // Hvis localStorage ikke virker af en eller anden grund, brug SPECIAL for netop den søndag
-      setSlots([...SPECIAL_SLOTS]);
-    }
+    setSlots([...DEFAULT_SLOTS]);
   }, [eventDato]);
 
   // Hent ELO + profiler
@@ -149,7 +128,7 @@ export default function SundaysPage() {
       const spillereMedElo = profiles.map((p) => ({
         visningsnavn: p.visningsnavn,
         elo: map[p.visningsnavn] ?? 1000,
-        slots: defaultSlotIds, // default = alle slots for DENNE søndag
+        slots: defaultSlotIds, // default = alle slots for DENNE onsdag
       }));
 
       setAlleSpillere(spillereMedElo);
@@ -245,7 +224,7 @@ export default function SundaysPage() {
       const slotId = chooseSlot([p1, p2, p3, p4]);
       const cfg = slotCfgById(slotId);
 
-      // Bane følger COURTS-listen (undgår fx “Bane 4”)
+      // Bane følger COURTS-listen
       const courtIndex = Math.floor(i / 4);
       const baneNavn = COURTS[courtIndex] ?? COURTS[COURTS.length - 1];
 
@@ -303,7 +282,7 @@ export default function SundaysPage() {
     });
   };
 
-  // Elo-preview (uændret fra din)
+  // Elo-preview (uændret)
   const sætMedId = kampe.flatMap((kamp, kampIndex) =>
     kamp.sæt.map((sæt, sætIndex) => {
       const score = [sæt.scoreA, sæt.scoreB];
@@ -392,9 +371,9 @@ export default function SundaysPage() {
 
       if (error) throw error;
 
-      localStorage.setItem('event_draft_sundays', JSON.stringify(payload));
+      localStorage.setItem('event_draft_onsdag', JSON.stringify(payload));
       setLastSavedAt(payload.savedAt);
-      alert('💾 Søndagskladde gemt!');
+      alert('💾 Onsdagskladde gemt!');
     } catch (e) {
       console.error(e);
       alert('❌ Kunne ikke gemme kladden.');
@@ -432,12 +411,12 @@ export default function SundaysPage() {
       }
 
       if (!loaded) {
-        const raw = localStorage.getItem('event_draft_sundays');
+        const raw = localStorage.getItem('event_draft_onsdag');
         if (raw) loaded = JSON.parse(raw) as DraftPayload;
       }
 
       if (!loaded) {
-        alert('Ingen søndagskladde fundet.');
+        alert('Ingen onsdagskladde fundet.');
         return;
       }
 
@@ -459,7 +438,7 @@ export default function SundaysPage() {
       setValgteSpillere(normSpillere);
       setKampe(normKampe);
       setLastSavedAt(loaded.savedAt ?? null);
-      alert('📥 Søndagskladde indlæst!');
+      alert('📥 Onsdagskladde indlæst!');
     } catch (e) {
       console.error(e);
       alert('❌ Kunne ikke indlæse kladden.');
@@ -470,7 +449,7 @@ export default function SundaysPage() {
   // ======== /Draft ========
 
   const publicerEventPlan = async () => {
-    const ok = window.confirm('Publicér søndagsplanen så spillerne kan se deres kampe?');
+    const ok = window.confirm('Publicér onsdagsplanen så spillerne kan se deres kampe?');
     if (!ok) return;
 
     const eventDatoISO = eventDato;
@@ -502,7 +481,7 @@ export default function SundaysPage() {
     if (error) {
       alert('❌ Kunne ikke publicere planen: ' + error.message);
     } else {
-      alert('📢 Søndagsplan publiceret – spillerne kan nu se deres kampe!');
+      alert('📢 Onsdagsplan publiceret – spillerne kan nu se deres kampe!');
     }
   };
 
@@ -615,7 +594,7 @@ Dette vil slette event-data og indsende alle sæt permanent til ranglisten.`
     <div className="flex gap-4 p-4 h-screen overflow-auto bg-white text-black dark:bg-zinc-900 dark:text-white">
       {/* Venstre kolonne */}
       <div className="w-1/5 p-3 rounded shadow bg-zinc-100 dark:bg-zinc-800">
-        <h1 className="font-bold mb-1">🌞 Søndagsrangliste</h1>
+        <h1 className="font-bold mb-1">📆 Onsdags-event</h1>
         <p className="text-[11px] text-zinc-500 mb-2">Næste event: {eventDatoLabel}</p>
 
         <div className="mb-2 text-[11px] text-zinc-600 dark:text-zinc-300">
@@ -725,7 +704,7 @@ Dette vil slette event-data og indsende alle sæt permanent til ranglisten.`
               : 'bg-green-600 text-white hover:bg-green-700'
           }`}
         >
-          ✅ Lav søndags-event
+          ✅ Lav onsdags-event
         </button>
       </div>
 
@@ -891,17 +870,17 @@ Dette vil slette event-data og indsende alle sæt permanent til ranglisten.`
             disabled={busy === 'saving'}
             className="bg-zinc-900/80 dark:bg-zinc-200 dark:text-zinc-900 text-white px-3 py-1 rounded text-sm hover:opacity-90 disabled:opacity-50"
           >
-            {busy === 'saving' ? 'Gemmer...' : '💾 Gem søndagskladde'}
+            {busy === 'saving' ? 'Gemmer...' : '💾 Gem onsdagskladde'}
           </button>
           <button
             onClick={loadDraft}
             disabled={busy === 'loading'}
             className="bg-zinc-700/80 dark:bg-zinc-300 dark:text-zinc-900 text-white px-3 py-1 rounded text-sm hover:opacity-90 disabled:opacity-50"
           >
-            {busy === 'loading' ? 'Henter...' : '📥 Hent søndagskladde'}
+            {busy === 'loading' ? 'Henter...' : '📥 Hent onsdagskladde'}
           </button>
           <button onClick={publicerEventPlan} className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700">
-            📢 Publicér søndagsplan
+            📢 Publicér onsdagsplan
           </button>
           {lastSavedAt && (
             <p className="text-[11px] text-zinc-500 mt-1">Sidst gemt: {new Date(lastSavedAt).toLocaleString('da-DK')}</p>
@@ -917,4 +896,3 @@ Dette vil slette event-data og indsende alle sæt permanent til ranglisten.`
     </div>
   );
 }
-
