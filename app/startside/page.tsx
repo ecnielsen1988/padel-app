@@ -16,6 +16,46 @@ export default function StartSide() {
   const [ulæsteDM, setUlæsteDM] = useState<number>(0);
   const [ulæsteAdmin, setUlæsteAdmin] = useState<number>(0);
 
+  // ⬇️ Notifikations-test state + handler
+const [notifStatus, setNotifStatus] = useState<'idle'|'working'|'ok'|'err'>('idle');
+
+const sendTestNotifikation = async () => {
+  try {
+    setNotifStatus('working');
+
+    if (!('serviceWorker' in navigator)) {
+      alert('Service Worker er ikke understøttet i denne browser.');
+      setNotifStatus('err');
+      return;
+    }
+
+    // Registrér service worker (vi lavede /public/sw.js i Trin 1)
+    const reg = await navigator.serviceWorker.register('/sw.js');
+
+    // Bed om tilladelse (på iPhone skal dette ske efter klik)
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+      alert('Du skal tillade notifikationer for at teste.');
+      setNotifStatus('err');
+      return;
+    }
+
+    // Vis en lokal test-notifikation (ingen backend/push endnu)
+    await reg.showNotification('Padel – test', {
+      body: 'Hvis du kan se denne, virker notifikationer 🎉',
+      // icon: '/icons/maskable-192.png', // valgfri – kommenteret ud for at undgå 404
+      data: { url: '/' }
+    });
+
+    setNotifStatus('ok');
+  } catch (err) {
+    console.error(err);
+    alert('Kunne ikke vise test-notifikation.');
+    setNotifStatus('err');
+  }
+};
+
+
   useEffect(() => {
     let mounted = true;
 
@@ -175,6 +215,25 @@ export default function StartSide() {
           Log ud
         </button>
       </div>
+
+{/* Test-notifikation (trin 2) */}
+<div className="mb-6">
+  <button
+    onClick={sendTestNotifikation}
+    className="px-4 py-2 rounded-xl bg-pink-600 hover:bg-pink-700 text-white font-semibold shadow"
+  >
+    {notifStatus === 'working'
+      ? 'Tester…'
+      : notifStatus === 'ok'
+      ? 'Test sendt ✅'
+      : 'Send test-notifikation 🔔'}
+  </button>
+  <p className="mt-2 text-sm text-gray-400">
+    Tryk på knappen og vælg <em>Tillad</em>. Testen virker kun når appen er åbnet fra hjemmeskærmen.
+  </p>
+</div>
+
+
 
       {/* Knap-grid */}
 <div className="grid gap-4">
