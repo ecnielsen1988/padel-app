@@ -17,18 +17,22 @@ export default function NotificationsCard() {
   const [error, setError] = useState<string | null>(null);
   const [perm, setPerm] = useState<'default'|'granted'|'denied'|'na'>('na');
   const [standalone, setStandalone] = useState(false);
-  const [registered, setRegistered] = useState(false); // subscription gemt i DB?
+  const [registered, setRegistered] = useState(false); // subscription findes i DB?
+  const [vapidOk, setVapidOk] = useState<boolean>(true);
 
+  // Init: tjek A2HS, permission, lokal subscription + DB
   useEffect(() => {
     const isStandalone =
       (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+      // iOS flag når åbnet fra HS
       (navigator as any).standalone === true;
     setStandalone(isStandalone);
 
     if (typeof Notification === 'undefined') setPerm('na');
     else setPerm(Notification.permission);
 
-    // tjek om SW er registreret og om der findes en subscription
+    setVapidOk(!!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY);
+
     (async () => {
       try {
         if (!('serviceWorker' in navigator)) return;
@@ -36,7 +40,6 @@ export default function NotificationsCard() {
         const sub = await reg?.pushManager.getSubscription();
         if (!sub) return;
 
-        // hvis der findes en subscription lokalt, check om den ligger i DB
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
 
@@ -48,7 +51,7 @@ export default function NotificationsCard() {
           .maybeSingle();
 
         if (!error && data) setRegistered(true);
-      } catch {}
+      } catch { /* ignore */ }
     })();
   }, []);
 
@@ -67,20 +70,20 @@ export default function NotificationsCard() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Du skal være logget ind.');
 
-      // registrér SW og vent på ready
+      // registrér SW og vent
       await navigator.serviceWorker.register('/sw.js');
       const reg = await navigator.serviceWorker.ready;
 
-      // iOS kræver brugerklik → denne funktion kaldes fra en knap
+      // tilladelse (kræver klik)
       const permission = await Notification.requestPermission();
       setPerm(permission);
       if (permission !== 'granted') throw new Error('Tillad notifikationer for at aktivere.');
 
-      // eksisterende subscription?
+      // eksisterende subscription, ellers opret
       let sub = await reg.pushManager.getSubscription();
       if (!sub) {
         const vapid = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY as string;
-        if (!vapid) throw new Error('Mangler NEXT_PUBLIC_VAPID_PUBLIC_KEY env var.');
+        if (!vapid) throw new Error('Mangler NEXT_PUBLIC_VAPID_PUBLIC_KEY (server redeploy?)');
         sub = await reg.pushManager.subscribe({
           userVisibleOnly: true,
           applicationServerKey: urlBase64ToUint8Array(vapid),
@@ -88,20 +91,14 @@ export default function NotificationsCard() {
       }
 
       // gem i Supabase
-      const toB64 = (buf: ArrayBuffer | null) =>
-        buf ? btoa(String.fromCharCode(...new Uint8Array(buf))) : null;
-
+      const toB64 = (buf: ArrayBuffer | null) => buf ? btoa(String.fromCharCode(...new Uint8Array(buf))) : null;
       const payload = {
         user_id: user.id,
         endpoint: sub.endpoint,
         p256dh: toB64(sub.getKey('p256dh')),
         auth: toB64(sub.getKey('auth')),
       };
-
-      const { error: upErr } = await supabase
-        .from('push_subscriptions')
-        .upsert(payload, { onConflict: 'endpoint' }); // kræver policies er sat
-
+      const { error: upErr } = await supabase.from('push_subscriptions').upsert(payload, { onConflict: 'endpoint' });
       if (upErr) throw upErr;
 
       setRegistered(true);
@@ -110,6 +107,29 @@ export default function NotificationsCard() {
       console.error(e);
       setError(e?.message || String(e));
       setStatus('err');
+    }
+  };
+
+  // Server-test: kalder din Next API-route som sender en ægte push
+  const sendServerTest = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return alert('Log ind først');
+      const res = await fetch('/api/notify-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user.id,
+          title: 'Server push',
+          body: 'Det virker 🔔',
+          url: '/beskeder'
+        })
+      });
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error || 'Ukendt fejl');
+      alert('Server-test sendt. Tjek din push!');
+    } catch (e:any) {
+      alert(e?.message || 'Kunne ikke sende server-test');
     }
   };
 
@@ -122,7 +142,7 @@ export default function NotificationsCard() {
           {!standalone && (
             <p className="mt-1 text-sm text-pink-900/80">
               For at modtage notifikationer skal appen være tilføjet til hjemmeskærmen.
-              Åbn siden i <strong>Safari</strong> → Del → <em>Føj til hjemmeskærm</em>, og åbn herfra.
+              Åbn i <strong>Safari</strong> → Del → <em>Føj til hjemmeskærm</em>, og åbn herfra.
             </p>
           )}
 
@@ -144,6 +164,12 @@ export default function NotificationsCard() {
             </p>
           )}
 
+          {!vapidOk && (
+            <p className="mt-2 text-sm text-red-600">
+              Mangler NEXT_PUBLIC_VAPID_PUBLIC_KEY (tilføj i Netlify og redeploy).
+            </p>
+          )}
+
           {error && <p className="mt-2 text-sm text-red-600">Fejl: {error}</p>}
         </div>
 
@@ -157,9 +183,17 @@ export default function NotificationsCard() {
               {status === 'working' ? 'Aktiverer…' : registered ? 'Gen-registrér' : 'Aktivér'}
             </button>
           )}
+
+          {standalone && perm === 'granted' && registered && (
+            <button
+              onClick={sendServerTest}
+              className="ml-2 px-3 py-2 rounded-xl border border-pink-300 text-pink-700"
+            >
+              Server-test
+            </button>
+          )}
         </div>
       </div>
     </div>
   );
 }
-
