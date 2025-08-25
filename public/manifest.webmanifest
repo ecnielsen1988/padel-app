@@ -1,6 +1,6 @@
 {
-  "name": "Padelhuset",
-  "short_name": "Padel",
+  "name": "Padelhusets Rangliste",
+  "short_name": "Padelhuset",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
