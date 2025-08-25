@@ -1,122 +1,181 @@
-"use client"
+"use client";
 
-import React, { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
-import { supabase } from "../../lib/supabaseClient"
+import React, { useState, useEffect } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
 
 export default function Registrer() {
-  const router = useRouter()
+  const router = useRouter();
 
-  const [fornavn, setFornavn] = useState("")
-  const [efternavn, setEfternavn] = useState("")
-  const [visningsnavn, setVisningsnavn] = useState("")
-  const [email, setEmail] = useState("")
-  const [fødselsdato, setFødselsdato] = useState("")
-  const [koen, setKoen] = useState("")
-  const [telefon, setTelefon] = useState("")
-  const [niveau, setNiveau] = useState("")
-  const [startElo, setStartElo] = useState(0)
-  const [fejl, setFejl] = useState("")
-  const [succes, setSucces] = useState("")
+  // Auth gate
+  const [authLoading, setAuthLoading] = useState(true);
+  const [userId, setUserId] = useState<string | null>(null);
 
+  // Form state
+  const [fornavn, setFornavn] = useState("");
+  const [efternavn, setEfternavn] = useState("");
+  const [visningsnavn, setVisningsnavn] = useState("");
+  const [email, setEmail] = useState("");
+  const [fødselsdato, setFødselsdato] = useState("");
+  const [koen, setKoen] = useState("");
+  const [telefon, setTelefon] = useState("");
+  const [niveau, setNiveau] = useState("");
+  const [startElo, setStartElo] = useState(0);
+  const [fejl, setFejl] = useState("");
+  const [succes, setSucces] = useState("");
+
+  // 1) Prøv at auto-logge ind, hvis der ligger tokens i URL-hashen (fra verifikationsmail)
   useEffect(() => {
-    const hentEmail = async () => {
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
-      const user = sessionData?.session?.user
-      if (user) setEmail(user.email || "")
-      if (sessionError) console.error("Fejl ved hentning af session:", sessionError)
-    }
-    hentEmail()
-  }, [])
+    const init = async () => {
+      try {
+        // parse #access_token & #refresh_token fra URL (Supabase redirect)
+        if (typeof window !== "undefined" && window.location.hash) {
+          const params = new URLSearchParams(window.location.hash.slice(1));
+          const access_token = params.get("access_token");
+          const refresh_token = params.get("refresh_token");
+          if (access_token && refresh_token) {
+            const { data, error } = await supabase.auth.setSession({
+              access_token,
+              refresh_token,
+            });
+            if (!error) {
+              // fjern tokens fra URL, bevar evt. querystring
+              window.history.replaceState(
+                {},
+                document.title,
+                window.location.pathname + window.location.search
+              );
+            }
+          }
+        }
 
+        // hent session
+        const { data: sessionData } = await supabase.auth.getSession();
+        const user = sessionData?.session?.user ?? null;
+        setUserId(user?.id || null);
+        if (user?.email) setEmail(user.email);
+      } finally {
+        setAuthLoading(false);
+      }
+    };
+    init();
+  }, []);
+
+  // Auto-udfyld visningsnavn
   useEffect(() => {
     if (fornavn && efternavn) {
-      setVisningsnavn(`${fornavn.trim()} ${efternavn.trim()}`)
+      setVisningsnavn(`${fornavn.trim()} ${efternavn.trim()}`);
     }
-  }, [fornavn, efternavn])
+  }, [fornavn, efternavn]);
 
   const niveauTilElo = (niveau: string) => {
     switch (niveau) {
-      case "1": return 500
-      case "2": return 750
-      case "3": return 1000
-      case "4": return 1250
-      case "5": return 1500
-      case "6": return 1750
-      case "7": return 2000
-      default: return 0
+      case "1": return 500;
+      case "2": return 750;
+      case "3": return 1000;
+      case "4": return 1250;
+      case "5": return 1500;
+      case "6": return 1750;
+      case "7": return 2000;
+      default: return 0;
     }
-  }
+  };
 
   const handleNiveauChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setNiveau(e.target.value)
-    setStartElo(niveauTilElo(e.target.value))
-  }
+    setNiveau(e.target.value);
+    setStartElo(niveauTilElo(e.target.value));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setFejl("")
-    setSucces("")
+    e.preventDefault();
+    setFejl("");
+    setSucces("");
 
-    if (!fornavn.trim() || !efternavn.trim() || !email.trim() || !niveau || !visningsnavn.trim()) {
-      setFejl("Udfyld venligst alle nødvendige felter.")
-      return
+    // Gate igen for en sikkerheds skyld
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    const user = sessionData?.session?.user;
+    if (!user || sessionError) {
+      setFejl("Du er ikke logget ind i denne browser. Log ind først.");
+      return;
     }
 
+    if (!fornavn.trim() || !efternavn.trim() || !email.trim() || !niveau || !visningsnavn.trim()) {
+      setFejl("Udfyld venligst alle nødvendige felter.");
+      return;
+    }
+
+    // Tjek unikt visningsnavn
     const { data: eksisterende, error: visningsnavnFejl } = await supabase
       .from("profiles")
       .select("id")
-      .eq("visningsnavn", visningsnavn.trim())
+      .eq("visningsnavn", visningsnavn.trim());
 
     if (visningsnavnFejl) {
-      setFejl("Der opstod en fejl under tjek af visningsnavn.")
-      return
+      setFejl("Der opstod en fejl under tjek af visningsnavn.");
+      return;
     }
-
     if (eksisterende && eksisterende.length > 0) {
-      setFejl("Visningsnavnet er allerede i brug. Vælg et andet.")
-      return
+      setFejl("Visningsnavnet er allerede i brug. Vælg et andet.");
+      return;
     }
 
-    const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
-    const user = sessionData?.session?.user
-
-    if (!user || sessionError) {
-      setFejl("Kunne ikke hente brugerinformation.")
-      return
-    }
-
+    // Opret profil
     const { error: profilFejl } = await supabase.from("profiles").insert({
-  id: user.id,
-  fornavn,
-  efternavn,
-  visningsnavn: visningsnavn.trim(),
-  email,
-  koen,
-  telefon,
-  rolle: "bruger",
-  niveau,
-  startElo,
-  ...(fødselsdato ? { fødselsdato } : {}) // <-- dette er fixet
-})
-
+      id: user.id,
+      fornavn,
+      efternavn,
+      visningsnavn: visningsnavn.trim(),
+      email,
+      koen,
+      telefon,
+      rolle: "bruger",
+      niveau,
+      startElo,
+      ...(fødselsdato ? { fødselsdato } : {}),
+    });
 
     if (profilFejl) {
-  console.error("Profilfejl:", profilFejl)
-  setFejl("❌ Fejl ved oprettelse: " + profilFejl.message)
-  return
-}
+      console.error("Profilfejl:", profilFejl);
+      setFejl("❌ Fejl ved oprettelse: " + profilFejl.message);
+      return;
+    }
 
+    setSucces("Profil oprettet!");
+    setTimeout(() => router.push("/startside"), 1200);
+  };
 
-
-    setSucces("Profil oprettet!")
-
-    // Redirect til startside efter 1.5 sek
-    setTimeout(() => {
-      router.push("/startside")
-    }, 1500)
+  // UI gates
+  if (authLoading) {
+    return (
+      <main style={styles.main}>
+        <p>⏳ Tjekker login…</p>
+      </main>
+    );
   }
 
+  if (!userId) {
+    // Ikke logget ind → vis venlig besked og knap til login
+    return (
+      <main style={styles.main}>
+        <h1 style={styles.heading}>Fuldfør registrering</h1>
+        <div style={styles.boks}>
+          <p style={{ marginBottom: "1rem" }}>
+            Du er ikke logget ind i denne browser. Åbn verifikationsmailen på **samme enhed og browser**,
+            eller log ind herunder og kom tilbage til denne side.
+          </p>
+          <Link
+            href="/login?next=/registrer"
+            className="inline-block bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-6 rounded-xl shadow"
+          >
+            Log ind
+          </Link>
+        </div>
+      </main>
+    );
+  }
+
+  // Logget ind → vis formular
   return (
     <main style={styles.main}>
       <h1 style={styles.heading}>Fuldfør registrering</h1>
@@ -193,7 +252,7 @@ export default function Registrer() {
         </button>
       </form>
     </main>
-  )
+  );
 }
 
 const styles: { [key: string]: React.CSSProperties } = {
@@ -265,4 +324,5 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontWeight: "bold",
     textAlign: "center",
   },
-}
+};
+
