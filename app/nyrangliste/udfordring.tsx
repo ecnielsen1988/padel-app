@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
+import { notifyUser } from '@/lib/notify';
+
 
 export default function Udfordring({
   recipient,
@@ -61,6 +63,19 @@ export default function Udfordring({
         body: body.trim(),
       });
       if (insErr) throw insErr;
+
+      // 🚀 Push til modtageren
+try {
+  await notifyUser({
+    user_id: rec.id,
+    title: 'Ny udfordring',
+    body: `${senderName}: ${body.trim()}`,
+    url: '/beskeder'
+  });
+} catch (e) {
+  console.warn('Kunne ikke sende push (udfordring):', e);
+}
+
 
       setOpen(false);
       setBody('');

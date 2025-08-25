@@ -4,6 +4,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import Link from 'next/link';
+import { notifyUser } from '@/lib/notify';
+
 
 type Message = {
   id: string;
@@ -271,8 +273,23 @@ export default function BeskederThreadView() {
       return;
     }
     setMessages((prev) => [...prev, data as Message]); // vi viser i stigende orden i tråden
+
+    // 🚀 Push til modtageren
+try {
+  await notifyUser({
+    user_id: recipientId,
+    title: 'Ny besked',
+    body: `${meName}: ${row.body}`,
+    url: '/beskeder'
+  });
+} catch (e) {
+  console.warn('Kunne ikke sende push (beskeder):', e);
+}
+
   }
 
+
+  
   // Hard delete (afsender altid)
   function canHardDelete(m: Message) {
     return !!meId && m.sender_id === meId;
