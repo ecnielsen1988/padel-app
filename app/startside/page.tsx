@@ -18,39 +18,54 @@ export default function StartSide() {
 
   // ⬇️ Notifikations-test state + handler
 const [notifStatus, setNotifStatus] = useState<'idle'|'working'|'ok'|'err'>('idle');
+const [notifError, setNotifError] = useState<string | null>(null);
 
 const sendTestNotifikation = async () => {
+  setNotifError(null);
   try {
     setNotifStatus('working');
 
     if (!('serviceWorker' in navigator)) {
-      alert('Service Worker er ikke understøttet i denne browser.');
+      setNotifError('Denne browser understøtter ikke Service Workers.');
+      setNotifStatus('err');
+      return;
+    }
+    if (typeof Notification === 'undefined') {
+      setNotifError('Notification-API er ikke tilgængelig her.');
       setNotifStatus('err');
       return;
     }
 
-    // Registrér service worker (vi lavede /public/sw.js i Trin 1)
-    const reg = await navigator.serviceWorker.register('/sw.js');
+    // 1) Registrér SW (og vent derefter på at den er klar/aktiv)
+    await navigator.serviceWorker.register('/sw.js');
+    const reg = await navigator.serviceWorker.ready;
 
-    // Bed om tilladelse (på iPhone skal dette ske efter klik)
+    // 2) Tjek at showNotification findes (Safari/iOS kræver dette)
+    if (!('showNotification' in reg)) {
+      setNotifError('showNotification er ikke tilgængelig på denne platform.');
+      setNotifStatus('err');
+      return;
+    }
+
+    // 3) Bed om tilladelse (skal ske efter klik)
     const permission = await Notification.requestPermission();
     if (permission !== 'granted') {
-      alert('Du skal tillade notifikationer for at teste.');
+      setNotifError('Du skal tillade notifikationer for at teste.');
       setNotifStatus('err');
       return;
     }
 
-    // Vis en lokal test-notifikation (ingen backend/push endnu)
+    // 4) Vis notifikation (lokal test, ingen backend)
     await reg.showNotification('Padel – test', {
       body: 'Hvis du kan se denne, virker notifikationer 🎉',
-      // icon: '/icons/maskable-192.png', // valgfri – kommenteret ud for at undgå 404
-      data: { url: '/' }
+      // icon: '/icons/maskable-192.png', // valgfri
+      data: { url: '/' },
     });
 
     setNotifStatus('ok');
-  } catch (err) {
-    console.error(err);
-    alert('Kunne ikke vise test-notifikation.');
+  } catch (e: any) {
+    console.error(e);
+    setNotifError(e?.message || String(e));
     setNotifStatus('err');
   }
 };
@@ -232,6 +247,11 @@ const sendTestNotifikation = async () => {
     Tryk på knappen og vælg <em>Tillad</em>. Testen virker kun når appen er åbnet fra hjemmeskærmen.
   </p>
 </div>
+{notifError && (
+  <p className="mt-2 text-sm text-red-500">
+    Fejl: {notifError}
+  </p>
+)}
 
 
 
