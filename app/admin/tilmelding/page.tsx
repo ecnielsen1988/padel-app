@@ -82,7 +82,7 @@ interface EloRow {
   elo: number;
 }
 
-export async function togglePaidAction(formData: FormData) {
+async function togglePaidAction(formData: FormData) {
   'use server';
   const supabase = createServerActionClient<any>({ cookies });
   const visningsnavn = String(formData.get('visningsnavn') || '');
