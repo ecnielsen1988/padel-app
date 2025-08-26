@@ -1,12 +1,14 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { beregnEloForKampe } from "@/lib/beregnElo";
 
+// ===== Typer =====
 export type Spiller = {
   visningsnavn: string;
   elo?: number;
+  tidligste_tid?: string | null; // HH:MM eller timestamp
 };
 
 export type Sæt = {
@@ -21,8 +23,8 @@ export type Sæt = {
 export type Kamp = {
   id: string;
   bane: string;
-  starttid: string;
-  sluttid: string;
+  starttid: string; // 'HH:MM'
+  sluttid: string;  // 'HH:MM'
   sæt: Sæt[];
 };
 
@@ -32,49 +34,58 @@ type DraftPayload = {
   savedAt: string;
 };
 
-const DRAFT_KEY = "default"; // én kladde pr. bruger – kan udvides til flere nøgler
+const DRAFT_KEY = "torsdagspadel"; // unik kladde pr. bruger for torsdag
 
+// ===== Hjælpere =====
 const erFærdigtSæt = (a: number, b: number) => {
   const max = Math.max(a, b);
   const min = Math.min(a, b);
-  return (
-    (max === 6 && min <= 4) ||
-    (max === 7 && (min === 5 || min === 6))
-  );
+  return (max === 6 && min <= 4) || (max === 7 && (min === 5 || min === 6));
 };
 
 function getNextThursdayISO(): string {
-  const nowCph = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Copenhagen' }));
+  const nowCph = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Copenhagen" }));
   const day = nowCph.getDay(); // 0=søn ... 4=tors
   let addDays = (4 - day + 7) % 7;
-  if (addDays === 0) addDays = 7;
+  if (addDays === 0) addDays = 7; // altid NÆSTE torsdag
   const d = new Date(nowCph);
   d.setDate(nowCph.getDate() + addDays);
   const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
 }
 
+function formatTime(value?: string | null) {
+  if (!value) return "";
+  const hhmm = value.match(/\d{2}:\d{2}/)?.[0];
+  if (hhmm) return hhmm;
+  try {
+    const d = new Date(value);
+    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  } catch {
+    return value ?? "";
+  }
+}
 
 function emojiForPluspoint(p: number) {
-  if (p >= 100) return '🍾';
-  if (p >= 50) return '🏆';
-  if (p >= 40) return '🏅';
-  if (p >= 30) return '☄️';
-  if (p >= 20) return '🚀';
-  if (p >= 10) return '🔥';
-  if (p >= 5) return '📈';
-  if (p >= 0) return '💪';
-  if (p > -5) return '🎲';
-  if (p > -10) return '📉';
-  if (p > -20) return '🧯';
-  if (p > -30) return '🪂';
-  if (p > -40) return '❄️';
-  if (p > -50) return '🙈';
-  if (p > -100) return '🥊';
-  if (p > -150) return '💩'
-    return '💩💩'
+  if (p >= 100) return "🍾";
+  if (p >= 50) return "🏆";
+  if (p >= 40) return "🏅";
+  if (p >= 30) return "☄️";
+  if (p >= 20) return "🚀";
+  if (p >= 10) return "🔥";
+  if (p >= 5) return "📈";
+  if (p >= 0) return "💪";
+  if (p > -5) return "🎲";
+  if (p > -10) return "📉";
+  if (p > -20) return "🧯";
+  if (p > -30) return "🪂";
+  if (p > -40) return "❄️";
+  if (p > -50) return "🙈";
+  if (p > -100) return "🥊";
+  if (p > -150) return "💩";
+  return "💩💩";
 }
 
 export default function EventLayout() {
@@ -84,33 +95,57 @@ export default function EventLayout() {
   const [kampe, setKampe] = useState<Kamp[]>([]);
   const [search, setSearch] = useState("");
 
-  const [busy, setBusy] = useState<null | "saving" | "loading">(null);
+  const [busy, setBusy] = useState<null | "saving" | "loading" | "publishing">(null);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
 
+  // Hent kun torsdagsprofiler + signups for næste torsdag, og forudfyld valgte spillere
   useEffect(() => {
     const hentData = async () => {
+      // Elo-map fra API
       const res = await fetch("/api/rangliste");
       const rangliste = await res.json();
       const map: Record<string, number> = {};
-      rangliste.forEach((s: any) => {
-        map[s.visningsnavn] = s.elo;
+      (rangliste || []).forEach((s: any) => {
+        map[s.visningsnavn] = Math.round(s.elo);
       });
       setEloMap(map);
 
-      const { data: profiles } = await supabase.from("profiles").select("visningsnavn");
-      if (!profiles) return;
+      // Kun torsdagsflag-profiler
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("visningsnavn")
+        .eq("torsdagspadel", true);
 
-      const spillereMedElo = profiles.map((p) => ({
+      const thursdayISO = getNextThursdayISO();
+
+      // Signups for den kommende torsdag
+      const { data: signups } = await supabase
+        .from("event_signups")
+        .select("visningsnavn, kan_spille, tidligste_tid, event_dato")
+        .eq("event_dato", thursdayISO);
+
+      const signupByName = new Map((signups ?? []).map((s) => [s.visningsnavn, s]));
+
+      const spillereMedElo: Spiller[] = (profiles ?? []).map((p) => ({
         visningsnavn: p.visningsnavn,
         elo: map[p.visningsnavn] ?? 1000,
+        tidligste_tid: signupByName.get(p.visningsnavn)?.tidligste_tid ?? null,
       }));
 
       setAlleSpillere(spillereMedElo);
+
+      // Forudfyld med dem der har tilmeldt sig (kan_spille = true)
+      const preselected = spillereMedElo
+        .filter((s) => signupByName.get(s.visningsnavn)?.kan_spille === true)
+        .sort((a, b) => (b.elo ?? 0) - (a.elo ?? 0));
+
+      setValgteSpillere((prev) => (prev.length ? prev : preselected));
     };
 
     hentData();
   }, []);
 
+  // === Spillere ===
   const tilføjSpiller = (spiller: Spiller) => {
     if (!valgteSpillere.find((s) => s.visningsnavn === spiller.visningsnavn)) {
       const spillerMedElo = {
@@ -128,6 +163,16 @@ export default function EventLayout() {
     setValgteSpillere((prev) => prev.filter((s) => s.visningsnavn !== visningsnavn));
   };
 
+  const moveSpillerUp = (index: number) => {
+    if (index === 0) return; // øverste kan ikke rykkes op
+    setValgteSpillere((prev) => {
+      const arr = [...prev];
+      [arr[index - 1], arr[index]] = [arr[index], arr[index - 1]];
+      return arr;
+    });
+  };
+
+  // === Kampe ===
   const lavEventFraSpillere = () => {
     const nyeKampe: Kamp[] = [];
     for (let i = 0; i < valgteSpillere.length; i += 4) {
@@ -138,8 +183,8 @@ export default function EventLayout() {
       nyeKampe.push({
         id: `kamp${i / 4 + 1}`,
         bane: `Bane ${i / 4 + 1}`,
-        starttid: "15:00",
-        sluttid: "16:30",
+        starttid: "17:00",
+        sluttid: "18:30",
         sæt: [
           { holdA1: p1, holdA2: p2, holdB1: p3, holdB2: p4, scoreA: 0, scoreB: 0 },
           { holdA1: p1, holdA2: p3, holdB1: p2, holdB2: p4, scoreA: 0, scoreB: 0 },
@@ -153,50 +198,45 @@ export default function EventLayout() {
   const genererNæsteSæt = (kampIndex: number) => {
     setKampe((prev) => {
       const kamp = prev[kampIndex];
-      const baseSpillere = kamp.sæt[0];
+      const base = kamp.sæt[0];
 
       const rotation = [
-        [baseSpillere.holdA1, baseSpillere.holdA2, baseSpillere.holdB1, baseSpillere.holdB2],
-        [baseSpillere.holdA1, baseSpillere.holdB1, baseSpillere.holdA2, baseSpillere.holdB2],
-        [baseSpillere.holdA1, baseSpillere.holdB2, baseSpillere.holdA2, baseSpillere.holdB1],
+        [base.holdA1, base.holdA2, base.holdB1, base.holdB2],
+        [base.holdA1, base.holdB1, base.holdA2, base.holdB2],
+        [base.holdA1, base.holdB2, base.holdA2, base.holdB1],
       ];
 
-      const næsteRotation = rotation[kamp.sæt.length % 3];
+      const r = rotation[kamp.sæt.length % 3];
 
-      const nytSæt = {
-        holdA1: næsteRotation[0],
-        holdA2: næsteRotation[1],
-        holdB1: næsteRotation[2],
-        holdB2: næsteRotation[3],
+      const nytSæt: Sæt = {
+        holdA1: r[0],
+        holdA2: r[1],
+        holdB1: r[2],
+        holdB2: r[3],
         scoreA: 0,
         scoreB: 0,
       };
 
-      const opdateretKamp = {
-        ...kamp,
-        sæt: [...kamp.sæt, nytSæt],
-      };
-
-      const opdateretKampe = [...prev];
-      opdateretKampe[kampIndex] = opdateretKamp;
-      return opdateretKampe;
-    });
-  };
-
-  const moveSpillerUp = (index: number) => {
-    if (index === 0) return; // øverste kan ikke rykkes op
-    setValgteSpillere((prev) => {
       const arr = [...prev];
-      [arr[index - 1], arr[index]] = [arr[index], arr[index - 1]];
+      arr[kampIndex] = { ...kamp, sæt: [...kamp.sæt, nytSæt] };
       return arr;
     });
   };
 
+  const moveKampUp = (kampIndex: number) => {
+    if (kampIndex === 0) return;
+    setKampe((prev) => {
+      const arr = [...prev];
+      [arr[kampIndex - 1], arr[kampIndex]] = [arr[kampIndex], arr[kampIndex - 1]];
+      return arr;
+    });
+  };
+
+  // Elo-preview
   const sætMedId = kampe.flatMap((kamp, kampIndex) =>
     kamp.sæt.map((sæt, sætIndex) => {
       const score = [sæt.scoreA, sæt.scoreB];
       const finish = score[0] === 0 && score[1] === 0 ? false : erFærdigtSæt(score[0], score[1]);
-
       return {
         ...sæt,
         id: 1_000_000 + kampIndex * 10 + sætIndex,
@@ -213,107 +253,13 @@ export default function EventLayout() {
 
   const samletDiff: Record<string, number> = {};
   sætMedId.forEach((sæt) => {
-    if (sæt.scoreA === 0 && sæt.scoreB === 0) return; // Ignorer 0-0 sæt
+    if (sæt.scoreA === 0 && sæt.scoreB === 0) return;
     const ændringer = eloChanges[sæt.id];
     if (!ændringer) return;
     Object.entries(ændringer).forEach(([navn, change]) => {
       samletDiff[navn] = (samletDiff[navn] ?? 0) + change.diff;
     });
   });
-
-  const moveKampUp = (kampIndex: number) => {
-    if (kampIndex === 0) return; // øverste kan ikke rykkes op
-    setKampe((prev) => {
-      const arr = [...prev];
-      [arr[kampIndex - 1], arr[kampIndex]] = [arr[kampIndex], arr[kampIndex - 1]];
-      return arr;
-    });
-  };
-
-  const sendEventResultater = async () => {
-    const confirm = window.confirm(
-      "Er du sikker på, at du vil indsende alle resultater?\n\nDette vil slette event-data og indsende alle sæt permanent til ranglisten."
-    );
-    if (!confirm) return;
-
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-
-    if (userError || !user) {
-      alert("❌ Du skal være logget ind for at indsende resultater.");
-      return;
-    }
-
-    const { data: profil, error: profilError } = await supabase
-      .from("profiles")
-      .select("visningsnavn")
-      .eq("id", user.id)
-      .single();
-
-    if (profilError || !profil?.visningsnavn) {
-      alert("❌ Kunne ikke finde dit brugernavn.");
-      return;
-    }
-
-    const visningsnavn = profil.visningsnavn;
-    const { data: maxData } = await supabase
-      .from("newresults")
-      .select("kampid")
-      .not("kampid", "is", null)
-      .order("kampid", { ascending: false })
-      .limit(1);
-
-    const startKampid = (maxData?.[0]?.kampid || 0) + 1;
-
-    // Saml alle sæt i én flad liste
-    const alleSaet = kampe.flatMap((kamp) =>
-      kamp.sæt
-        .filter((s) => !(s.scoreA === 0 && s.scoreB === 0))
-        .map((sæt) => {
-          const score = [sæt.scoreA, sæt.scoreB];
-          const finish = score[0] === 0 && score[1] === 0 ? false : erFærdigtSæt(score[0], score[1]);
-
-          return {
-            ...sæt,
-            finish,
-            date: new Date().toISOString().split("T")[0],
-            event: true,
-            tiebreak: "false",
-          };
-        })
-    );
-
-    // Gruppér sæt efter de samme spillere
-    const grupper: Record<string, any[]> = {};
-    for (const sæt of alleSaet) {
-      const key = [sæt.holdA1, sæt.holdA2, sæt.holdB1, sæt.holdB2].sort().join("-");
-      if (!grupper[key]) grupper[key] = [];
-      grupper[key].push(sæt);
-    }
-
-    // Lav resultater med kampid
-    const resultater = Object.values(grupper)
-      .map((saetGruppe, i) =>
-        saetGruppe.map((sæt) => ({
-          ...sæt,
-          kampid: startKampid + i,
-          indberettet_af: visningsnavn,
-        }))
-      )
-      .flat();
-
-    const { error } = await supabase.from("newresults").insert(resultater);
-
-    if (error) {
-      alert("❌ Noget gik galt: " + error.message);
-    } else {
-      alert("✅ Resultaterne er indsendt! 🎉");
-      setKampe([]);
-      setValgteSpillere([]);
-    }
-  };
 
   const visPoint = (id: number) => {
     const ændringer = eloChanges[id];
@@ -352,68 +298,30 @@ export default function EventLayout() {
         savedAt: new Date().toISOString(),
       };
 
-      // Supabase: gem/overskriv din kladde
       const { error } = await supabase
         .from("event_drafts")
-        .upsert(
-          [
-            {
-              visningsnavn: vn,
-              draft_key: DRAFT_KEY,
-              payload,
-            },
-          ],
-          { onConflict: "visningsnavn, draft_key" }
-        );
+        .upsert([
+          {
+            visningsnavn: vn,
+            draft_key: DRAFT_KEY,
+            payload,
+          },
+        ], {
+          onConflict: "visningsnavn, draft_key",
+        });
 
       if (error) throw error;
 
-      // Lokal fallback
-      localStorage.setItem("event_draft", JSON.stringify(payload));
+      localStorage.setItem("event_draft_torsdag", JSON.stringify(payload));
       setLastSavedAt(payload.savedAt);
-      alert("💾 Kladde gemt!");
-    } catch (e: any) {
+      alert("💾 Torsdagskladde gemt!");
+    } catch (e) {
       console.error(e);
       alert("❌ Kunne ikke gemme kladden.");
     } finally {
       setBusy(null);
     }
   };
-
-const publicerEventPlan = async () => {
-  const ok = window.confirm("Publicér eventplanen så spillerne kan se deres kampe?");
-  if (!ok) return;
-
-  // Brug næste torsdag (tilpas hvis /makeevent har en valgt dato)
-  const eventDato = getNextThursdayISO();
-
-  // Fladgør kampe -> sæt-rækker til event_sets
-  const rows = kampe.flatMap((kamp, kampIndex) =>
-    kamp.sæt.map((sæt, sætIndex) => ({
-      event_dato: eventDato,
-      kamp_nr: kampIndex + 1,
-      saet_nr: sætIndex + 1,
-      bane: kamp.bane,
-      starttid: kamp.starttid, // 'HH:MM'
-      sluttid: kamp.sluttid,   // 'HH:MM'
-      holda1: sæt.holdA1,
-      holda2: sæt.holdA2,
-      holdb1: sæt.holdB1,
-      holdb2: sæt.holdB2,
-    }))
-  );
-
-  // ryd eksisterende plan for datoen (ellers kan unique index konflikte)
-  await supabase.from("event_sets").delete().eq("event_dato", eventDato);
-
-  const { error } = await supabase.from("event_sets").insert(rows);
-  if (error) {
-    alert("❌ Kunne ikke publicere planen: " + error.message);
-  } else {
-    alert("📢 Eventplan publiceret – spillerne kan nu se deres kampe!");
-  }
-};
-
 
   const loadDraft = async () => {
     setBusy("loading");
@@ -437,20 +345,19 @@ const publicerEventPlan = async () => {
             .select("payload")
             .eq("visningsnavn", vn)
             .eq("draft_key", DRAFT_KEY)
-            .single();
+            .maybeSingle();
 
           if (data?.payload) loaded = data.payload as DraftPayload;
         }
       }
 
       if (!loaded) {
-        // fallback til localStorage
-        const raw = localStorage.getItem("event_draft");
+        const raw = localStorage.getItem("event_draft_torsdag");
         if (raw) loaded = JSON.parse(raw) as DraftPayload;
       }
 
       if (!loaded) {
-        alert("Ingen kladde fundet.");
+        alert("Ingen torsdagskladde fundet.");
         return;
       }
 
@@ -458,27 +365,159 @@ const publicerEventPlan = async () => {
       setKampe(loaded.kampe ?? []);
       setLastSavedAt(loaded.savedAt ?? null);
       alert("📥 Kladde indlæst!");
-    } catch (e: any) {
+    } catch (e) {
       console.error(e);
       alert("❌ Kunne ikke indlæse kladden.");
     } finally {
       setBusy(null);
     }
   };
-  // ======== /KLADDE ========
 
+  const publicerEventPlan = async () => {
+    setBusy("publishing");
+    try {
+      const ok = window.confirm("Publicér eventplanen så spillerne kan se deres kampe?");
+      if (!ok) return;
+
+      const eventDato = getNextThursdayISO();
+
+      const rows = kampe.flatMap((kamp, kampIndex) =>
+        kamp.sæt.map((sæt, sætIndex) => ({
+          event_dato: eventDato,
+          kamp_nr: kampIndex + 1,
+          saet_nr: sætIndex + 1,
+          bane: kamp.bane,
+          starttid: kamp.starttid,
+          sluttid: kamp.sluttid,
+          holda1: sæt.holdA1,
+          holda2: sæt.holdA2,
+          holdb1: sæt.holdB1,
+          holdb2: sæt.holdB2,
+        }))
+      );
+
+      await supabase.from("event_sets").delete().eq("event_dato", eventDato);
+
+      const { error } = await supabase.from("event_sets").insert(rows);
+      if (error) throw error;
+
+      alert("📢 Eventplan publiceret – spillerne kan nu se deres kampe!");
+    } catch (e: any) {
+      alert("❌ Kunne ikke publicere planen: " + (e?.message ?? "ukendt fejl"));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const sendEventResultater = async () => {
+    const ok = window.confirm(
+      "Er du sikker på, at du vil indsende alle resultater?\n\nDette vil slette event-data og indsende alle sæt permanent til ranglisten."
+    );
+    if (!ok) return;
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      alert("❌ Du skal være logget ind for at indsende resultater.");
+      return;
+    }
+
+    const { data: profil, error: profilError } = await supabase
+      .from("profiles")
+      .select("visningsnavn")
+      .eq("id", user.id)
+      .single();
+
+    if (profilError || !profil?.visningsnavn) {
+      alert("❌ Kunne ikke finde dit brugernavn.");
+      return;
+    }
+
+    const visningsnavn = profil.visningsnavn;
+    const { data: maxData } = await supabase
+      .from("newresults")
+      .select("kampid")
+      .not("kampid", "is", null)
+      .order("kampid", { ascending: false })
+      .limit(1);
+
+    const startKampid = (maxData?.[0]?.kampid || 0) + 1;
+
+    const alleSaet = kampe.flatMap((kamp) =>
+      kamp.sæt
+        .filter((s) => !(s.scoreA === 0 && s.scoreB === 0))
+        .map((sæt) => {
+          const score = [sæt.scoreA, sæt.scoreB];
+          const finish = score[0] === 0 && score[1] === 0 ? false : erFærdigtSæt(score[0], score[1]);
+          return {
+            ...sæt,
+            finish,
+            date: new Date().toISOString().split("T")[0],
+            event: true,
+            tiebreak: "false",
+          };
+        })
+    );
+
+    const grupper: Record<string, any[]> = {};
+    for (const sæt of alleSaet) {
+      const key = [sæt.holdA1, sæt.holdA2, sæt.holdB1, sæt.holdB2].sort().join("-");
+      if (!grupper[key]) grupper[key] = [];
+      grupper[key].push(sæt);
+    }
+
+    const resultater = Object.values(grupper)
+      .map((saetGruppe, i) =>
+        saetGruppe.map((sæt) => ({
+          ...sæt,
+          kampid: startKampid + i,
+          indberettet_af: visningsnavn,
+        }))
+      )
+      .flat();
+
+    const { error } = await supabase.from("newresults").insert(resultater);
+
+    if (error) {
+      alert("❌ Noget gik galt: " + error.message);
+    } else {
+      alert("✅ Resultaterne er indsendt! 🎉");
+      setKampe([]);
+      setValgteSpillere([]);
+    }
+  };
+
+  // UI helpers
+  const nextThursdayLabel = useMemo(() => {
+    const iso = getNextThursdayISO();
+    try {
+      return new Date(iso + "T00:00:00").toLocaleDateString("da-DK", {
+        weekday: "long",
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      });
+    } catch {
+      return iso;
+    }
+  }, []);
+
+  // ======== RENDER ========
   return (
     <div className="flex gap-4 p-4 h-screen overflow-auto bg-white text-black dark:bg-zinc-900 dark:text-white">
-
       {/* Venstre kolonne */}
       <div className="w-1/5 p-3 rounded shadow bg-zinc-100 dark:bg-zinc-800">
-        <h2 className="font-semibold mb-2">👥 Spillere ({valgteSpillere.length})</h2>
+        <h2 className="font-semibold mb-1">👥 Spillere ({valgteSpillere.length})</h2>
+        <p className="text-[11px] text-zinc-500 mb-2">Næste event: {nextThursdayLabel}</p>
 
         <input
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Tilføj spiller..."
+          placeholder="Tilføj spiller... (torsdagspadel)"
           className="w-full mb-2 p-1 rounded border bg-white dark:bg-zinc-700 dark:text-white"
         />
         {search && (
@@ -495,7 +534,14 @@ const publicerEventPlan = async () => {
                   onClick={() => tilføjSpiller(spiller)}
                   className="px-2 py-1 hover:bg-pink-100 dark:hover:bg-zinc-600 cursor-pointer flex justify-between text-sm"
                 >
-                  <span>{spiller.visningsnavn}</span>
+                  <span className="flex items-center gap-2">
+                    {spiller.visningsnavn}
+                    {spiller.tidligste_tid && (
+                      <span className="text-[11px] text-zinc-500 dark:text-zinc-300">
+                        ({formatTime(spiller.tidligste_tid)})
+                      </span>
+                    )}
+                  </span>
                   <span className="text-gray-500 dark:text-gray-300">
                     {Math.round(spiller.elo ?? 1000)}
                   </span>
@@ -504,45 +550,54 @@ const publicerEventPlan = async () => {
           </div>
         )}
 
-        <div className="mt-3 space-y-1">
+        <div className="mt-3">
           {valgteSpillere.map((spiller, idx) => (
-            <div key={spiller.visningsnavn} className="flex justify-between items-center bg-pink-100 dark:bg-zinc-700 rounded px-2 py-1 text-xs">
-              <span>{spiller.visningsnavn}</span>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-600 dark:text-gray-300">
-                  {Math.round(spiller.elo ?? 1000)}
+            <React.Fragment key={spiller.visningsnavn}>
+              <div className="flex justify-between items-center bg-pink-100 dark:bg-zinc-700 rounded px-2 py-1 text-xs mb-1">
+                <span className="flex items-center gap-2">
+                  <span className="truncate">{spiller.visningsnavn}</span>
+                  {spiller.tidligste_tid && (
+                    <span className="text-[11px] text-zinc-600 dark:text-zinc-300">({formatTime(spiller.tidligste_tid)})</span>
+                  )}
                 </span>
-                <button
-                  onClick={() => moveSpillerUp(idx)}
-                  disabled={idx === 0}
-                  className="text-xs inline-flex items-center rounded border px-2 py-0.5 disabled:opacity-40"
-                  title="Ryk spilleren én plads op"
-                >
-                  ▲
-                </button>
-                <button
-                  onClick={() => fjernSpiller(spiller.visningsnavn)}
-                  className="text-red-500"
-                >
-                  🗑
-                </button>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-600 dark:text-gray-300">
+                    {Math.round(spiller.elo ?? 1000)}
+                  </span>
+                  <button
+                    onClick={() => moveSpillerUp(idx)}
+                    disabled={idx === 0}
+                    className="text-xs inline-flex items-center rounded border px-2 py-0.5 disabled:opacity-40"
+                    title="Ryk spilleren én plads op"
+                  >
+                    ▲
+                  </button>
+                  <button
+                    onClick={() => fjernSpiller(spiller.visningsnavn)}
+                    className="text-red-500"
+                    title="Fjern spiller"
+                  >
+                    🗑
+                  </button>
+                </div>
               </div>
-            </div>
+
+              {/* Divider efter hver 4. spiller (men ikke efter sidste) */}
+              {((idx + 1) % 4 === 0) && idx !== valgteSpillere.length - 1 && (
+                <div className="-mx-1 my-2 h-px bg-zinc-300 dark:bg-zinc-600 opacity-60" />
+              )}
+            </React.Fragment>
           ))}
         </div>
 
         <button
           onClick={lavEventFraSpillere}
-          disabled={kampe.some((kamp) =>
-            kamp.sæt.some((sæt) => sæt.scoreA !== 0 || sæt.scoreB !== 0)
-          )}
-          className={`mt-2 text-xs rounded px-2 py-1 font-semibold transition
-            ${kampe.some((kamp) =>
-              kamp.sæt.some((sæt) => sæt.scoreA !== 0 || sæt.scoreB !== 0)
-            )
+          disabled={kampe.some((kamp) => kamp.sæt.some((sæt) => sæt.scoreA !== 0 || sæt.scoreB !== 0))}
+          className={`mt-2 text-xs rounded px-2 py-1 font-semibold transition ${
+            kampe.some((kamp) => kamp.sæt.some((sæt) => sæt.scoreA !== 0 || sæt.scoreB !== 0))
               ? "bg-gray-400 text-white cursor-not-allowed"
               : "bg-green-600 text-white hover:bg-green-700"
-            }`}
+          }`}
         >
           ✅ Lav event
         </button>
@@ -590,8 +645,7 @@ const publicerEventPlan = async () => {
               <button
                 onClick={() => moveKampUp(kampIndex)}
                 disabled={kampIndex === 0}
-                className="ml-3 inline-flex items-center rounded-xl border px-3 py-1 text-xs
-                           disabled:opacity-40 disabled:cursor-not-allowed"
+                className="ml-3 inline-flex items-center rounded-xl border px-3 py-1 text-xs disabled:opacity-40 disabled:cursor-not-allowed"
                 aria-label="Ryk kampen én plads op"
                 title="Ryk kampen én plads op"
               >
@@ -612,15 +666,13 @@ const publicerEventPlan = async () => {
                     onFocus={(e) => e.target.select()}
                     onChange={(e) => {
                       const val = parseInt(e.target.value);
+                      const updated = [...kampe];
                       if (!isNaN(val) && val >= 0 && val <= 7) {
-                        const updated = [...kampe];
                         updated[kampIndex].sæt[sætIndex].scoreA = val;
-                        setKampe(updated);
                       } else if (e.target.value === "") {
-                        const updated = [...kampe];
                         updated[kampIndex].sæt[sætIndex].scoreA = 0;
-                        setKampe(updated);
                       }
+                      setKampe(updated);
                     }}
                     className="w-8 border text-center text-xs bg-white dark:bg-zinc-700 dark:text-white"
                   />
@@ -633,15 +685,13 @@ const publicerEventPlan = async () => {
                     onFocus={(e) => e.target.select()}
                     onChange={(e) => {
                       const val = parseInt(e.target.value);
+                      const updated = [...kampe];
                       if (!isNaN(val) && val >= 0 && val <= 7) {
-                        const updated = [...kampe];
                         updated[kampIndex].sæt[sætIndex].scoreB = val;
-                        setKampe(updated);
                       } else if (e.target.value === "") {
-                        const updated = [...kampe];
                         updated[kampIndex].sæt[sætIndex].scoreB = 0;
-                        setKampe(updated);
                       }
+                      setKampe(updated);
                     }}
                     className="w-8 border text-center text-xs bg-white dark:bg-zinc-700 dark:text-white"
                   />
@@ -686,35 +736,31 @@ const publicerEventPlan = async () => {
             disabled={busy === "saving"}
             className="bg-zinc-900/80 dark:bg-zinc-200 dark:text-zinc-900 text-white px-3 py-1 rounded text-sm hover:opacity-90 disabled:opacity-50"
           >
-            {busy === "saving" ? "Gemmer..." : "💾 Gem kladde"}
+            {busy === "saving" ? "Gemmer..." : "💾 Gem torsdagskladde"}
           </button>
           <button
             onClick={loadDraft}
             disabled={busy === "loading"}
             className="bg-zinc-700/80 dark:bg-zinc-300 dark:text-zinc-900 text-white px-3 py-1 rounded text-sm hover:opacity-90 disabled:opacity-50"
           >
-            {busy === "loading" ? "Henter..." : "📥 Hent kladde"}
+            {busy === "loading" ? "Henter..." : "📥 Hent torsdagskladde"}
           </button>
           <button
-           onClick={publicerEventPlan}
-           className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700"
-         >
-           📢 Publicér eventplan
-         </button>
-          {lastSavedAt && (
-            <p className="text-[11px] text-zinc-500 mt-1">
-              Sidst gemt: {new Date(lastSavedAt).toLocaleString("da-DK")}
-            </p>
-          )}
+            onClick={publicerEventPlan}
+            disabled={busy === "publishing"}
+            className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700 disabled:opacity-50"
+          >
+            {busy === "publishing" ? "Publicerer..." : "📢 Publicér eventplan"}
+          </button>
         </div>
 
-        <div className="mt-4 text-center">
-          <button
-            onClick={sendEventResultater}
-            className="bg-pink-600 text-white px-3 py-1 rounded text-sm hover:bg-pink-700"
-          >
+        <div className="mt-3 text-center">
+          <button onClick={sendEventResultater} className="bg-pink-600 text-white px-3 py-1 rounded text-sm hover:bg-pink-700">
             ✅ Indsend resultater
           </button>
+          {lastSavedAt && (
+            <p className="text-[11px] text-zinc-500 mt-2">Sidst gemt: {new Date(lastSavedAt).toLocaleString("da-DK")}</p>
+          )}
         </div>
       </div>
     </div>

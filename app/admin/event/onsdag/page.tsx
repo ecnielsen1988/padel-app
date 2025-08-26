@@ -690,52 +690,63 @@ Dette vil slette event-data og indsende alle sæt permanent til ranglisten.`
           </div>
         )}
 
-        <div className="mt-3 space-y-1">
-          {valgteSpillere.map((spiller, idx) => (
-            <div key={spiller.visningsnavn} className="bg-pink-100 dark:bg-zinc-700 rounded px-2 py-1 text-xs">
-              <div className="flex justify-between items-center">
-                <span className="truncate mr-2">{spiller.visningsnavn}</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-600 dark:text-gray-300">
-                    {Math.round(spiller.elo ?? 1000)}
-                  </span>
-                  <button
-                    onClick={() => moveSpillerUp(idx)}
-                    disabled={idx === 0}
-                    className="text-xs inline-flex items-center rounded border px-2 py-0.5 disabled:opacity-40"
-                    title="Ryk spilleren én plads op"
-                  >
-                    ▲
-                  </button>
-                  <button onClick={() => fjernSpiller(spiller.visningsnavn)} className="text-red-500">
-                    🗑
-                  </button>
-                </div>
-              </div>
-              {/* Slot toggles */}
-              <div className="mt-1 flex gap-1">
-                {slots.map((s) => {
-                  const selected = (spiller.slots ?? slots.map((x) => x.id)).includes(s.id);
-                  return (
-                    <button
-                      key={s.id}
-                      onClick={() => toggleSlotForSpiller(spiller.visningsnavn, s.id)}
-                      title={`Slot ${s.id}: ${s.label}`}
-                      className={`px-2 py-0.5 rounded text-[11px] border ${
-                        selected
-                          ? 'bg-green-600 text-white border-green-700'
-                          : 'bg-zinc-300 dark:bg-zinc-600 text-zinc-900 dark:text-zinc-100 border-transparent'
-                      }`}
-                    >
-                      {s.id}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
+        <div className="mt-3">
+  {valgteSpillere.map((spiller, idx) => (
+    <React.Fragment key={spiller.visningsnavn}>
+      <div className="bg-pink-100 dark:bg-zinc-700 rounded px-2 py-1 text-xs mb-1">
+        <div className="flex justify-between items-center">
+          <span className="truncate mr-2">{spiller.visningsnavn}</span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-600 dark:text-gray-300">
+              {Math.round(spiller.elo ?? 1000)}
+            </span>
+            <button
+              onClick={() => moveSpillerUp(idx)}
+              disabled={idx === 0}
+              className="text-xs inline-flex items-center rounded border px-2 py-0.5 disabled:opacity-40"
+              title="Ryk spilleren én plads op"
+            >
+              ▲
+            </button>
+            <button
+              onClick={() => fjernSpiller(spiller.visningsnavn)}
+              className="text-red-500"
+              title="Fjern spiller"
+            >
+              🗑
+            </button>
+          </div>
         </div>
 
+        {/* Slot toggles */}
+        <div className="mt-1 flex gap-1">
+          {slots.map((s) => {
+            const selected = (spiller.slots ?? slots.map((x) => x.id)).includes(s.id);
+            return (
+              <button
+                key={s.id}
+                onClick={() => toggleSlotForSpiller(spiller.visningsnavn, s.id)}
+                title={`Slot ${s.id}: ${s.label}`}
+                className={`px-2 py-0.5 rounded text-[11px] border ${
+                  selected
+                    ? 'bg-green-600 text-white border-green-700'
+                    : 'bg-zinc-300 dark:bg-zinc-600 text-zinc-900 dark:text-zinc-100 border-transparent'
+                }`}
+              >
+                {s.id}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* tynd streg efter hver 4. spiller (men ikke efter sidste) */}
+      {((idx + 1) % 4 === 0) && idx !== valgteSpillere.length - 1 && (
+        <div className="-mx-1 my-2 h-px bg-zinc-300 dark:bg-zinc-600 opacity-60" />
+      )}
+    </React.Fragment>
+  ))}
+</div>
         <button
           onClick={lavEventFraSpillere}
           disabled={kampe.some((kamp) => kamp.sæt.some((sæt) => sæt.scoreA !== 0 || sæt.scoreB !== 0))}
