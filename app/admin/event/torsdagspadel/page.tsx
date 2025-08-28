@@ -58,10 +58,10 @@ function getNextThursdayISO(): string {
 
 function formatTime(value?: string | null) {
   if (!value) return "";
-  const hhmm = value.match(/\d{2}:\d{2}/)?.[0];
+  const hhmm = value?.toString().match(/\d{2}:\d{2}/)?.[0];
   if (hhmm) return hhmm;
   try {
-    const d = new Date(value);
+    const d = new Date(value as string);
     return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   } catch {
     return value ?? "";
@@ -86,6 +86,16 @@ function emojiForPluspoint(p: number) {
   if (p > -100) return "🥊";
   if (p > -150) return "💩";
   return "💩💩";
+}
+
+// === NY HJÆLPER: rehydrer spillere med nyeste Elo og sortér efter Elo
+function withLatestElo(players: Spiller[], map: Record<string, number>) {
+  return players
+    .map((p) => ({
+      ...p,
+      elo: map[p.visningsnavn] ?? p.elo ?? 1000,
+    }))
+    .sort((a, b) => (b.elo ?? 0) - (a.elo ?? 0));
 }
 
 export default function EventLayout() {
@@ -135,15 +145,28 @@ export default function EventLayout() {
       setAlleSpillere(spillereMedElo);
 
       // Forudfyld med dem der har tilmeldt sig (kan_spille = true)
-      const preselected = spillereMedElo
-        .filter((s) => signupByName.get(s.visningsnavn)?.kan_spille === true)
-        .sort((a, b) => (b.elo ?? 0) - (a.elo ?? 0));
+      const preselected = (profiles ?? [])
+        .filter((p) => signupByName.get(p.visningsnavn)?.kan_spille === true)
+        .map((p) => ({
+          visningsnavn: p.visningsnavn,
+          elo: map[p.visningsnavn] ?? 1000,
+          tidligste_tid: signupByName.get(p.visningsnavn)?.tidligste_tid ?? null,
+        }));
 
-      setValgteSpillere((prev) => (prev.length ? prev : preselected));
+      // Brug altid nyeste Elo (og korrekt sortering) – uanset om der allerede er spillere valgt
+      setValgteSpillere((prev) =>
+        prev.length ? withLatestElo(prev, map) : withLatestElo(preselected, map)
+      );
     };
 
     hentData();
   }, []);
+
+  // Rehydrer automatisk hvis eloMap ændrer sig senere (fx hvis /api/rangliste opdateres)
+  useEffect(() => {
+    if (!Object.keys(eloMap).length || !valgteSpillere.length) return;
+    setValgteSpillere((prev) => withLatestElo(prev, eloMap));
+  }, [eloMap]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // === Spillere ===
   const tilføjSpiller = (spiller: Spiller) => {
@@ -153,7 +176,7 @@ export default function EventLayout() {
         elo: eloMap[spiller.visningsnavn] ?? 1000,
       };
       setValgteSpillere((prev) =>
-        [...prev, spillerMedElo].sort((a, b) => (b.elo ?? 0) - (a.elo ?? 0))
+        withLatestElo([...prev, spillerMedElo], eloMap)
       );
     }
     setSearch("");
@@ -300,15 +323,18 @@ export default function EventLayout() {
 
       const { error } = await supabase
         .from("event_drafts")
-        .upsert([
+        .upsert(
+          [
+            {
+              visningsnavn: vn,
+              draft_key: DRAFT_KEY,
+              payload,
+            },
+          ],
           {
-            visningsnavn: vn,
-            draft_key: DRAFT_KEY,
-            payload,
-          },
-        ], {
-          onConflict: "visningsnavn, draft_key",
-        });
+            onConflict: "visningsnavn, draft_key",
+          }
+        );
 
       if (error) throw error;
 
@@ -361,9 +387,14 @@ export default function EventLayout() {
         return;
       }
 
+      // Sæt fra kladden
       setValgteSpillere(loaded.valgteSpillere ?? []);
       setKampe(loaded.kampe ?? []);
       setLastSavedAt(loaded.savedAt ?? null);
+
+      // NYT: Rehydrer med nyeste Elo (hvis eloMap allerede er der)
+      setValgteSpillere((prev) => withLatestElo(prev, eloMap));
+
       alert("📥 Kladde indlæst!");
     } catch (e) {
       console.error(e);
@@ -766,3 +797,4 @@ export default function EventLayout() {
     </div>
   );
 }
+
