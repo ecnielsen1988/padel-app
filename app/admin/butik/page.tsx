@@ -3,33 +3,54 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
-// --------- Helper utils ---------
+// ---------------------------------------
+// Utils
+// ---------------------------------------
 const toOre = (kr: number) => Math.round(kr * 100);
 const fmt = (ore: number) => new Intl.NumberFormat("da-DK", { style: "currency", currency: "DKK" }).format(ore / 100);
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
-// Produktnøgler skal matche CHECK-constraint i tabellen
+// ---------------------------------------
+// Produkter (NØGLERNE skal matche CHECK-constraint i DB)
+// ---------------------------------------
 const PRODUCTS = {
-  stor_fadoel: { label: "Stor Fadøl", priceKr: 40, sign: -1 },
-  lille_fadoel: { label: "Lille Fadøl", priceKr: 30, sign: -1 },
-  stor_oel: { label: "Stor Øl", priceKr: 35, sign: -1 },
-  lille_oel: { label: "Lille Øl", priceKr: 25, sign: -1 },
-  sodavand: { label: "Sodavand", priceKr: 25, sign: -1 },
-  chips: { label: "Chips", priceKr: 15, sign: -1 },
+  // Drikke
+  stor_fadoel: { label: "🍺 Stor Fadøl", priceKr: 40, sign: -1 },
+  lille_fadoel: { label: "🍺 Lille Fadøl", priceKr: 30, sign: -1 },
+  stor_oel: { label: "🍻 Stor Øl", priceKr: 35, sign: -1 },
+  lille_oel: { label: "🍻 Lille Øl", priceKr: 25, sign: -1 },
+  sodavand: { label: "🥤 Sodavand", priceKr: 25, sign: -1 },
+
+  // Mad/snacks
+  chips: { label: "🍟 Chips", priceKr: 15, sign: -1 },
+  toast: { label: "🥪 Toast", priceKr: 15, sign: -1 },
+
+  // Event/aktivitet
+  lunarkamp: { label: "🏸 Lunarkamp", priceKr: 50, sign: -1 },
+
+  // Merchandise
+  tshirt: { label: "👕 T‑shirt", priceKr: 300, sign: -1 },
+  shorts: { label: "🩳 Shorts", priceKr: 200, sign: -1 },
 } as const;
 
+type ProductKey = keyof typeof PRODUCTS;
+
 // Køb der tæller i "Salg (brutto)" (ekskl. bøder, indbetaling, rabat, præmier)
-const PURCHASE_KEYS = [
+const PURCHASE_KEYS: readonly ProductKey[] = [
   "stor_fadoel",
   "lille_fadoel",
   "stor_oel",
   "lille_oel",
   "sodavand",
   "chips",
+  "toast",
+  "lunarkamp",
+  "tshirt",
+  "shorts",
 ] as const;
 
 // Drikkevarer – anvendes til evt. "første drik gratis"
-const BEVERAGE_KEYS = [
+const BEVERAGE_KEYS: readonly ProductKey[] = [
   "stor_fadoel",
   "lille_fadoel",
   "stor_oel",
@@ -37,27 +58,21 @@ const BEVERAGE_KEYS = [
   "sodavand",
 ] as const;
 
-type PrizeKey =
-  | "praemie_aften_1"
-  | "praemie_aften_2"
-  | "praemie_aften_3"
-  | "praemie_maaned_1"
-  | "praemie_maaned_2"
-  | "praemie_maaned_3"
-  | "praemie_maaned_mest_aktive";
+// UI-grupper (Præmier som egen fane inde i butik)
+const PRODUCT_GROUPS = {
+  "🍽️ Mad & Drikke": ["stor_fadoel", "lille_fadoel", "stor_oel", "lille_oel", "sodavand", "chips", "toast"],
+  "🎟️ Events": ["lunarkamp"],
+  "🛍️ Merch": ["tshirt", "shorts"],
+  "🎁 Præmier": [] as ProductKey[], // håndteres særskilt i UI
+} as const;
 
-const PRIZE_BUTTONS: { key: PrizeKey; label: string; amountKr: number }[] = [
-  { key: "praemie_aften_1", label: "Aftenens Spiller", amountKr: 100 },
-  { key: "praemie_aften_2", label: "Aftenens nr. 2", amountKr: 50 },
-  { key: "praemie_aften_3", label: "Aftenens nr. 3", amountKr: 25 },
-  { key: "praemie_maaned_1", label: "Månedens Spiller", amountKr: 250 },
-  { key: "praemie_maaned_2", label: "Månedens nr. 2", amountKr: 100 },
-  { key: "praemie_maaned_3", label: "Månedens nr. 3", amountKr: 50 },
-  { key: "praemie_maaned_mest_aktive", label: "Månedens mest aktive", amountKr: 200 },
-];
+type GroupKey = keyof typeof PRODUCT_GROUPS;
 
-// --------- Types ---------
+// ---------------------------------------
+// Types
+// ---------------------------------------
 type Player = { visningsnavn: string };
+
 type Entry = {
   id: number;
   event_date: string;
@@ -72,11 +87,32 @@ type Entry = {
 type BarSession = {
   event_date: string;
   free_first_drink: boolean;
-  created_at: string;
-  created_by: string | null;
+  created_at?: string;
+  created_by?: string | null;
 };
 
-// --------- Simple Modal ---------
+type PrizeKey =
+  | "praemie_aften_1"
+  | "praemie_aften_2"
+  | "praemie_aften_3"
+  | "praemie_maaned_1"
+  | "praemie_maaned_2"
+  | "praemie_maaned_3"
+  | "praemie_maaned_mest_aktive";
+
+const PRIZE_BUTTONS: { key: PrizeKey; label: string; amountKr: number }[] = [
+  { key: "praemie_aften_1", label: "🏆 Aftenens Spiller", amountKr: 100 },
+  { key: "praemie_aften_2", label: "🥈 Aftenens nr. 2", amountKr: 50 },
+  { key: "praemie_aften_3", label: "🥉 Aftenens nr. 3", amountKr: 25 },
+  { key: "praemie_maaned_1", label: "🏆 Månedens Spiller", amountKr: 250 },
+  { key: "praemie_maaned_2", label: "🥈 Månedens nr. 2", amountKr: 100 },
+  { key: "praemie_maaned_3", label: "🥉 Månedens nr. 3", amountKr: 50 },
+  { key: "praemie_maaned_mest_aktive", label: "🏸 Mest aktive (måned)", amountKr: 200 },
+];
+
+// ---------------------------------------
+// Simpel Modal
+// ---------------------------------------
 function Modal({ open, title, children, onClose }: { open: boolean; title: string; children: React.ReactNode; onClose: () => void }) {
   if (!open) return null;
   return (
@@ -92,9 +128,12 @@ function Modal({ open, title, children, onClose }: { open: boolean; title: strin
   );
 }
 
-// --------- Main Page Component ---------
+// ---------------------------------------
+// Layout (Butik med 4 faner + stor spillerliste)
+// ---------------------------------------
 export default function AdminButikPage() {
   const [players, setPlayers] = useState<Player[]>([]);
+  const [playerFilter, setPlayerFilter] = useState("");
   const [loadingPlayers, setLoadingPlayers] = useState(true);
   const [selected, setSelected] = useState<string>("");
 
@@ -104,29 +143,29 @@ export default function AdminButikPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [bodeOpen, setBodeOpen] = useState(false);
-  const [bodeBelob, setBodeBelob] = useState<string>("");
-  const [bodeNote, setBodeNote] = useState<string>("");
+  const [bodeBelob, setBodeBelob] = useState("");
+  const [bodeNote, setBodeNote] = useState("");
 
   const [indbOpen, setIndbOpen] = useState(false);
-  const [indbBelob, setIndbBelob] = useState<string>("");
-  const [indbNote, setIndbNote] = useState<string>("MobilePay");
+  const [indbBelob, setIndbBelob] = useState("");
+  const [indbNote, setIndbNote] = useState("MobilePay");
 
   const [totals, setTotals] = useState<{ sales_ore: number; payments_ore: number; discounts_ore: number; prizes_ore: number; net_ore: number }>({ sales_ore: 0, payments_ore: 0, discounts_ore: 0, prizes_ore: 0, net_ore: 0 });
 
-  // Session flag (første drik gratis?)
   const [freeFirstDrink, setFreeFirstDrink] = useState<boolean | null>(null);
   const [askSessionOpen, setAskSessionOpen] = useState(false);
 
+  const [activeGroup, setActiveGroup] = useState<GroupKey>("🍽️ Mad & Drikke");
+
   const today = useMemo(() => todayISO(), []);
 
-  // Load players for today's event, else fallback to torsdagspadel profiles
+  // Load spillere til i dag
   useEffect(() => {
     (async () => {
       setLoadingPlayers(true);
       setError(null);
       const d = today;
 
-      // Try event_signups (event_date, visningsnavn)
       let { data: signups } = await supabase
         .from("event_signups")
         .select("visningsnavn")
@@ -137,7 +176,6 @@ export default function AdminButikPage() {
       if (signups && signups.length > 0) {
         list = signups as Player[];
       } else {
-        // Fallback: profiles where torsdagspadel = true
         const { data: profs } = await supabase
           .from("profiles")
           .select("visningsnavn")
@@ -154,7 +192,7 @@ export default function AdminButikPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [today]);
 
-  // Load today's entries for selected player
+  // Load dagens poster for valgt spiller
   async function refreshPlayerEntries(name: string) {
     setEntriesLoading(true);
     const { data } = await supabase
@@ -172,7 +210,7 @@ export default function AdminButikPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected, today]);
 
-  // Load all today's totals (salg brutto, betalinger, rabatter, præmier, netto)
+  // Aftentotaler
   async function refreshTotals() {
     const { data } = await supabase
       .from("bar_entries")
@@ -182,13 +220,9 @@ export default function AdminButikPage() {
     let sales = 0, payments = 0, discounts = 0, prizes = 0, net = 0;
     for (const r of data as Pick<Entry, "product" | "amount_ore">[]) {
       net += r.amount_ore;
-      // Salg (brutto): kun købsvare og negative beløb
-      if ((PURCHASE_KEYS as readonly string[]).includes(r.product) && r.amount_ore < 0) sales += -r.amount_ore;
-      // Indbetalinger: kun indbetaling
+      if ((PURCHASE_KEYS as readonly string[]).includes(r.product as ProductKey) && r.amount_ore < 0) sales += -r.amount_ore;
       if (r.product === "indbetaling" && r.amount_ore > 0) payments += r.amount_ore;
-      // Rabatter: positive rabatposter
       if (r.product === "rabat" && r.amount_ore > 0) discounts += r.amount_ore;
-      // Præmier: positive præmieposter
       if ((["praemie_aften_1","praemie_aften_2","praemie_aften_3","praemie_maaned_1","praemie_maaned_2","praemie_maaned_3","praemie_maaned_mest_aktive"] as const).includes(r.product as any) && r.amount_ore > 0) prizes += r.amount_ore;
     }
     setTotals({ sales_ore: sales, payments_ore: payments, discounts_ore: discounts, prizes_ore: prizes, net_ore: net });
@@ -198,7 +232,7 @@ export default function AdminButikPage() {
 
   const saldoOre = useMemo(() => entries.reduce((acc, e) => acc + e.amount_ore, 0), [entries]);
 
-  // Insert en eller flere rækker (bruges til rabat+salgs-par)
+  // Helpers
   async function insertRows(rows: Array<{ visningsnavn: string; product: string; amount_ore: number; qty?: number; note?: string | null }>) {
     setInserting(true);
     setError(null);
@@ -217,7 +251,6 @@ export default function AdminButikPage() {
     await refreshTotals();
   }
 
-  // Har spilleren allerede en drikkevare i dag?
   async function isFirstBeverageToday(visningsnavn: string) {
     const { count } = await supabase
       .from("bar_entries")
@@ -228,22 +261,19 @@ export default function AdminButikPage() {
     return (count ?? 0) === 0;
   }
 
-  // Klik på faste produkter
-  async function handleFixed(key: keyof typeof PRODUCTS) {
+  async function handleFixed(key: ProductKey) {
     if (!selected) return;
     const p = PRODUCTS[key];
-    const amount = p.sign * toOre(p.priceKr); // negativt beløb (salg)
+    const amount = p.sign * toOre(p.priceKr);
 
     const rows: Array<{ visningsnavn: string; product: string; amount_ore: number; note?: string }> = [
       { visningsnavn: selected, product: key as string, amount_ore: amount },
     ];
 
-    // Første drikkevare i dag → spørg/brug session-flag
-    if ((BEVERAGE_KEYS as readonly string[]).includes(key as string)) {
-      // Hvis vi ikke ved det endnu, spørg
+    if ((BEVERAGE_KEYS as readonly string[]).includes(key)) {
       if (freeFirstDrink === null) {
         setAskSessionOpen(true);
-        return; // brugeren skal vælge først – klik produkt igen bagefter
+        return; // Vælg politik og klik igen
       }
       if (freeFirstDrink && await isFirstBeverageToday(selected)) {
         rows.push({ visningsnavn: selected, product: "rabat", amount_ore: Math.abs(amount), note: "Første drikkevare 100% rabat" });
@@ -253,7 +283,6 @@ export default function AdminButikPage() {
     await insertRows(rows);
   }
 
-  // Bøde
   function openBode() { setBodeBelob(""); setBodeNote(""); setBodeOpen(true); }
   async function submitBode() {
     const val = parseFloat(bodeBelob.replace(",", "."));
@@ -262,7 +291,6 @@ export default function AdminButikPage() {
     setBodeOpen(false);
   }
 
-  // Indbetaling
   function openIndb() { setIndbBelob(""); setIndbNote("MobilePay"); setIndbOpen(true); }
   async function submitIndb() {
     const val = parseFloat(indbBelob.replace(",", "."));
@@ -271,13 +299,11 @@ export default function AdminButikPage() {
     setIndbOpen(false);
   }
 
-  // Præmie
   async function givePrize(key: PrizeKey, amountKr: number) {
     if (!selected) return;
     await insertRows([{ visningsnavn: selected, product: key, amount_ore: toOre(amountKr), note: "Præmie" }]);
   }
 
-  // Fortryd sidste
   async function undoLast() {
     if (!selected) return;
     const { data: last } = await supabase
@@ -289,7 +315,7 @@ export default function AdminButikPage() {
       .limit(1)
       .maybeSingle();
     if (!last) return;
-    await supabase.from("bar_entries").delete().eq("id", last.id);
+    await supabase.from("bar_entries").delete().eq("id", (last as any).id);
     if (selected) await refreshPlayerEntries(selected);
     await refreshTotals();
   }
@@ -310,172 +336,155 @@ export default function AdminButikPage() {
   async function chooseFirstDrinkPolicy(flag: boolean) {
     setFreeFirstDrink(flag);
     setAskSessionOpen(false);
-    // Persistér til DB
     await supabase.from("bar_sessions").upsert({ event_date: today, free_first_drink: flag });
   }
 
+  // Afledte
+  const filteredPlayers = useMemo(() => {
+    const q = playerFilter.trim().toLowerCase();
+    if (!q) return players;
+    return players.filter(p => p.visningsnavn.toLowerCase().includes(q));
+  }, [players, playerFilter]);
+
   return (
-    <div className="mx-auto grid h-[calc(100vh-4rem)] max-w-6xl grid-cols-1 gap-4 p-4 md:grid-cols-3">
-      {/* Venstre: spillere */}
-      <div className="rounded-2xl border bg-white p-3 shadow-sm md:col-span-1">
-        <div className="mb-3 text-lg font-semibold">Dagens spillere</div>
-        {loadingPlayers ? (
-          <div>Henter spillere…</div>
-        ) : players.length === 0 ? (
-          <div className="text-sm text-gray-500">Ingen spillere fundet for i dag.</div>
-        ) : (
-          <ul className="max-h-[70vh] space-y-1 overflow-auto pr-1">
-            {players.map((p) => (
-              <li key={p.visningsnavn}>
-                <button
-                  onClick={() => setSelected(p.visningsnavn)}
-                  className={`w-full rounded-xl px-3 py-2 text-left transition ${
-                    selected === p.visningsnavn ? "bg-pink-100 ring-2 ring-pink-300" : "hover:bg-gray-50"
-                  }`}
-                >
-                  {p.visningsnavn}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+    <div className="mx-auto max-w-7xl p-4">
+      {/* Topbar */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-gradient-to-r from-pink-500 via-rose-500 to-fuchsia-600 p-4 text-white shadow-md">
+        <div className="text-xl font-semibold">Baradministration</div>
+        <div className="flex items-center gap-3 text-sm">
+          <span className="rounded-full bg-white/15 px-3 py-1">{today}</span>
+          <div className="flex items-center gap-2">
+            <span className="text-white/90">Første drik gratis:</span>
+            <button
+              onClick={() => chooseFirstDrinkPolicy(!(freeFirstDrink ?? false))}
+              className={`rounded-full px-3 py-1 font-medium ${freeFirstDrink ? 'bg-emerald-500 text-white' : 'bg-white/20 text-white'}`}
+            >{freeFirstDrink ? 'Ja' : 'Nej'}</button>
+          </div>
+        </div>
       </div>
 
-      {/* Højre: knapper + saldo */}
-      <div className="md:col-span-2">
-        <div className="mb-3 flex items-center justify-between">
-          <div className="text-lg font-semibold">Bar (i dag)</div>
-          <div className="flex items-center gap-3 text-sm text-gray-600">
-            <span>{today}</span>
-            <span className="hidden sm:inline">•</span>
-            <div className="flex items-center gap-2">
-              <span className="text-gray-600">Første drik gratis:</span>
-              <button
-                onClick={() => chooseFirstDrinkPolicy(!(freeFirstDrink ?? false))}
-                className={`rounded-full px-3 py-1 ${freeFirstDrink ? 'bg-emerald-600 text-white' : 'bg-gray-200 text-gray-700'}`}
-              >{freeFirstDrink ? 'Ja' : 'Nej'}</button>
+      {/* 3-kolonne grid (gør spillerlisten større ved at give den 5/12) */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-12">
+        {/* Venstre: Aftentotaler + Saldo */}
+        <aside className="md:col-span-3 space-y-4">
+          {/* Totals */}
+          <div className="rounded-2xl border bg-white p-3 shadow-sm">
+            <div className="mb-2 text-sm font-semibold text-gray-700">Aftentotal</div>
+            <div className="grid grid-cols-2 gap-2 text-center text-sm">
+              <Kpi label="🧾 Salg (brutto)" value={fmt(totals.sales_ore)} sub="Ekskl. bøder/indb./præmier" />
+              <Kpi label="💸 Indbetalinger" value={fmt(totals.payments_ore)} />
+              <Kpi label="🏷️ Rabatter" value={fmt(totals.discounts_ore)} />
+              <Kpi label="🎁 Præmier" value={fmt(totals.prizes_ore)} />
+              <Kpi label="⚖️ Netto" value={fmt(totals.net_ore)} emphasis={totals.net_ore < 0 ? 'neg' : 'pos'} className="col-span-2" />
             </div>
           </div>
-        </div>
 
-        {/* Aftentotal */}
-        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
-          <div className="rounded-2xl border bg-white p-3 text-center shadow-sm">
-            <div className="text-xs uppercase text-gray-500">Salg (brutto)</div>
-            <div className="text-lg font-semibold">{fmt(totals.sales_ore)}</div>
-            <div className="text-[11px] text-gray-400">Ekskl. bøder/indbet./præmier</div>
-          </div>
-          <div className="rounded-2xl border bg-white p-3 text-center shadow-sm">
-            <div className="text-xs uppercase text-gray-500">Indbetalinger</div>
-            <div className="text-lg font-semibold">{fmt(totals.payments_ore)}</div>
-          </div>
-          <div className="rounded-2xl border bg-white p-3 text-center shadow-sm">
-            <div className="text-xs uppercase text-gray-500">Rabatter</div>
-            <div className="text-lg font-semibold">{fmt(totals.discounts_ore)}</div>
-          </div>
-          <div className="rounded-2xl border bg-white p-3 text-center shadow-sm">
-            <div className="text-xs uppercase text-gray-500">Præmier</div>
-            <div className="text-lg font-semibold">{fmt(totals.prizes_ore)}</div>
-          </div>
-          <div className="rounded-2xl border bg-white p-3 text-center shadow-sm">
-            <div className="text-xs uppercase text-gray-500">Netto</div>
-            <div className={`text-lg font-semibold ${totals.net_ore < 0 ? 'text-rose-600' : 'text-emerald-700'}`}>{fmt(totals.net_ore)}</div>
-          </div>
-        </div>
-
-        {/* Produktknapper */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          {Object.entries(PRODUCTS).map(([key, p]) => (
-            <button
-              key={key}
-              disabled={!selected || inserting}
-              onClick={() => handleFixed(key as keyof typeof PRODUCTS)}
-              className="rounded-2xl bg-pink-500 px-4 py-6 text-white shadow hover:bg-pink-600 disabled:opacity-40"
-            >
-              <div className="text-base font-semibold">{p.label}</div>
-              <div className="text-sm opacity-90">{fmt(toOre(p.priceKr))}</div>
-            </button>
-          ))}
-
-          {/* Bøde */}
-          <button
-            disabled={!selected || inserting}
-            onClick={() => setBodeOpen(true)}
-            className="rounded-2xl bg-amber-500 px-4 py-6 text-white shadow hover:bg-amber-600 disabled:opacity-40"
-          >
-            <div className="text-base font-semibold">Bøde</div>
-            <div className="text-sm opacity-90">Valgfrit beløb</div>
-          </button>
-
-          {/* Indbetaling */}
-          <button
-            disabled={!selected || inserting}
-            onClick={() => setIndbOpen(true)}
-            className="rounded-2xl bg-emerald-600 px-4 py-6 text-white shadow hover:bg-emerald-700 disabled:opacity-40"
-          >
-            <div className="text-base font-semibold">Indbetaling</div>
-            <div className="text-sm opacity-90">Valgfrit beløb</div>
-          </button>
-        </div>
-
-        {/* Præmier */}
-        <div className="mt-4">
-          <div className="mb-2 text-sm font-semibold text-gray-700">Præmier</div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {PRIZE_BUTTONS.map((b) => (
-              <button
-                key={b.key}
-                disabled={!selected || inserting}
-                onClick={() => givePrize(b.key, b.amountKr)}
-                className="rounded-2xl bg-indigo-600 px-4 py-6 text-white shadow hover:bg-indigo-700 disabled:opacity-40"
-              >
-                <div className="text-sm font-semibold">{b.label}</div>
-                <div className="text-xs opacity-90">{fmt(toOre(b.amountKr))}</div>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Saldo & Undo */}
-        <div className="mt-4 flex items-center justify-between">
-          <div className="text-lg">{selected ? <>
-            <span className="text-gray-600">Saldo for </span>
-            <span className="font-semibold">{selected}</span>
-            <span className={`ml-2 font-semibold ${saldoOre < 0 ? 'text-rose-600' : 'text-emerald-700'}`}>{fmt(saldoOre)}</span>
-          </> : <span className="text-gray-500">Vælg en spiller…</span>}</div>
-          <div>
-            <button onClick={undoLast} disabled={!selected || inserting || entries.length === 0} className="rounded-xl border px-4 py-2 hover:bg-gray-50 disabled:opacity-40">
+          {/* Saldo for valgt spiller (flyttet hertil) */}
+          <div className="flex items-center justify-between rounded-2xl border bg-white p-3 shadow-sm">
+            <div className="text-base">
+              {selected ? (
+                <>
+                  <span className="text-gray-600">Saldo for </span>
+                  <span className="font-semibold">{selected}</span>
+                  <span className={`ml-2 font-semibold ${saldoOre < 0 ? 'text-rose-600' : 'text-emerald-700'}`}>{fmt(saldoOre)}</span>
+                </>
+              ) : (
+                <span className="text-gray-500">Vælg en spiller…</span>
+              )}
+            </div>
+            <button onClick={undoLast} disabled={!selected || inserting || entries.length === 0} className="rounded-xl border px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-40">
               Fortryd sidste
             </button>
           </div>
-        </div>
+        <RecentEntries entries={entries} entriesLoading={entriesLoading} />
+        </aside>
 
-        {/* Seneste poster */}
-        <div className="mt-4 rounded-2xl border bg-white shadow-sm">
-          <div className="border-b p-3 text-sm font-semibold">Seneste poster i dag</div>
-          {entriesLoading ? (
-            <div className="p-3 text-sm text-gray-500">Henter…</div>
-          ) : entries.length === 0 ? (
-            <div className="p-3 text-sm text-gray-500">Ingen poster endnu.</div>
-          ) : (
-            <ul className="divide-y">
-              {entries.map((e) => (
-                <li key={e.id} className="grid grid-cols-12 items-center gap-2 p-3 text-sm">
-                  <div className="col-span-5 truncate">
-                    {labelForProduct(e.product)}{e.note ? ` – ${e.note}` : ""}
-                  </div>
-                  <div className="col-span-3 text-gray-500">{new Date(e.created_at).toLocaleTimeString("da-DK", { hour: "2-digit", minute: "2-digit" })}</div>
-                  <div className={`col-span-4 text-right font-medium ${e.amount_ore < 0 ? "text-rose-600" : "text-emerald-700"}`}>{fmt(e.amount_ore)}</div>
-                </li>
+        {/* Midte: Produkter i faner */}
+        <main className="md:col-span-5">
+          <div className="mb-3 flex flex-wrap gap-2">
+            {(Object.keys(PRODUCT_GROUPS) as GroupKey[]).map((g) => (
+              <button
+                key={g}
+                onClick={() => setActiveGroup(g)}
+                className={`rounded-full px-4 py-2 text-sm font-medium shadow ${activeGroup === g ? 'bg-pink-600 text-white' : 'bg-white text-gray-800 border'}`}
+              >
+                {g}
+              </button>
+            ))}
+          </div>
+
+          {/* Produktgrid / Præmiegrid */}
+          {activeGroup === "🎁 Præmier" ? (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {PRIZE_BUTTONS.map((b) => (
+                <button
+                  key={b.key}
+                  disabled={!selected || inserting}
+                  onClick={() => givePrize(b.key, b.amountKr)}
+                  className="rounded-2xl bg-indigo-600 p-4 text-left text-white shadow hover:bg-indigo-700 disabled:opacity-40"
+                >
+                  <div className="text-sm font-semibold">{b.label}</div>
+                  <div className="text-xs opacity-90">{fmt(toOre(b.amountKr))}</div>
+                </button>
               ))}
-            </ul>
-          )}
-        </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {PRODUCT_GROUPS[activeGroup].map((key) => {
+                const p = PRODUCTS[key];
+                return (
+                  <button
+                    key={key}
+                    disabled={!selected || inserting}
+                    onClick={() => handleFixed(key)}
+                    className="rounded-2xl bg-white p-4 text-left shadow hover:shadow-md disabled:opacity-40 border"
+                  >
+                    <div className="text-base font-semibold">{p.label}</div>
+                    <div className="text-sm text-gray-600">{fmt(toOre(p.priceKr))}</div>
+                  </button>
+                );
+              })}
 
-        {error && <div className="mt-3 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
+              {/* Ekstra handlinger som kort (kun på varefaner) */}
+              <button
+                disabled={!selected || inserting}
+                onClick={() => setBodeOpen(true)}
+                className="rounded-2xl border bg-amber-50 p-4 text-left shadow hover:shadow-md disabled:opacity-40"
+              >
+                <div className="text-base font-semibold">🚫 Bøde</div>
+                <div className="text-sm text-amber-700">Valgfrit beløb</div>
+              </button>
+
+              <button
+                disabled={!selected || inserting}
+                onClick={() => setIndbOpen(true)}
+                className="rounded-2xl border bg-emerald-50 p-4 text-left shadow hover:shadow-md disabled:opacity-40"
+              >
+                <div className="text-base font-semibold">💳 Indbetaling</div>
+                <div className="text-sm text-emerald-700">Valgfrit beløb</div>
+              </button>
+            </div>
+          )}
+        </main>
+
+        {/* Højre: Stor spillerpanel */}
+        <section className="md:col-span-4 space-y-4">
+          <PlayerPanel
+            loading={loadingPlayers}
+            players={filteredPlayers}
+            filter={playerFilter}
+            setFilter={setPlayerFilter}
+            selected={selected}
+            setSelected={setSelected}
+          />
+
+          
+
+          {error && <div className="rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
+        </section>
       </div>
 
-      {/* Bøde modal */}
+      {/* Modals */}
       <Modal open={bodeOpen} title="Tilføj bøde" onClose={() => setBodeOpen(false)}>
         <div className="space-y-3">
           <div>
@@ -507,7 +516,6 @@ export default function AdminButikPage() {
         </div>
       </Modal>
 
-      {/* Indbetaling modal */}
       <Modal open={indbOpen} title="Registrér indbetaling" onClose={() => setIndbOpen(false)}>
         <div className="space-y-3">
           <div>
@@ -539,7 +547,6 @@ export default function AdminButikPage() {
         </div>
       </Modal>
 
-      {/* Første-drink modal */}
       <Modal open={askSessionOpen && freeFirstDrink === null} title="Første drikkevare gratis i aften?" onClose={() => setAskSessionOpen(false)}>
         <div className="space-y-3 text-sm">
           <p>Skal den første drikkevare pr. person være gratis i aften?</p>
@@ -554,24 +561,108 @@ export default function AdminButikPage() {
   );
 }
 
+function Kpi({ label, value, sub, emphasis, className = "" }: { label: string; value: string; sub?: string; emphasis?: "pos" | "neg"; className?: string }) {
+  return (
+    <div className={`rounded-xl border bg-white p-3 shadow-sm ${className}`}>
+      <div className="text-[11px] uppercase text-gray-500">{label}</div>
+      <div className={`text-lg font-semibold ${emphasis === 'pos' ? 'text-emerald-700' : emphasis === 'neg' ? 'text-rose-600' : ''}`}>{value}</div>
+      {sub && <div className="text-[11px] text-gray-400">{sub}</div>}
+    </div>
+  );
+}
+
+function PlayerPanel({ loading, players, filter, setFilter, selected, setSelected }: { loading: boolean; players: Player[]; filter: string; setFilter: (v: string) => void; selected: string; setSelected: (v: string) => void; }) {
+  return (
+    <div className="rounded-2xl border bg-white p-3 shadow-sm">
+      <div className="mb-2 flex items-center justify-between">
+        <div className="text-sm font-semibold text-gray-700">👥 Dagens spillere</div>
+        {loading && <div className="text-xs text-gray-500">Henter…</div>}
+      </div>
+      <input
+        value={filter}
+        onChange={(e) => setFilter(e.target.value)}
+        placeholder="Søg spiller…"
+        className="mb-2 w-full rounded-xl border px-3 py-2 text-sm"
+      />
+      {(!loading && players.length === 0) ? (
+        <div className="text-sm text-gray-500">Ingen spillere fundet.</div>
+      ) : (
+        <ul className="max-h-[62vh] space-y-1 overflow-auto pr-1">
+          {players.map((p) => (
+            <li key={p.visningsnavn}>
+              <button
+                onClick={() => setSelected(p.visningsnavn)}
+                className={`w-full rounded-xl px-3 py-2 text-left transition ${selected === p.visningsnavn ? "bg-pink-100 ring-2 ring-pink-300" : "hover:bg-gray-50"}`}
+              >
+                {p.visningsnavn}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function RecentEntries({ entries, entriesLoading }: { entries: Entry[]; entriesLoading: boolean }) {
+  return (
+    <div className="rounded-2xl border bg-white shadow-sm">
+      <div className="flex items-center justify-between border-b p-3">
+        <div className="text-sm font-semibold">🧾 Seneste poster i dag</div>
+        <div className="text-xs text-gray-500">{entries.length}</div>
+      </div>
+      {entriesLoading ? (
+        <div className="p-3 text-sm text-gray-500">Henter…</div>
+      ) : entries.length === 0 ? (
+        <div className="p-3 text-sm text-gray-500">Ingen poster endnu.</div>
+      ) : (
+        <ul className="divide-y">
+          {entries.map((e) => (
+            <li key={e.id} className="grid grid-cols-12 items-center gap-2 p-3 text-sm">
+              <div className="col-span-6 truncate">
+                {labelForProduct(e.product)}{e.note ? ` – ${e.note}` : ""}
+              </div>
+              <div className="col-span-3 text-gray-500">{new Date(e.created_at).toLocaleTimeString("da-DK", { hour: "2-digit", minute: "2-digit" })}</div>
+              <div className={`col-span-3 text-right font-medium ${e.amount_ore < 0 ? "text-rose-600" : "text-emerald-700"}`}>{fmt(e.amount_ore)}</div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function labelForProduct(key: string) {
   switch (key) {
-    case "stor_fadoel": return "Stor Fadøl";
-    case "lille_fadoel": return "Lille Fadøl";
-    case "stor_oel": return "Stor Øl";
-    case "lille_oel": return "Lille Øl";
-    case "sodavand": return "Sodavand";
-    case "chips": return "Chips";
-    case "boede": return "Bøde";
-    case "indbetaling": return "Indbetaling";
-    case "rabat": return "Rabat";
-    case "praemie_aften_1": return "Præmie: Aftenens Spiller";
-    case "praemie_aften_2": return "Præmie: Aftenens nr. 2";
-    case "praemie_aften_3": return "Præmie: Aftenens nr. 3";
-    case "praemie_maaned_1": return "Præmie: Månedens Spiller";
-    case "praemie_maaned_2": return "Præmie: Månedens nr. 2";
-    case "praemie_maaned_3": return "Præmie: Månedens nr. 3";
-    case "praemie_maaned_mest_aktive": return "Præmie: Månedens mest aktive";
+    // Drikke
+    case "stor_fadoel": return "🍺 Stor Fadøl";
+    case "lille_fadoel": return "🍺 Lille Fadøl";
+    case "stor_oel": return "🍻 Stor Øl";
+    case "lille_oel": return "🍻 Lille Øl";
+    case "sodavand": return "🥤 Sodavand";
+
+    // Mad/snacks
+    case "chips": return "🍟 Chips";
+    case "toast": return "🥪 Toast";
+
+    // Event/aktivitet
+    case "lunarkamp": return "🏸 Lunarkamp";
+
+    // Merchandise
+    case "tshirt": return "👕 T‑shirt";
+    case "shorts": return "🩳 Shorts";
+
+    // Øvrige
+    case "boede": return "🚫 Bøde";
+    case "indbetaling": return "💳 Indbetaling";
+    case "rabat": return "🏷️ Rabat";
+    case "praemie_aften_1": return "🎁 Præmie: Aftenens Spiller";
+    case "praemie_aften_2": return "🎁 Præmie: Aftenens nr. 2";
+    case "praemie_aften_3": return "🎁 Præmie: Aftenens nr. 3";
+    case "praemie_maaned_1": return "🎁 Præmie: Månedens Spiller";
+    case "praemie_maaned_2": return "🎁 Præmie: Månedens nr. 2";
+    case "praemie_maaned_3": return "🎁 Præmie: Månedens nr. 3";
+    case "praemie_maaned_mest_aktive": return "🎁 Præmie: Månedens mest aktive";
     default: return key;
   }
 }
