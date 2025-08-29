@@ -31,6 +31,8 @@ function extractDate(row: BarEntry) {
   return row.event_date ?? row.date ?? row.created_at ?? null
 }
 
+// ⭐ Opdateret til at understøtte Toast, Lunarkamp, T‑shirt, Shorts
+//    + ensretter chips til 🍟 for at matche admin-siden
 function productToEmojiText(productRaw?: string | null, note?: string | null, qty?: number | null) {
   const product = (productRaw ?? '').trim()
   const p = product.toLowerCase()
@@ -59,7 +61,11 @@ function productToEmojiText(productRaw?: string | null, note?: string | null, qt
   if (p.includes('bøde') || p.includes('boede')) return add('💰', true)   // behold note
   if (p.includes('indbetaling'))             return add('💸', true)      // behold note
   if (p.includes('sodavand'))                return add('🥤')
-  if (p.includes('chips'))                   return add('🍿')
+  if (p.includes('chips'))                   return add('🍟')
+  if (p.includes('toast'))                   return add('🥪 Toast')
+  if (p.includes('lunarkamp'))               return add('🏸 Lunarkamp')
+  if (p.includes('tshirt') || p.includes('t-shirt') || p.includes('t‑shirt')) return add('👕 T‑shirt')
+  if (p.includes('shorts'))                  return add('🩳 Shorts')
   if (p.includes('øl') || p.includes('oel')) return add('🍺')
   if (p.includes('rabat'))                   return add('🤑', true)      // behold note
 
@@ -245,4 +251,3 @@ export default function RegnskabPage() {
     </main>
   )
 }
-
