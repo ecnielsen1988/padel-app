@@ -1,11 +1,13 @@
+// app/admin/tilmelding/page.tsx
+
+export const revalidate = 0;
+export const dynamic = 'force-dynamic';
+
 import { cookies } from "next/headers";
 import { createServerComponentClient, createServerActionClient } from "@supabase/auth-helpers-nextjs";
 import { revalidatePath } from "next/cache";
-// If you have generated types, you can import them instead of "any"
 // import type { Database } from "@/lib/database.types";
 import React from "react";
-
-// OPTIONAL: If you already have this util, replace with your own
 import { beregnNyRangliste } from "@/lib/beregnNyRangliste";
 
 // --- Helpers ---
@@ -31,7 +33,6 @@ function kommendeTorsdagISODate() {
   const dow = cphNow.getUTCDay(); // 0=Sun ... 4=Thu
   let add = (4 - dow + 7) % 7; // hvor mange dage til torsdag
   // "Kommende torsdag": hvis i dag er torsdag, så er det i dag
-  // Hvis du hellere vil have NÆSTE torsdag (aldrig i dag), så brug: if (add === 0) add = 7;
   const th = new Date(Date.UTC(cphNow.getUTCFullYear(), cphNow.getUTCMonth(), cphNow.getUTCDate() + add));
   const y = th.getUTCFullYear();
   const m = String(th.getUTCMonth() + 1).padStart(2, "0");
@@ -39,19 +40,8 @@ function kommendeTorsdagISODate() {
   return `${y}-${m}-${d}`;
 }
 
-function addDaysISO(dateISO: string, days: number) {
-  const [y, m, d] = dateISO.split("-").map(Number);
-  const dt = new Date(Date.UTC(y, (m - 1), d));
-  dt.setUTCDate(dt.getUTCDate() + days);
-  const yy = dt.getUTCFullYear();
-  const mm = String(dt.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(dt.getUTCDate()).padStart(2, "0");
-  return `${yy}-${mm}-${dd}`;
-}
-
 function formatTime(value: string | null) {
   if (!value) return "";
-  // Understøt både "HH:MM" og timestamper. Vis kun HH:MM.
   const hhmm = value.match(/\d{2}:\d{2}/)?.[0];
   if (hhmm) return hhmm;
   try {
@@ -72,26 +62,18 @@ interface SignupRow {
   event_dato?: string | null;
   paid?: boolean | null;
 }
+interface ProfileRow { visningsnavn: string; }
+interface EloRow { visningsnavn: string; elo: number; }
 
-interface ProfileRow {
-  visningsnavn: string;
-}
-
-interface EloRow {
-  visningsnavn: string;
-  elo: number;
-}
-
+// --- Actions ---
 async function togglePaidAction(formData: FormData) {
   'use server';
   const supabase = createServerActionClient<any>({ cookies });
   const visningsnavn = String(formData.get('visningsnavn') || '');
   const event_dato = String(formData.get('event_dato') || '');
   const nextPaid = String(formData.get('next_paid') || 'false') === 'true';
-
   if (!visningsnavn || !event_dato) return;
 
-  // Prøv update først
   const { data: updated, error: updErr } = await supabase
     .from('event_signups')
     .update({ paid: nextPaid })
@@ -99,19 +81,13 @@ async function togglePaidAction(formData: FormData) {
     .eq('event_dato', event_dato)
     .select('visningsnavn');
 
-  if (updErr) {
-    console.error('togglePaidAction update error', updErr);
-  }
+  if (updErr) console.error('togglePaidAction update error', updErr);
 
   if (!updated || updated.length === 0) {
-    // Hvis ingen række fandtes: indsæt en ny (kan_spille/tidligste_tid forbliver NULL)
     const { error: insErr } = await supabase
       .from('event_signups')
       .insert({ visningsnavn, event_dato, paid: nextPaid });
-
-    if (insErr) {
-      console.error('togglePaidAction insert error', insErr);
-    }
+    if (insErr) console.error('togglePaidAction insert error', insErr);
   }
 
   revalidatePath('/admin/tilmelding');
@@ -120,22 +96,26 @@ async function togglePaidAction(formData: FormData) {
 export default async function Page() {
   const supabase = createServerComponentClient<any>({ cookies });
 
-  // (debug) vis om vi har en aktiv session lokalt – ellers kan RLS give fejl/ingen data
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) console.warn("Ingen Supabase-session fundet. Er du logget ind lokalt? RLS kan blokere læsning.");
-  } catch (e) {
-    console.warn("Kunne ikke aflæse session:", e);
+  // Kræv session (ellers returnerer RLS typisk 0 rækker).
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) {
+    return (
+      <main className="p-6 text-neutral-900 dark:text-neutral-100">
+        <h1 className="text-2xl font-semibold mb-2">Tilmeldinger – Torsdag</h1>
+        <p className="text-sm text-neutral-500 dark:text-neutral-400">
+          Du skal være logget ind for at se tilmeldingerne.
+        </p>
+      </main>
+    );
   }
 
   const thursday = kommendeTorsdagISODate();
 
-  // 1) Hent tilmeldinger for kommende torsdag
+  // 1) Hent tilmeldinger for kommende torsdag – brug ren datolighed (kolonnen er type 'date')
   const { data: signupsRaw, error: signupsErr } = await supabase
     .from("event_signups")
     .select("visningsnavn, event_dato, kan_spille, tidligste_tid, paid")
-    .gte("event_dato", thursday)
-    .lt("event_dato", addDaysISO(thursday, 1));
+    .eq("event_dato", thursday);
 
   if (signupsErr) {
     console.error("event_signups error", {
@@ -172,8 +152,7 @@ export default async function Page() {
   // 3) Hent nuværende Elo (brug din eksisterende funktion)
   let eloMap = new Map<string, number>();
   try {
-   const rangliste: EloRow[] = await beregnNyRangliste();
-
+    const rangliste: EloRow[] = await beregnNyRangliste();
     for (const r of rangliste) eloMap.set(r.visningsnavn, Math.round(r.elo ?? 0));
   } catch (e) {
     console.warn("Kunne ikke hente Elo fra beregnNyRangliste – fortsætter uden sortering", e);
@@ -181,17 +160,15 @@ export default async function Page() {
 
   // 4) Del i tre grupper
   const respondedSet = new Set(signups.filter((s) => s.kan_spille !== null).map((s) => s.visningsnavn));
-
   const tilmeldte = signups.filter((s) => s.kan_spille === true);
   const afbud = signups.filter((s) => s.kan_spille === false);
   const ingenSvar = thursdayPlayers
     .filter((p) => !respondedSet.has(p.visningsnavn))
     .map((p) => ({ visningsnavn: p.visningsnavn }));
 
-  // Sortér: tilmeldte efter Elo (højeste først), de andre alfabetisk
+  // Sortering
   const byEloDesc = (a: SignupRow, b: SignupRow) => (eloMap.get(b.visningsnavn) ?? 0) - (eloMap.get(a.visningsnavn) ?? 0);
   const byName = (a: { visningsnavn: string }, b: { visningsnavn: string }) => a.visningsnavn.localeCompare(b.visningsnavn, "da");
-
   tilmeldte.sort(byEloDesc);
   afbud.sort(byName);
   ingenSvar.sort(byName);
@@ -302,8 +279,8 @@ export default async function Page() {
 
       <footer className="text-xs text-gray-400">
         <p>
-          Betalingssum ovenfor tæller rækker i <code>event_signups</code> med <code>paid = true</code> for den valgte dato.
-          Afkrydsninger gemmes ikke endnu – tilføj et server action/route for at opdatere <code>paid</code> i Supabase.
+          Betalingssum tæller rækker i <code>event_signups</code> med <code>paid = true</code> for {thursday}.
+          Afkrydsninger gemmes via server action ovenfor.
         </p>
       </footer>
     </main>

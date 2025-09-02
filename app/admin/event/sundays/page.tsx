@@ -384,42 +384,34 @@ export default function SundaysPage() {
   };
 
   const loadDraft = async () => {
-    setBusy('loading');
-    try {
-      const { data: auth } = await supabase.auth.getUser();
-      const user = auth?.user;
+  setBusy('loading');
+  try {
+    let loaded: DraftPayload | null = null;
 
-      let loaded: DraftPayload | null = null;
+    // 1) Hent seneste kladde for 'sundays' på tværs af alle forfattere
+    const { data: latest } = await supabase
+      .from('event_drafts')
+      .select('payload, visningsnavn, updated_at')
+      .eq('draft_key', DRAFT_KEY)
+      .order('updated_at', { ascending: false }) // brug 'payload->>savedAt' hvis du ikke har updated_at
+      .limit(1)
+      .maybeSingle();
 
-      if (user) {
-        const { data: profil } = await supabase
-          .from('profiles')
-          .select('visningsnavn')
-          .eq('id', user.id)
-          .single();
+    if (latest?.payload) {
+      loaded = latest.payload as DraftPayload;
+    }
 
-        const vn = profil?.visningsnavn;
-        if (vn) {
-          const { data } = await supabase
-            .from('event_drafts')
-            .select('payload')
-            .eq('visningsnavn', vn)
-            .eq('draft_key', DRAFT_KEY)
-            .maybeSingle();
+    // 2) Fallback til localStorage hvis intet i DB
+    if (!loaded) {
+      const raw = localStorage.getItem('event_draft_sundays');
+      if (raw) loaded = JSON.parse(raw) as DraftPayload;
+    }
 
-          if (data?.payload) loaded = data.payload as DraftPayload;
-        }
-      }
-
-      if (!loaded) {
-        const raw = localStorage.getItem('event_draft_sundays');
-        if (raw) loaded = JSON.parse(raw) as DraftPayload;
-      }
-
-      if (!loaded) {
-        alert('Ingen søndagskladde fundet.');
-        return;
-      }
+    if (!loaded) {
+      alert('Ingen søndagskladde fundet.');
+      return;
+    }
+    
 
       // Normalisér loaded til DAGENS slots
       const ids = slots.map((s) => s.id);
