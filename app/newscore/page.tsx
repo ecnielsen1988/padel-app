@@ -174,27 +174,27 @@ export default function NewScorePage() {
 
   return (
     <main className="min-h-screen bg-white dark:bg-[#121212] text-gray-900 dark:text-white">
-      <div className="mx-auto max-w-lg px-3 py-5">
+      <div className="mx-auto max-w-md px-3 py-4 text-[14px]">
         {/* Header */}
-        <header className="mb-4 flex items-center justify-between">
-          <h1 className="text-xl font-bold tracking-tight">🎾 Indtast resultater</h1>
-          <Link href="/startside" className="rounded-xl border px-2.5 py-1 text-sm hover:bg-gray-50 dark:hover:bg-zinc-800">← Til start</Link>
+        <header className="mb-3 flex items-center justify-between">
+          <h1 className="text-base font-bold tracking-tight">🎾 Indtast resultater</h1>
+          <Link href="/startside" className="rounded-lg border px-2 py-1 text-xs hover:bg-gray-50 dark:hover:bg-zinc-800">← Til start</Link>
         </header>
 
         {/* Tidligere sæt */}
         {afsluttedeSaet.length > 0 && (
-          <section className="mb-3 rounded-2xl border border-pink-300/40 bg-pink-50/60 dark:bg-pink-900/15 p-2.5">
-            <div className="text-xs font-semibold mb-1.5">Tidligere sæt</div>
+          <section className="mb-3 rounded-xl border border-pink-300/40 bg-pink-50/60 dark:bg-pink-900/15 p-2">
+            <div className="text-xs font-semibold mb-1">Tidligere sæt</div>
             <ul className="space-y-1.5">
               {afsluttedeSaet.map((s, i) => (
-                <li key={i} className="flex items-center justify-between gap-2 rounded-xl bg-white dark:bg-zinc-900 p-2 shadow-sm">
-                  <div className="text-sm">
+                <li key={i} className="flex items-center justify-between gap-2 rounded-lg bg-white dark:bg-zinc-900 p-2 shadow-sm">
+                  <div className="text-[13px]">
                     <div className="font-medium">Sæt #{i+1} • {s.date}</div>
                     <div className="opacity-80">
                       {nameFor(s.holdA1)} & {nameFor(s.holdA2)} <span className="opacity-60">vs</span> {nameFor(s.holdB1)} & {nameFor(s.holdB2)} — <span className="font-semibold">{s.scoreA}-{s.scoreB}</span>
                     </div>
                   </div>
-                  <button type="button" onClick={() => removeSet(i)} className="rounded-lg border px-2 py-1 text-xs hover:bg-red-50 dark:hover:bg-red-900/20">🗑 Fjern</button>
+                  <button type="button" onClick={() => removeSet(i)} className="rounded-md border px-2 py-1 text-[11px] hover:bg-red-50 dark:hover:bg-red-900/20">🗑 Fjern</button>
                 </li>
               ))}
             </ul>
@@ -202,23 +202,23 @@ export default function NewScorePage() {
         )}
 
         {/* Aktivt sæt */}
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <div className="rounded-2xl border p-3 bg-white dark:bg-zinc-900 shadow">
-            <div className="flex items-center gap-2 mb-2.5">
+        <form onSubmit={handleSubmit} className="space-y-2.5">
+          <div className="rounded-xl border p-2.5 bg-white dark:bg-zinc-900 shadow">
+            <div className="flex items-center gap-2 mb-2">
               <h2 className="text-base font-semibold">Sæt #{afsluttedeSaet.length + 1}</h2>
               <div className="ml-auto">
                 <input
                   type="date"
-                  className="rounded-lg border px-2.5 py-1.5 text-sm bg-white/80 dark:bg-zinc-800"
+                  className="rounded-md border px-2 py-1.5 text-xs bg-white/80 dark:bg-zinc-800"
                   value={aktivtSaet.date}
                   onChange={(e) => updateField('date', e.target.value)}
                 />
               </div>
             </div>
 
-            <div className="grid gap-3">
+            <div className="grid gap-2.5">
               {/* Hold A */}
-              <div className="rounded-xl border p-2.5">
+              <div className="rounded-lg border p-2.5">
                 <div className="font-semibold mb-1.5 text-sm">Hold A</div>
                 <PlayerSelect
                   label="Spiller A1"
@@ -240,7 +240,7 @@ export default function NewScorePage() {
               </div>
 
               {/* Hold B */}
-              <div className="rounded-xl border p-2.5">
+              <div className="rounded-lg border p-2.5">
                 <div className="font-semibold mb-1.5 text-sm">Hold B</div>
                 <PlayerSelect
                   label="Spiller B1"
@@ -270,27 +270,27 @@ export default function NewScorePage() {
                 type="button"
                 disabled={!canAddSet}
                 onClick={addSet}
-                className="flex-1 h-10 rounded-2xl bg-pink-600 disabled:opacity-50 hover:bg-pink-700 text-white font-semibold text-sm"
+                className="flex-1 h-9 rounded-xl bg-pink-600 disabled:opacity-50 hover:bg-pink-700 text-white font-semibold text-xs"
               >
                 ➕ Tilføj sæt
               </button>
               <button
                 type="submit"
                 disabled={!canSubmit() || busy}
-                className="flex-1 h-10 rounded-2xl bg-green-600 disabled:opacity-50 hover:bg-green-700 text-white font-semibold text-sm"
+                className="flex-1 h-9 rounded-xl bg-green-600 disabled:opacity-50 hover:bg-green-700 text-white font-semibold text-xs"
               >
                 {busy ? 'Indsender…' : 'Indsend resultater'}
               </button>
             </div>
-            <p className="mt-2 text-[11px] opacity-70">Tip: Tilføj flere sæt før du indsender – de samles under samme kamp-ID.</p>
+            <p className="mt-1 text-[10px] opacity-70">Tip: Tilføj flere sæt før du indsender – de samles under samme kamp-ID.</p>
           </div>
         </form>
 
         {message && (
-          <div className="mt-3 rounded-2xl border p-3 bg-white dark:bg-zinc-900 shadow text-sm">
+          <div className="mt-3 rounded-xl border p-2.5 bg-white dark:bg-zinc-900 shadow">
             <div className={message.startsWith('❌') ? 'text-red-600' : 'text-pink-600 font-semibold'}>{message}</div>
             {message.startsWith('✅') && (
-              <div className="mt-2 flex gap-2">
+              <div className="mt-1.5 flex gap-2 text-xs">
                 <Link href="/mine" className="underline">Se mine resultater</Link>
                 <span>·</span>
                 <Link href="/lastgames" className="underline">Se seneste</Link>
@@ -309,18 +309,18 @@ function ScoreGrid({ value, onPick }: { value: number, onPick: (n: number) => vo
     <button
       type="button"
       onClick={() => onPick(n)}
-      className={`h-9 rounded-xl border text-sm ${value===n ? 'bg-pink-600 text-white border-pink-600' : 'bg-white dark:bg-zinc-800'}`}
+      className={`h-8 rounded-lg border text-xs ${value===n ? 'bg-pink-600 text-white border-pink-600' : 'bg-white dark:bg-zinc-800'}`}
     >
       {n}
     </button>
   )
   return (
     <div className="mt-2">
-      <div className="text-[11px] uppercase tracking-wide opacity-70 mb-1">Score</div>
-      <div className="grid grid-cols-4 gap-1.5">
+      <div className="text-[10px] uppercase tracking-wide opacity-70 mb-1">Score</div>
+      <div className="grid grid-cols-4 gap-1">
         {[0,2,4,6].map(n => <Btn key={n} n={n} />)}
       </div>
-      <div className="grid grid-cols-4 gap-1.5 mt-1.5">
+      <div className="grid grid-cols-4 gap-1 mt-1">
         {[1,3,5,7].map(n => <Btn key={n} n={n} />)}
       </div>
     </div>
@@ -341,26 +341,26 @@ function PlayerSelect({ label, firstSet, value, options, onChange, isDark }: {
       control: (base: any) => ({
         ...base,
         borderRadius: 10,
-        minHeight: 40,
+        minHeight: 34,
         backgroundColor: isDark ? '#1f2937' : '#ffffff',
         borderColor: isDark ? '#374151' : '#d1d5db',
         boxShadow: 'none',
-        fontSize: '0.9rem',
+        fontSize: '0.85rem',
       }),
-      singleValue: (base: any) => ({ ...base, color: isDark ? '#ffffff' : '#111827' }),
-      input: (base: any) => ({ ...base, color: isDark ? '#ffffff' : '#111827' }),
-      placeholder: (base: any) => ({ ...base, color: isDark ? '#9ca3af' : '#6b7280' }),
-      menu: (base: any) => ({ ...base, backgroundColor: isDark ? '#111827' : '#ffffff', color: isDark ? '#ffffff' : '#111827', fontSize: '0.9rem' }),
+      singleValue: (base: any) => ({ ...base, color: isDark ? '#ffffff' : '#111827', fontSize: '0.85rem' }),
+      input: (base: any) => ({ ...base, color: isDark ? '#ffffff' : '#111827', fontSize: '0.85rem' }),
+      placeholder: (base: any) => ({ ...base, color: isDark ? '#9ca3af' : '#6b7280', fontSize: '0.85rem' }),
+      menu: (base: any) => ({ ...base, backgroundColor: isDark ? '#111827' : '#ffffff', color: isDark ? '#ffffff' : '#111827', fontSize: '0.85rem' }),
       option: (base: any, state: any) => ({
         ...base,
         backgroundColor: state.isFocused ? (isDark ? '#1f2937' : '#f3f4f6') : 'transparent',
         color: isDark ? '#ffffff' : '#111827',
-        fontSize: '0.9rem',
+        fontSize: '0.85rem',
       }),
     }
 
     return (
-      <div className="mb-2">
+      <div className="mb-1.5">
         <label className="block text-xs mb-1">{label}</label>
         <Select
           placeholder="Vælg spiller…"
@@ -374,12 +374,12 @@ function PlayerSelect({ label, firstSet, value, options, onChange, isDark }: {
     )
   }
   return (
-    <div className="mb-2">
+    <div className="mb-1.5">
       <label className="block text-xs mb-1">{label}</label>
       <select
         value={value || ''}
         onChange={(e) => onChange(e.target.value || null)}
-        className="w-full h-10 rounded-xl border px-3 py-2 text-sm bg-white/80 dark:bg-zinc-800"
+        className="w-full h-9 rounded-lg border px-2.5 py-1.5 text-xs bg-white/80 dark:bg-zinc-800"
       >
         <option value="">Vælg spiller…</option>
         {options.map(opt => (
