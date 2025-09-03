@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 
 function MarkdownPreview({ body }: { body: string }) {
-  const lines = (body ?? '').split(/\r?\n/); // <-- én linje, ikke linjeskift inde i /.../
+  const lines = (body ?? '').replace(/\r/g, '').split('\n');
+
   return (
     <article className="mt-2 text-sm leading-6">
       {lines.map((line, i) => {
