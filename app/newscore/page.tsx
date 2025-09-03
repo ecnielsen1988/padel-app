@@ -209,7 +209,7 @@ export default function NewScorePage() {
               <div className="ml-auto">
                 <input
                   type="date"
-                  className="rounded-md border px-2 py-1.5 text-xs bg-white/80 dark:bg-zinc-800"
+                  className="rounded-md border px-2 py-1.5 text-[16px] bg-white/80 dark:bg-zinc-800"
                   value={aktivtSaet.date}
                   onChange={(e) => updateField('date', e.target.value)}
                 />
@@ -336,26 +336,26 @@ function PlayerSelect({ label, firstSet, value, options, onChange, isDark }: {
   isDark: boolean,
 }) {
   if (firstSet) {
-    // Brug react-select for første sæt (søgbar) – med mørk/lys styling
+    // Brug react-select for første sæt (søgbar) – med iOS-zoom fix (font >= 16px)
     const styles = {
       control: (base: any) => ({
         ...base,
         borderRadius: 10,
-        minHeight: 34,
+        minHeight: 40,
         backgroundColor: isDark ? '#1f2937' : '#ffffff',
         borderColor: isDark ? '#374151' : '#d1d5db',
         boxShadow: 'none',
-        fontSize: '0.85rem',
+        fontSize: '16px',
       }),
-      singleValue: (base: any) => ({ ...base, color: isDark ? '#ffffff' : '#111827', fontSize: '0.85rem' }),
-      input: (base: any) => ({ ...base, color: isDark ? '#ffffff' : '#111827', fontSize: '0.85rem' }),
-      placeholder: (base: any) => ({ ...base, color: isDark ? '#9ca3af' : '#6b7280', fontSize: '0.85rem' }),
-      menu: (base: any) => ({ ...base, backgroundColor: isDark ? '#111827' : '#ffffff', color: isDark ? '#ffffff' : '#111827', fontSize: '0.85rem' }),
+      singleValue: (base: any) => ({ ...base, color: isDark ? '#ffffff' : '#111827', fontSize: '16px' }),
+      input: (base: any) => ({ ...base, color: isDark ? '#ffffff' : '#111827', fontSize: '16px' }),
+      placeholder: (base: any) => ({ ...base, color: isDark ? '#9ca3af' : '#6b7280', fontSize: '16px' }),
+      menu: (base: any) => ({ ...base, backgroundColor: isDark ? '#111827' : '#ffffff', color: isDark ? '#ffffff' : '#111827', fontSize: '16px' }),
       option: (base: any, state: any) => ({
         ...base,
         backgroundColor: state.isFocused ? (isDark ? '#1f2937' : '#f3f4f6') : 'transparent',
         color: isDark ? '#ffffff' : '#111827',
-        fontSize: '0.85rem',
+        fontSize: '16px',
       }),
     }
 
@@ -379,7 +379,7 @@ function PlayerSelect({ label, firstSet, value, options, onChange, isDark }: {
       <select
         value={value || ''}
         onChange={(e) => onChange(e.target.value || null)}
-        className="w-full h-9 rounded-lg border px-2.5 py-1.5 text-xs bg-white/80 dark:bg-zinc-800"
+        className="w-full h-10 rounded-lg border px-2.5 py-1.5 text-[16px] bg-white/80 dark:bg-zinc-800"
       >
         <option value="">Vælg spiller…</option>
         {options.map(opt => (
