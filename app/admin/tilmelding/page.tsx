@@ -2,11 +2,11 @@
 
 export const revalidate = 0;
 export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
 
 import { cookies } from "next/headers";
 import { createServerComponentClient, createServerActionClient } from "@supabase/auth-helpers-nextjs";
 import { revalidatePath } from "next/cache";
-// import type { Database } from "@/lib/database.types";
 import React from "react";
 import { beregnNyRangliste } from "@/lib/beregnNyRangliste";
 
@@ -31,8 +31,7 @@ function kommendeTorsdagISODate() {
   // Returnerer dato (YYYY-MM-DD) for kommende torsdag i Europe/Copenhagen
   const cphNow = getCopenhagenNowAsUTCDate();
   const dow = cphNow.getUTCDay(); // 0=Sun ... 4=Thu
-  let add = (4 - dow + 7) % 7; // hvor mange dage til torsdag
-  // "Kommende torsdag": hvis i dag er torsdag, så er det i dag
+  const add = (4 - dow + 7) % 7; // hvor mange dage til torsdag (0 hvis i dag er torsdag)
   const th = new Date(Date.UTC(cphNow.getUTCFullYear(), cphNow.getUTCMonth(), cphNow.getUTCDate() + add));
   const y = th.getUTCFullYear();
   const m = String(th.getUTCMonth() + 1).padStart(2, "0");
@@ -62,8 +61,8 @@ interface SignupRow {
   event_dato?: string | null;
   paid?: boolean | null;
 }
-interface ProfileRow { visningsnavn: string; }
-interface EloRow { visningsnavn: string; elo: number; }
+interface ProfileRow { visningsnavn: string }
+interface EloRow { visningsnavn: string; elo: number }
 
 // --- Actions ---
 async function togglePaidAction(formData: FormData) {
@@ -96,22 +95,18 @@ async function togglePaidAction(formData: FormData) {
 export default async function Page() {
   const supabase = createServerComponentClient<any>({ cookies });
 
-  // Kræv session (ellers returnerer RLS typisk 0 rækker).
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) {
-    return (
-      <main className="p-6 text-neutral-900 dark:text-neutral-100">
-        <h1 className="text-2xl font-semibold mb-2">Tilmeldinger – Torsdag</h1>
-        <p className="text-sm text-neutral-500 dark:text-neutral-400">
-          Du skal være logget ind for at se tilmeldingerne.
-        </p>
-      </main>
-    );
+  // Vi blokerer ikke længere på session, men logger for at kunne debugge.
+  let sessionUserId: string | undefined;
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    sessionUserId = session?.user?.id;
+  } catch (e) {
+    console.warn('Kunne ikke aflæse session:', e);
   }
 
   const thursday = kommendeTorsdagISODate();
 
-  // 1) Hent tilmeldinger for kommende torsdag – brug ren datolighed (kolonnen er type 'date')
+  // 1) Hent tilmeldinger for kommende torsdag — kolonnen er "date", så brug lighed
   const { data: signupsRaw, error: signupsErr } = await supabase
     .from("event_signups")
     .select("visningsnavn, event_dato, kan_spille, tidligste_tid, paid")
@@ -128,11 +123,11 @@ export default async function Page() {
 
   const signups: SignupRow[] = signupsRaw ?? [];
 
-  // Betalte (på tværs af alle svar for dagen)
+  // Betaling (samme dag)
   const totalPaid = signups.filter((s) => !!s.paid).length;
   const paidMap = new Map<string, boolean>(signups.map((s) => [s.visningsnavn, !!s.paid]));
 
-  // 2) Hent alle med torsdagsflag (til 'ikke svaret')
+  // 2) Spillere med torsdags-flag
   const { data: thursdayPlayersRaw, error: profErr } = await supabase
     .from("profiles")
     .select("visningsnavn")
@@ -149,7 +144,7 @@ export default async function Page() {
 
   const thursdayPlayers: ProfileRow[] = thursdayPlayersRaw ?? [];
 
-  // 3) Hent nuværende Elo (brug din eksisterende funktion)
+  // 3) Elo map
   let eloMap = new Map<string, number>();
   try {
     const rangliste: EloRow[] = await beregnNyRangliste();
@@ -158,7 +153,7 @@ export default async function Page() {
     console.warn("Kunne ikke hente Elo fra beregnNyRangliste – fortsætter uden sortering", e);
   }
 
-  // 4) Del i tre grupper
+  // 4) Grupper
   const respondedSet = new Set(signups.filter((s) => s.kan_spille !== null).map((s) => s.visningsnavn));
   const tilmeldte = signups.filter((s) => s.kan_spille === true);
   const afbud = signups.filter((s) => s.kan_spille === false);
@@ -175,6 +170,12 @@ export default async function Page() {
 
   return (
     <main className="p-6 space-y-6 text-neutral-900 dark:text-neutral-100">
+      {!sessionUserId && (
+        <div className="rounded-md bg-amber-100 text-amber-800 px-3 py-2 text-sm">
+          Ingen server-session fundet – hvis RLS kræver login, kan listerne være tomme (du kan stadig være logget ind i browseren).
+        </div>
+      )}
+
       <header className="flex items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">Tilmeldinger – Torsdag</h1>
@@ -279,8 +280,7 @@ export default async function Page() {
 
       <footer className="text-xs text-gray-400">
         <p>
-          Betalingssum tæller rækker i <code>event_signups</code> med <code>paid = true</code> for {thursday}.
-          Afkrydsninger gemmes via server action ovenfor.
+          Betalingssum tæller rækker i <code>event_signups</code> med <code>paid = true</code> for {thursday}. Afkrydsninger gemmes via server action ovenfor.
         </p>
       </footer>
     </main>
