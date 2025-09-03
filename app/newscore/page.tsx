@@ -1,244 +1,391 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { supabase } from '../../lib/supabaseClient'
-import { SaetForm } from './SaetForm'
+import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
+import { supabase } from '@/lib/supabaseClient'
+import Select from 'react-select'
 
-export default function ResultatForm() {
-  const [spillere, setSpillere] = useState<{ visningsnavn: string }[]>([])
-  const [aktivtSaet, setAktivtSaet] = useState<any>(nytTomtSaet())
-  const [afsluttedeSaet, setAfsluttedeSaet] = useState<any[]>([])
-  const [message, setMessage] = useState('')
-  const [begrænsedeSpillere, setBegrænsedeSpillere] = useState<{ value: string; label: string }[] | null>(null)
+// --- Typer
+export type SpillerOption = { value: string; label: string }
+export type SaetState = {
+  date: string
+  holdA1: string | null
+  holdA2: string | null
+  holdB1: string | null
+  holdB2: string | null
+  scoreA: number
+  scoreB: number
+}
 
+// Gyldige “færdigspillet” sæt (klassisk padel/tennis logik)
+const VALID_FINISHES = new Set([
+  '6-0','6-1','6-2','6-3','6-4','7-5','7-6',
+  '0-6','1-6','2-6','3-6','4-6','5-7','6-7',
+])
+
+function isFinished(a: number, b: number) {
+  return VALID_FINISHES.has(`${a}-${b}`)
+}
+
+function emptySet(today = new Date()) : SaetState {
+  return {
+    date: today.toISOString().split('T')[0],
+    holdA1: null, holdA2: null, holdB1: null, holdB2: null,
+    scoreA: 0, scoreB: 0,
+  }
+}
+
+export default function NewScorePage() {
+  const [spillere, setSpillere] = useState<SpillerOption[]>([])
+  const [aktivtSaet, setAktivtSaet] = useState<SaetState>(emptySet())
+  const [afsluttedeSaet, setAfsluttedeSaet] = useState<SaetState[]>([])
+  const [message, setMessage] = useState<string>('')
+  const [busy, setBusy] = useState(false)
+  const [isDark, setIsDark] = useState(false)
+
+  // Hent spillere (visningsnavn) én gang
   useEffect(() => {
-    async function hentSpillere() {
+    (async () => {
       const { data, error } = await supabase
         .from('profiles')
         .select('visningsnavn')
         .order('visningsnavn', { ascending: true })
 
-      if (error) {
-        console.error('Fejl ved hentning af spillere:', error)
-      } else {
-        setSpillere(data || [])
+      if (!error) {
+        setSpillere((data || []).map((s: any) => ({ value: s.visningsnavn, label: s.visningsnavn })))
       }
-    }
-
-    hentSpillere()
+    })()
   }, [])
 
+  // Detect dark mode (for læsbar react-select)
   useEffect(() => {
-    if (aktivtSaet.date === '') {
-      const iDag = new Date().toISOString().split('T')[0]
-      setAktivtSaet((prev: any) => ({ ...prev, date: iDag }))
-    }
-  }, [aktivtSaet])
+    if (typeof window === 'undefined') return
+    const rootHasDark = () => document.documentElement.classList.contains('dark')
+    const mql = window.matchMedia('(prefers-color-scheme: dark)')
+    setIsDark(rootHasDark() || mql.matches)
+    const handler = (e: MediaQueryListEvent) => setIsDark(rootHasDark() || e.matches)
+    mql.addEventListener('change', handler)
+    return () => mql.removeEventListener('change', handler)
+  }, [])
 
-  const spillerOptions = spillere.map((s) => ({ value: s.visningsnavn, label: s.visningsnavn }))
-  const faerdigResultater = [
-    [6, 0], [6, 1], [6, 2], [6, 3], [6, 4], [7, 5], [7, 6],
-    [0, 6], [1, 6], [2, 6], [3, 6], [4, 6], [5, 7], [6, 7]
-  ]
+  // Begræns senere sæt til spillerne fra første sæt
+  const restrictedOptions = useMemo(() => {
+    if (afsluttedeSaet.length === 0) return null
+    const first = afsluttedeSaet[0]
+    const ids = [first.holdA1, first.holdA2, first.holdB1, first.holdB2].filter(Boolean) as string[]
+    return spillere.filter(o => ids.includes(o.value))
+  }, [afsluttedeSaet, spillere])
 
-  function nytTomtSaet() {
-    return {
-      date: '',
-      holdA1: null,
-      holdA2: null,
-      holdB1: null,
-      holdB2: null,
-      scoreA: 0,
-      scoreB: 0,
-    }
+  // Helpers
+  const allPlayersSelected = (s: SaetState) => !!(s.holdA1 && s.holdA2 && s.holdB1 && s.holdB2)
+  const canAddSet = allPlayersSelected(aktivtSaet)
+  const canSubmit = () => {
+    const all = [...afsluttedeSaet, aktivtSaet]
+    const rows = all.filter(s => !(s.scoreA === 0 && s.scoreB === 0))
+    return rows.length > 0 && rows.every(s => allPlayersSelected(s) && s.date)
   }
 
-  const erFaerdigspillet = (a: number, b: number) =>
-    faerdigResultater.some(([x, y]) => x === a && y === b)
+  function updateField<K extends keyof SaetState>(field: K, value: SaetState[K]) {
+    setAktivtSaet(prev => ({ ...prev, [field]: value }))
+  }
 
-  const tilfoejSaet = () => {
-    setAfsluttedeSaet((prev) => [...prev, aktivtSaet])
+  // Auto-swap: hvis man vælger en spiller der allerede er på modstanderholdet,
+  // bytter vi automatisk plads med den gamle spiller i dette felt.
+  function setPlayer(field: 'holdA1'|'holdA2'|'holdB1'|'holdB2', newVal: string | null) {
+    setAktivtSaet(prev => {
+      const oldVal = prev[field]
+      const next: SaetState = { ...prev, [field]: newVal }
+      if (!newVal || !oldVal || newVal === oldVal) return next
 
-    const første = aktivtSaet
-    const spillernavne = [
-      første.holdA1?.value || første.holdA1,
-      første.holdA2?.value || første.holdA2,
-      første.holdB1?.value || første.holdB1,
-      første.holdB2?.value || første.holdB2,
-    ]
-
-    const begrænsede = spillerOptions.filter((opt) =>
-      spillernavne.includes(opt.value)
-    )
-
-    setBegrænsedeSpillere(begrænsede)
-
-    setAktivtSaet({
-      date: new Date().toISOString().split('T')[0],
-      holdA1: første.holdA1?.value || første.holdA1,
-      holdA2: første.holdA2?.value || første.holdA2,
-      holdB1: første.holdB1?.value || første.holdB1,
-      holdB2: første.holdB2?.value || første.holdB2,
-      scoreA: 0,
-      scoreB: 0,
+      const otherFields: Array<keyof SaetState> = ['holdA1','holdA2','holdB1','holdB2']
+      for (const f of otherFields) {
+        if (f === field) continue
+        if (prev[f] === newVal) {
+          ;(next as any)[f] = oldVal
+          break
+        }
+      }
+      return next
     })
   }
 
-  const fjernSaet = (index: number) => {
-    setAfsluttedeSaet((prev) => prev.filter((_, i) => i !== index))
+  function addSet() {
+    setAfsluttedeSaet(prev => [...prev, aktivtSaet])
+    setAktivtSaet(prev => ({ ...prev, scoreA: 0, scoreB: 0 }))
   }
 
-  const opdaterSaet = (felt: string, value: any) => {
-    setAktivtSaet((prev: any) => ({
-      ...prev,
-      [felt]: value
-    }))
+  function removeSet(i: number) {
+    setAfsluttedeSaet(prev => prev.filter((_, idx) => idx !== i))
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (!canSubmit()) return
+    setBusy(true)
+    setMessage('')
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser()
+    const { data: { user }, error: userError } = await supabase.auth.getUser()
+    if (userError || !user) { setBusy(false); setMessage('❌ Du skal være logget ind.'); return }
 
-    if (userError || !user) {
-      setMessage('❌ Kunne ikke finde bruger – log venligst ind.')
-      return
-    }
-
-    // Hent visningsnavn fra profiles baseret på user.id
     const { data: profil, error: profilError } = await supabase
-      .from('profiles')
-      .select('visningsnavn')
-      .eq('id', user.id)
-      .single()
-
-    if (profilError || !profil?.visningsnavn) {
-      setMessage('❌ Kunne ikke finde visningsnavn – log venligst ind.')
-      return
-    }
-
+      .from('profiles').select('visningsnavn').eq('id', user.id).single()
+    if (profilError || !profil?.visningsnavn) { setBusy(false); setMessage('❌ Kunne ikke finde visningsnavn.'); return }
     const visningsnavn = profil.visningsnavn.trim()
 
     const { data: maxData, error: maxError } = await supabase
-      .from('newresults')
-      .select('kampid')
-      .not('kampid', 'is', null)
-      .order('kampid', { ascending: false })
-      .limit(1)
-
-    if (maxError) {
-      setMessage('❌ Fejl ved hentning af kampid: ' + maxError.message)
-      return
-    }
-
+      .from('newresults').select('kampid').not('kampid', 'is', null)
+      .order('kampid', { ascending: false }).limit(1)
+    if (maxError) { setBusy(false); setMessage('❌ Fejl ved hentning af kampid: ' + maxError.message); return }
     const nyKampid = (maxData?.[0]?.kampid || 0) + 1
-    const alleSaet = [...afsluttedeSaet, aktivtSaet]
 
-    const resultater = alleSaet
-      .filter((s) => !(s.scoreA === 0 && s.scoreB === 0))
-      .map((s) => ({
+    const all = [...afsluttedeSaet, aktivtSaet]
+    const rows = all
+      .filter(s => !(s.scoreA === 0 && s.scoreB === 0))
+      .map(s => ({
         date: s.date,
-        holdA1: s.holdA1?.value || s.holdA1,
-        holdA2: s.holdA2?.value || s.holdA2,
-        holdB1: s.holdB1?.value || s.holdB1,
-        holdB2: s.holdB2?.value || s.holdB2,
+        holdA1: s.holdA1,
+        holdA2: s.holdA2,
+        holdB1: s.holdB1,
+        holdB2: s.holdB2,
         scoreA: s.scoreA,
         scoreB: s.scoreB,
-        finish: erFaerdigspillet(s.scoreA, s.scoreB),
+        finish: isFinished(s.scoreA, s.scoreB),
         event: false,
         tiebreak: 'ingen',
         kampid: nyKampid,
         indberettet_af: visningsnavn,
       }))
 
-    const { error } = await supabase.from('newresults').insert(resultater)
-
+    const { error } = await supabase.from('newresults').insert(rows)
     if (error) {
       setMessage('❌ Fejl: ' + error.message)
     } else {
       setMessage(`✅ Resultater indsendt! 🏆 Kamp ID: ${nyKampid}`)
       setAfsluttedeSaet([])
-      setAktivtSaet(nytTomtSaet())
-      setBegrænsedeSpillere(null)
+      setAktivtSaet(emptySet())
     }
+    setBusy(false)
   }
 
-  const navn = (idOrObj: any) => {
-    const id = typeof idOrObj === 'object' ? idOrObj?.value : idOrObj
-    return spillerOptions.find((s) => s.value === id)?.label || 'Ukendt'
+  function nameFor(val: string | null) {
+    if (!val) return 'Ukendt'
+    return spillere.find(s => s.value === val)?.label || val
   }
 
   return (
-    <main style={{
-      maxWidth: '600px',
-      margin: 'auto',
-      padding: '2rem',
-      fontFamily: 'sans-serif',
-      backgroundColor: '#fff0f6',
-      borderRadius: '12px'
-    }}>
-      <h1 style={{ fontSize: '2rem', marginBottom: '1.5rem', color: '#d63384' }}>🎾 Indtast resultater</h1>
+    <main className="min-h-screen bg-white dark:bg-[#121212] text-gray-900 dark:text-white">
+      <div className="mx-auto max-w-lg px-3 py-5">
+        {/* Header */}
+        <header className="mb-4 flex items-center justify-between">
+          <h1 className="text-xl font-bold tracking-tight">🎾 Indtast resultater</h1>
+          <Link href="/startside" className="rounded-xl border px-2.5 py-1 text-sm hover:bg-gray-50 dark:hover:bg-zinc-800">← Til start</Link>
+        </header>
 
-      <form onSubmit={handleSubmit}>
+        {/* Tidligere sæt */}
         {afsluttedeSaet.length > 0 && (
-          <div style={{ marginBottom: '1.5rem', color: '#6a1b9a', fontWeight: 'bold' }}>
-            Tidligere sæt:
-            <ul style={{ paddingLeft: '1rem' }}>
+          <section className="mb-3 rounded-2xl border border-pink-300/40 bg-pink-50/60 dark:bg-pink-900/15 p-2.5">
+            <div className="text-xs font-semibold mb-1.5">Tidligere sæt</div>
+            <ul className="space-y-1.5">
               {afsluttedeSaet.map((s, i) => (
-                <li key={i} style={{ marginBottom: '0.5rem' }}>
-                  Sæt #{i + 1}: {navn(s.holdA1)} & {navn(s.holdA2)} vs. {navn(s.holdB1)} & {navn(s.holdB2)} – {s.scoreA}-{s.scoreB}
-                  <button
-                    onClick={() => fjernSaet(i)}
-                    title="Fjern sæt"
-                    style={{
-                      marginLeft: '0.5rem',
-                      background: 'none',
-                      border: 'none',
-                      cursor: 'pointer',
-                      color: '#d81b60',
-                      fontSize: '1.2rem',
-                    }}
-                  >
-                    🗑
-                  </button>
+                <li key={i} className="flex items-center justify-between gap-2 rounded-xl bg-white dark:bg-zinc-900 p-2 shadow-sm">
+                  <div className="text-sm">
+                    <div className="font-medium">Sæt #{i+1} • {s.date}</div>
+                    <div className="opacity-80">
+                      {nameFor(s.holdA1)} & {nameFor(s.holdA2)} <span className="opacity-60">vs</span> {nameFor(s.holdB1)} & {nameFor(s.holdB2)} — <span className="font-semibold">{s.scoreA}-{s.scoreB}</span>
+                    </div>
+                  </div>
+                  <button type="button" onClick={() => removeSet(i)} className="rounded-lg border px-2 py-1 text-xs hover:bg-red-50 dark:hover:bg-red-900/20">🗑 Fjern</button>
                 </li>
               ))}
             </ul>
-          </div>
+          </section>
         )}
 
-        <SaetForm
-          index={afsluttedeSaet.length}
-          saet={aktivtSaet}
-          spillerOptions={spillerOptions}
-          opdaterSaet={(index, felt, value) => opdaterSaet(felt, value)}
-          begrænsedeSpillere={begrænsedeSpillere}
-        />
+        {/* Aktivt sæt */}
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div className="rounded-2xl border p-3 bg-white dark:bg-zinc-900 shadow">
+            <div className="flex items-center gap-2 mb-2.5">
+              <h2 className="text-base font-semibold">Sæt #{afsluttedeSaet.length + 1}</h2>
+              <div className="ml-auto">
+                <input
+                  type="date"
+                  className="rounded-lg border px-2.5 py-1.5 text-sm bg-white/80 dark:bg-zinc-800"
+                  value={aktivtSaet.date}
+                  onChange={(e) => updateField('date', e.target.value)}
+                />
+              </div>
+            </div>
 
-        <div style={{ marginBottom: '1rem' }}>
-          <button type="button" onClick={tilfoejSaet} style={knapStyle}>➕ Tilføj sæt</button>
-          <button type="submit" style={{ ...knapStyle, backgroundColor: '#a2184b' }}>Indsend resultater</button>
-        </div>
-      </form>
+            <div className="grid gap-3">
+              {/* Hold A */}
+              <div className="rounded-xl border p-2.5">
+                <div className="font-semibold mb-1.5 text-sm">Hold A</div>
+                <PlayerSelect
+                  label="Spiller A1"
+                  firstSet={afsluttedeSaet.length === 0}
+                  value={aktivtSaet.holdA1}
+                  options={afsluttedeSaet.length === 0 ? spillere : (restrictedOptions || [])}
+                  onChange={(v) => setPlayer('holdA1', v)}
+                  isDark={isDark}
+                />
+                <PlayerSelect
+                  label="Spiller A2"
+                  firstSet={afsluttedeSaet.length === 0}
+                  value={aktivtSaet.holdA2}
+                  options={afsluttedeSaet.length === 0 ? spillere : (restrictedOptions || [])}
+                  onChange={(v) => setPlayer('holdA2', v)}
+                  isDark={isDark}
+                />
+                <ScoreGrid value={aktivtSaet.scoreA} onPick={(n) => updateField('scoreA', n)} />
+              </div>
 
-      {message && (
-        <p style={{ color: message.startsWith('❌') ? 'red' : '#d81b60', fontWeight: 'bold' }}>{message}</p>
-      )}
+              {/* Hold B */}
+              <div className="rounded-xl border p-2.5">
+                <div className="font-semibold mb-1.5 text-sm">Hold B</div>
+                <PlayerSelect
+                  label="Spiller B1"
+                  firstSet={afsluttedeSaet.length === 0}
+                  value={aktivtSaet.holdB1}
+                  options={afsluttedeSaet.length === 0 ? spillere : (restrictedOptions || [])}
+                  onChange={(v) => setPlayer('holdB1', v)}
+                  isDark={isDark}
+                />
+                <PlayerSelect
+                  label="Spiller B2"
+                  firstSet={afsluttedeSaet.length === 0}
+                  value={aktivtSaet.holdB2}
+                  options={afsluttedeSaet.length === 0 ? spillere : (restrictedOptions || [])}
+                  onChange={(v) => setPlayer('holdB2', v)}
+                  isDark={isDark}
+                />
+                <ScoreGrid value={aktivtSaet.scoreB} onPick={(n) => updateField('scoreB', n)} />
+              </div>
+            </div>
+          </div>
+
+          {/* Actionbar – mobilvenlig */}
+          <div className="sticky bottom-3 md:static md:bottom-auto">
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={!canAddSet}
+                onClick={addSet}
+                className="flex-1 h-10 rounded-2xl bg-pink-600 disabled:opacity-50 hover:bg-pink-700 text-white font-semibold text-sm"
+              >
+                ➕ Tilføj sæt
+              </button>
+              <button
+                type="submit"
+                disabled={!canSubmit() || busy}
+                className="flex-1 h-10 rounded-2xl bg-green-600 disabled:opacity-50 hover:bg-green-700 text-white font-semibold text-sm"
+              >
+                {busy ? 'Indsender…' : 'Indsend resultater'}
+              </button>
+            </div>
+            <p className="mt-2 text-[11px] opacity-70">Tip: Tilføj flere sæt før du indsender – de samles under samme kamp-ID.</p>
+          </div>
+        </form>
+
+        {message && (
+          <div className="mt-3 rounded-2xl border p-3 bg-white dark:bg-zinc-900 shadow text-sm">
+            <div className={message.startsWith('❌') ? 'text-red-600' : 'text-pink-600 font-semibold'}>{message}</div>
+            {message.startsWith('✅') && (
+              <div className="mt-2 flex gap-2">
+                <Link href="/mine" className="underline">Se mine resultater</Link>
+                <span>·</span>
+                <Link href="/lastgames" className="underline">Se seneste</Link>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </main>
   )
 }
 
-const knapStyle = {
-  backgroundColor: '#d81b60',
-  color: 'white',
-  border: 'none',
-  padding: '0.8rem 1.4rem',
-  borderRadius: '10px',
-  fontSize: '1rem',
-  cursor: 'pointer',
-  marginRight: '1rem'
+// --- Små UI-komponenter
+function ScoreGrid({ value, onPick }: { value: number, onPick: (n: number) => void }) {
+  const Btn = ({ n }: { n: number }) => (
+    <button
+      type="button"
+      onClick={() => onPick(n)}
+      className={`h-9 rounded-xl border text-sm ${value===n ? 'bg-pink-600 text-white border-pink-600' : 'bg-white dark:bg-zinc-800'}`}
+    >
+      {n}
+    </button>
+  )
+  return (
+    <div className="mt-2">
+      <div className="text-[11px] uppercase tracking-wide opacity-70 mb-1">Score</div>
+      <div className="grid grid-cols-4 gap-1.5">
+        {[0,2,4,6].map(n => <Btn key={n} n={n} />)}
+      </div>
+      <div className="grid grid-cols-4 gap-1.5 mt-1.5">
+        {[1,3,5,7].map(n => <Btn key={n} n={n} />)}
+      </div>
+    </div>
+  )
 }
 
+function PlayerSelect({ label, firstSet, value, options, onChange, isDark }: {
+  label: string,
+  firstSet: boolean,
+  value: string | null,
+  options: SpillerOption[],
+  onChange: (v: string | null) => void,
+  isDark: boolean,
+}) {
+  if (firstSet) {
+    // Brug react-select for første sæt (søgbar) – med mørk/lys styling
+    const styles = {
+      control: (base: any) => ({
+        ...base,
+        borderRadius: 10,
+        minHeight: 40,
+        backgroundColor: isDark ? '#1f2937' : '#ffffff',
+        borderColor: isDark ? '#374151' : '#d1d5db',
+        boxShadow: 'none',
+        fontSize: '0.9rem',
+      }),
+      singleValue: (base: any) => ({ ...base, color: isDark ? '#ffffff' : '#111827' }),
+      input: (base: any) => ({ ...base, color: isDark ? '#ffffff' : '#111827' }),
+      placeholder: (base: any) => ({ ...base, color: isDark ? '#9ca3af' : '#6b7280' }),
+      menu: (base: any) => ({ ...base, backgroundColor: isDark ? '#111827' : '#ffffff', color: isDark ? '#ffffff' : '#111827', fontSize: '0.9rem' }),
+      option: (base: any, state: any) => ({
+        ...base,
+        backgroundColor: state.isFocused ? (isDark ? '#1f2937' : '#f3f4f6') : 'transparent',
+        color: isDark ? '#ffffff' : '#111827',
+        fontSize: '0.9rem',
+      }),
+    }
+
+    return (
+      <div className="mb-2">
+        <label className="block text-xs mb-1">{label}</label>
+        <Select
+          placeholder="Vælg spiller…"
+          options={options}
+          value={value ? { value, label: options.find(o => o.value===value)?.label || value } : null}
+          onChange={(opt) => onChange(opt ? (opt as SpillerOption).value : null)}
+          isClearable
+          styles={styles as any}
+        />
+      </div>
+    )
+  }
+  return (
+    <div className="mb-2">
+      <label className="block text-xs mb-1">{label}</label>
+      <select
+        value={value || ''}
+        onChange={(e) => onChange(e.target.value || null)}
+        className="w-full h-10 rounded-xl border px-3 py-2 text-sm bg-white/80 dark:bg-zinc-800"
+      >
+        <option value="">Vælg spiller…</option>
+        {options.map(opt => (
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        ))}
+      </select>
+    </div>
+  )
+}
