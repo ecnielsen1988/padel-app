@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic'
 
 import { beregnEloÆndringerForIndeværendeMåned } from '@/lib/beregnEloChange'
+import { headers } from 'next/headers'
 
 type MånedensSpiller = {
   visningsnavn: string
@@ -10,8 +11,22 @@ type MånedensSpiller = {
 export default async function MånedensSpillerSide() {
   const maanedens: MånedensSpiller[] = await beregnEloÆndringerForIndeværendeMåned()
 
+  // Læs Referer i server component og lav et internt href (uden cross-origin)
+  const h = headers() as any
+  const ref: string | null = typeof h.get === 'function' ? h.get('referer') : null
+
+  let backHref = '/'
+  if (ref) {
+    try {
+      const u = new URL(ref)
+      backHref = (u.pathname || '/') + (u.search || '') + (u.hash || '')
+    } catch {
+      if (ref.startsWith('/')) backHref = ref
+    }
+  }
+
   function emojiForPluspoint(p: number) {
-   if (p >= 100) return '🍾'
+    if (p >= 100) return '🍾'
     if (p >= 50) return '🏆'
     if (p >= 40) return '🏅'
     if (p >= 30) return '☄️'
@@ -31,7 +46,19 @@ export default async function MånedensSpillerSide() {
   }
 
   return (
-    <main className="min-h-screen py-10 px-4 sm:px-8 md:px-16 bg-white dark:bg-[#1e1e1e] text-gray-900 dark:text-white font-sans">
+    <main className="min-h-screen py-10 px-4 sm:px-8 md:px-16 bg-white dark:bg-[#1e1e1e] text-gray-900 dark:text-white font-sans relative">
+      {/* ← Tilbage-knap øverst til venstre */}
+      <div className="fixed top-4 left-4 z-50">
+        <a
+          href={backHref}
+          aria-label="Tilbage"
+          title="Tilbage"
+          className="px-3 py-1.5 rounded-full border-2 border-pink-500 text-pink-600 bg-white/90 dark:bg-[#2a2a2a]/90 shadow hover:bg-pink-50 dark:hover:bg-pink-900/20 transition"
+        >
+          ← Tilbage
+        </a>
+      </div>
+
       <h1 className="text-2xl sm:text-4xl font-bold text-center text-pink-600 mb-10">
         📈 Månedens spillere
       </h1>
@@ -44,7 +71,6 @@ export default async function MånedensSpillerSide() {
         <ol className="space-y-4 max-w-2xl mx-auto">
           {maanedens.map((spiller, index) => {
             const emoji = emojiForPluspoint(spiller.pluspoint)
-
             return (
               <li
                 key={spiller.visningsnavn}
@@ -66,11 +92,9 @@ export default async function MånedensSpillerSide() {
                     {spiller.visningsnavn}
                   </span>
                 </div>
-                <span className="text-sm sm:text-base font-semibold whitespace-nowrap">
+                <span className="text-sm sm:text-base font-semibold whitespace-nowrap tabular-nums">
                   {spiller.pluspoint > 0 ? '+' : ''}
-{spiller.pluspoint.toFixed(1)} {emoji}
-
-
+                  {spiller.pluspoint.toFixed(1)} {emoji}
                 </span>
               </li>
             )

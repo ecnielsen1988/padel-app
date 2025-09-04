@@ -40,7 +40,6 @@ export default function MestAktiveSide() {
       }
 
       const tæller: Record<string, number> = {}
-
       kampeData.forEach(kamp => {
         ;[kamp.holdA1, kamp.holdA2, kamp.holdB1, kamp.holdB2].forEach(spiller => {
           if (spiller) {
@@ -72,8 +71,28 @@ export default function MestAktiveSide() {
     return '🏃‍♂️'
   }
 
+  function goBack() {
+    if (typeof window !== 'undefined') {
+      if (window.history.length > 1) window.history.back()
+      else window.location.href = '/'
+    }
+  }
+
   return (
-    <main className="min-h-screen py-10 px-4 sm:px-8 md:px-16 bg-white dark:bg-[#1e1e1e] text-gray-900 dark:text-white font-sans">
+    <main className="min-h-screen py-10 px-4 sm:px-8 md:px-16 bg-white dark:bg-[#1e1e1e] text-gray-900 dark:text-white font-sans relative">
+      {/* ← Tilbage-knap øverst til venstre */}
+      <div className="fixed top-4 left-4 z-50">
+        <button
+          type="button"
+          onClick={goBack}
+          aria-label="Tilbage"
+          title="Tilbage"
+          className="px-3 py-1.5 rounded-full border-2 border-pink-500 text-pink-600 bg-white/90 dark:bg-[#2a2a2a]/90 shadow hover:bg-pink-50 dark:hover:bg-pink-900/20 transition"
+        >
+          ← Tilbage
+        </button>
+      </div>
+
       <h1 className="text-2xl sm:text-4xl font-bold text-center text-pink-600 mb-10">
         🏃‍♂️ Mest aktive spillere i måneden
       </h1>

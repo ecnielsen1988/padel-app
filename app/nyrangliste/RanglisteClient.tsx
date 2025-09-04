@@ -49,6 +49,13 @@ export default function RanglisteClient({
     }
   }
 
+function goBack() {
+  if (typeof window !== 'undefined') {
+    if (window.history.length > 1) window.history.back();
+    else window.location.href = '/';
+  }
+}
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!q) return;
@@ -101,18 +108,29 @@ export default function RanglisteClient({
 
   return (
     <>
-      {/* 🔎 Lille flydende søgeknap øverst til venstre */}
-      <div className="fixed top-4 left-4 z-50">
-        {/* Toggle-knap */}
-        <button
-          type="button"
-          onClick={() => setSearchOpen((v) => !v)}
-          className="text-2xl leading-none hover:scale-110 transition"
-          title={searchOpen ? 'Luk søgning' : 'Søg spiller'}
-          aria-label="Søg spiller"
-        >
-          🔎
-        </button>
+      {/* 🔎 + ← Tilbage i øverste venstre hjørne */}
+<div className="fixed top-4 left-4 z-50 flex flex-col items-start gap-2">
+  {/* Toggle-knap */}
+  <button
+    type="button"
+    onClick={() => setSearchOpen((v) => !v)}
+    className="text-2xl leading-none hover:scale-110 transition"
+    title={searchOpen ? 'Luk søgning' : 'Søg spiller'}
+    aria-label="Søg spiller"
+  >
+    🔎
+  </button>
+
+  {/* ← Tilbage-knap */}
+  <button
+    type="button"
+    onClick={goBack}
+    aria-label="Tilbage"
+    title="Tilbage"
+    className="px-3 py-1.5 rounded-full border-2 border-pink-500 text-pink-600 bg-white/90 dark:bg-[#2a2a2a]/90 shadow hover:bg-pink-50 dark:hover:bg-pink-900/20 transition"
+  >
+    ← Tilbage
+  </button>
 
         {/* Rullende søgeboks */}
         <div
