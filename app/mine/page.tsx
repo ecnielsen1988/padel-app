@@ -308,7 +308,7 @@ export default function MineKampeSide() {
       </button>
 
       <h1 style={{ textAlign: 'center', marginBottom: '0.5rem' }}>
-        🎾 Dine seneste kampe med Elo-ændringer
+        🎾 Dine seneste kampe
       </h1>
       <p style={{ textAlign: 'center', marginBottom: '2rem', color: '#666' }}>
         Viser dine seneste 20 kampe

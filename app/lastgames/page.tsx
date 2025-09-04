@@ -202,7 +202,7 @@ export default function SenesteKampeSide() {
         ← Tilbage
       </button>
 
-      <h1 style={{ textAlign: 'center', marginBottom: '0.5rem' }}>🎾 Seneste Kampe med Elo-ændringer</h1>
+      <h1 style={{ textAlign: 'center', marginBottom: '0.5rem' }}>🎾 Seneste Kampe</h1>
       <p style={{ textAlign: 'center', marginBottom: '2rem', color: '#666' }}>
         Viser de seneste 20 kampe
       </p>
