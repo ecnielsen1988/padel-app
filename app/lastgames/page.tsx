@@ -35,8 +35,8 @@ export default function SenesteKampeSide() {
         if (error) break
         if (!batch || batch.length === 0) break
 
-        alleResultater = alleResultater.concat(batch)
-        lastId = batch[batch.length - 1].id
+        alleResultater = alleResultater.concat(batch as any)
+        lastId = (batch[batch.length - 1] as any).id
         if (batch.length < batchSize) break
       }
 
@@ -49,7 +49,8 @@ export default function SenesteKampeSide() {
 
       const initialEloMap: EloMap = {}
       spillereData.forEach((s: any) => {
-        initialEloMap[s.visningsnavn.trim()] = s.startElo ?? 1500
+        const key = (s.visningsnavn ?? '').toString().trim()
+        if (key) initialEloMap[key] = s.startElo ?? 1500
       })
 
       const resultaterData = await hentAlleResultater()
@@ -70,7 +71,7 @@ export default function SenesteKampeSide() {
           return {
             kampid: Number(kampid),
             sæt,
-            indberettetAf: sæt[0].indberettet_af ?? undefined,
+            indberettetAf: (sæt[0].indberettet_af ?? undefined) as string | undefined,
           }
         })
         .sort((a, b) => b.kampid - a.kampid)
@@ -100,62 +101,67 @@ export default function SenesteKampeSide() {
     if (diff > -40) return '❄️'
     if (diff > -50) return '🙈'
     if (diff > -100) return '🥊'
-   if (diff > -150) return '💩'
+    if (diff > -150) return '💩'
     return '💩💩'
   }
 
+  // Hent visningsnavn — foretræk profiles, dernæst auth metadata
+  async function hentVisningsnavn(): Promise<string | null> {
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) return null
 
+    // 1) Profiles (foretrukket – mange af dine data ligger her)
+    let navn = ''
+    const { data: profileData } = await supabase
+      .from('profiles')
+      .select('visningsnavn')
+      .eq('id', user.id)
+      .maybeSingle()
 
+    navn = (profileData?.visningsnavn ?? '').toString().trim()
 
- async function sendBeskedTilAdmin(kampid: number) {
-  const besked = kommentarer[kampid]
-  if (!besked) return
+    // 2) Fallback: auth.user_metadata.visningsnavn
+    if (!navn) {
+      navn = (user.user_metadata?.visningsnavn ?? '').toString().trim()
+    }
 
-  // 1. Hent den aktuelle bruger
-  const { data: userData, error: authError } = await supabase.auth.getUser()
-  const brugerId = userData?.user?.id
+    // 3) Sidste fallback: name/email
+    if (!navn) {
+      navn =
+        (user.user_metadata?.name ?? '').toString().trim() ||
+        (user.email ? user.email.split('@')[0] : '')
+    }
 
-  if (authError || !brugerId) {
-    alert('Du skal være logget ind for at sende besked.')
-    return
+    return navn || null
   }
 
-  // 2. Hent visningsnavn fra 'profiles' baseret på brugerens id
-  const { data: profileData, error: profileError } = await supabase
-    .from('profiles')
-    .select('visningsnavn')
-    .eq('id', brugerId)
-    .single()
+  async function sendBeskedTilAdmin(kampid: number) {
+    const raw = kommentarer[kampid]
+    const besked = (raw ?? '').toString().trim()
+    if (!besked) {
+      alert('Skriv en kommentar før du sender.')
+      return
+    }
 
-  if (profileError || !profileData?.visningsnavn) {
-    alert('Kunne ikke finde dit visningsnavn i profiler.')
-    return
-  }
+    const visningsnavn = await hentVisningsnavn()
+    if (!visningsnavn) {
+      alert('Du skal være logget ind (med visningsnavn) for at sende besked.')
+      return
+    }
 
-  const visningsnavn = profileData.visningsnavn
-
-  // 3. Indsæt beskeden i admin_messages
-  const { error } = await supabase.from('admin_messages').insert([
-    {
+    const { error } = await supabase.from('admin_messages').insert([{
       kampid,
       besked,
       tidspunkt: new Date().toISOString(),
-      visningsnavn,
-    },
-  ])
+      visningsnavn, // trimmed og korrekt
+    }])
 
-  if (error) {
-    alert('Kunne ikke sende besked: ' + error.message)
-  } else {
-    alert('Besked sendt til admin.')
-    setKommentarer((prev) => ({ ...prev, [kampid]: '' }))
-  }
-}
-
-
-
-  function redigerKamp(kampid: number) {
-    window.location.href = `/rediger/${kampid}`
+    if (error) {
+      alert('Kunne ikke sende besked: ' + error.message)
+    } else {
+      alert('Besked sendt til admin.')
+      setKommentarer((prev) => ({ ...prev, [kampid]: '' }))
+    }
   }
 
   return (
@@ -167,8 +173,35 @@ export default function SenesteKampeSide() {
         margin: 'auto',
         color: 'inherit',
         backgroundColor: 'inherit',
+        position: 'relative',
       }}
     >
+      {/* Tilbage-knap øverst venstre */}
+      <button
+        onClick={() => { if (typeof window !== 'undefined') window.history.back() }}
+        aria-label="Tilbage"
+        title="Tilbage"
+        style={{
+          position: 'fixed',
+          top: '12px',
+          left: '12px',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '6px',
+          background: '#fff0f5',
+          border: '2px solid #ec407a',
+          color: '#ec407a',
+          padding: '6px 10px',
+          borderRadius: '999px',
+          cursor: 'pointer',
+          fontWeight: 700,
+          boxShadow: '0 0 6px rgba(236,64,122,0.15)',
+          zIndex: 50,
+        }}
+      >
+        ← Tilbage
+      </button>
+
       <h1 style={{ textAlign: 'center', marginBottom: '0.5rem' }}>🎾 Seneste Kampe med Elo-ændringer</h1>
       <p style={{ textAlign: 'center', marginBottom: '2rem', color: '#666' }}>
         Viser de seneste 20 kampe
@@ -226,41 +259,39 @@ export default function SenesteKampeSide() {
 
             {/* Øverste spilleroversigt */}
             <div
-  style={{
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.3rem',
-    marginBottom: '1rem',
-  }}
->
-  {spillere.map(({ navn, startElo }) => (
-    <div
-      key={navn}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        flexWrap: 'wrap',
-        fontSize: 'clamp(0.75rem, 2.5vw, 0.95rem)',
-        lineHeight: '1.2',
-      }}
-    >
-      <span style={{ fontSize: 'clamp(0.9rem, 3vw, 1rem)', marginRight: '0.4rem' }}>🎾</span>
-     <strong
-  style={{
-    marginRight: '0.5rem',
-    fontWeight: 800,
-    fontSize: '0.8rem', // eller fx '0.75rem'
-  }}
->
-  {navn}
-</strong>
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.3rem',
+                marginBottom: '1rem',
+              }}
+            >
+              {spillere.map(({ navn, startElo }) => (
+                <div
+                  key={navn}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    fontSize: 'clamp(0.75rem, 2.5vw, 0.95rem)',
+                    lineHeight: '1.2',
+                  }}
+                >
+                  <span style={{ fontSize: 'clamp(0.9rem, 3vw, 1rem)', marginRight: '0.4rem' }}>🎾</span>
+                  <strong
+                    style={{
+                      marginRight: '0.5rem',
+                      fontWeight: 800,
+                      fontSize: '0.8rem',
+                    }}
+                  >
+                    {navn}
+                  </strong>
 
-      <span style={{ color: '#555', fontSize: '0.8em' }}>ELO før: {startElo.toFixed(1)}</span>
-    </div>
-  ))}
-</div>
-
-
+                  <span style={{ color: '#555', fontSize: '0.8em' }}>ELO før: {startElo.toFixed(1)}</span>
+                </div>
+              ))}
+            </div>
 
             {/* Sætvisning */}
             <div style={{ marginBottom: '1rem' }}>
@@ -299,47 +330,46 @@ export default function SenesteKampeSide() {
 
             {/* Elo efter kampen */}
             <div
-  style={{
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.3rem',
-    marginTop: '1.2rem',
-    paddingTop: '1rem',
-    borderTop: '1px dashed #aaa',
-  }}
->
-  {totalEloSorted.map(([navn, elo]) => (
-    <div
-      key={navn}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        fontSize: '0.8rem',
-        flexWrap: 'wrap',
-      }}
-    >
-      <span style={{ fontSize: '1rem', marginRight: '0.5rem' }}>{getEmojiForEloDiff(elo.diff)}</span>
-      <strong style={{ marginRight: '0.5rem' }}>{navn}</strong>
-      <span style={{ color: '#555', fontSize: '0.85rem', marginRight: '0.5rem' }}>
-        Elo: {elo.after.toFixed(1)}
-      </span>
-      <span
-        style={{
-          fontSize: '0.9rem',
-          fontWeight: 'bold',
-          color: elo.diff > 0 ? '#2e7d32' : elo.diff < 0 ? '#c62828' : '#666',
-        }}
-      >
-        ({elo.diff > 0 ? '+' : ''}
-        {elo.diff.toFixed(1)})
-      </span>
-    </div>
-  ))}
-</div>
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.3rem',
+                marginTop: '1.2rem',
+                paddingTop: '1rem',
+                borderTop: '1px dashed #aaa',
+              }}
+            >
+              {totalEloSorted.map(([navn, elo]) => (
+                <div
+                  key={navn}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    fontSize: '0.8rem',
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <span style={{ fontSize: '1rem', marginRight: '0.5rem' }}>{getEmojiForEloDiff(elo.diff)}</span>
+                  <strong style={{ marginRight: '0.5rem' }}>{navn}</strong>
+                  <span style={{ color: '#555', fontSize: '0.85rem', marginRight: '0.5rem' }}>
+                    Elo: {elo.after.toFixed(1)}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: '0.9rem',
+                      fontWeight: 'bold',
+                      color: elo.diff > 0 ? '#2e7d32' : elo.diff < 0 ? '#c62828' : '#666',
+                    }}
+                  >
+                    ({elo.diff > 0 ? '+' : ''}
+                    {elo.diff.toFixed(1)})
+                  </span>
+                </div>
+              ))}
+            </div>
 
-
-            {/* Indberettet af */}
-            {indberettetAf && (
+            {/* Indberettet af (fra selve kampen) */}
+            {indberettetAf?.toString().trim() && (
               <div style={{
                 position: 'absolute',
                 bottom: '0.4rem',
@@ -347,55 +377,52 @@ export default function SenesteKampeSide() {
                 fontSize: '0.75rem',
                 color: '#888',
               }}>
-                Indberettet af {indberettetAf}
+                Indberettet af {(indberettetAf ?? '').toString().trim()}
               </div>
             )}
 
-            {/* Rediger eller kommentar */}
+            {/* Indrapportér fejl */}
             <div style={{ marginTop: '1.5rem' }}>
-              <div>
-  <label
-    style={{
-      display: 'block',
-      marginBottom: '0.3rem',
-      fontSize: '0.85rem',
-      fontWeight: 'bold',
-    }}
-  >
-    🚫 Indberet fejl i kampen:
-  </label>
-  <textarea
-    placeholder="Skriv hvad der er forkert..."
-    value={kommentarer[kampid] || ''}
-    onChange={(e) =>
-      setKommentarer((prev) => ({ ...prev, [kampid]: e.target.value }))
-    }
-    style={{
-      width: '100%',
-      padding: '0.5rem',
-      borderRadius: '6px',
-      border: '1px solid #ccc',
-      minHeight: '60px',
-      marginBottom: '0.5rem',
-      fontFamily: 'inherit',
-    }}
-  />
-  <button
-    onClick={() => sendBeskedTilAdmin(kampid)}
-    style={{
-      backgroundColor: '#ec407a',
-      color: '#fff',
-      padding: '0.4rem 0.8rem',
-      borderRadius: '6px',
-      border: 'none',
-      cursor: 'pointer',
-      fontWeight: 'bold',
-    }}
-  >
-    📩 Send besked
-  </button>
-</div>
-
+              <label
+                style={{
+                  display: 'block',
+                  marginBottom: '0.3rem',
+                  fontSize: '0.85rem',
+                  fontWeight: 'bold',
+                }}
+              >
+                🚫 Indberet fejl i kampen:
+              </label>
+              <textarea
+                placeholder="Skriv hvad der er forkert..."
+                value={kommentarer[kampid] || ''}
+                onChange={(e) =>
+                  setKommentarer((prev) => ({ ...prev, [kampid]: e.target.value }))
+                }
+                style={{
+                  width: '100%',
+                  padding: '0.5rem',
+                  borderRadius: '6px',
+                  border: '1px solid #ccc',
+                  minHeight: '60px',
+                  marginBottom: '0.5rem',
+                  fontFamily: 'inherit',
+                }}
+              />
+              <button
+                onClick={() => sendBeskedTilAdmin(kampid)}
+                style={{
+                  backgroundColor: '#ec407a',
+                  color: '#fff',
+                  padding: '0.4rem 0.8rem',
+                  borderRadius: '6px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                }}
+              >
+                📩 Send besked
+              </button>
             </div>
           </div>
         )

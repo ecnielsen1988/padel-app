@@ -19,33 +19,40 @@ export default function MineKampeSide() {
   const [mitNavn, setMitNavn] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
-  // 1) Hent mit visningsnavn fra auth.user.user_metadata.visningsnavn (fallback: profiles)
-  useEffect(() => {
-    async function hentMitNavn() {
-      const { data: userData, error } = await supabase.auth.getUser()
-      if (error || !userData?.user) {
-        setMitNavn(null)
-        setLoading(false)
-        return
-      }
+  // Hjælper: hent visningsnavn (profiles → auth metadata → name/email)
+  async function hentVisningsnavn(): Promise<string | null> {
+    const { data: { user }, error } = await supabase.auth.getUser()
+    if (error || !user) return null
 
-      const metaNavn = (userData.user.user_metadata?.visningsnavn || '').trim()
-      if (metaNavn) {
-        setMitNavn(metaNavn)
-        return
-      }
+    // 1) profiles
+    let navn = ''
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('visningsnavn')
+      .eq('id', user.id)
+      .maybeSingle()
+    navn = (profile?.visningsnavn ?? '').toString().trim()
 
-      // Fallback til profiles hvis metadata ikke findes
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('visningsnavn')
-        .eq('id', userData.user.id)
-        .single()
+    // 2) auth.user_metadata.visningsnavn
+    if (!navn) navn = (user.user_metadata?.visningsnavn ?? '').toString().trim()
 
-      setMitNavn((profileData?.visningsnavn || '').trim() || null)
+    // 3) fallback name/email
+    if (!navn) {
+      navn =
+        (user.user_metadata?.name ?? '').toString().trim() ||
+        (user.email ? user.email.split('@')[0] : '')
     }
+    return navn || null
+  }
 
-    hentMitNavn()
+  // 1) Find mit visningsnavn
+  useEffect(() => {
+    (async () => {
+      const navn = await hentVisningsnavn()
+      setMitNavn(navn)
+      setLoading(false)
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // 2) Hent alle resultater, beregn Elo, og filtrér til kun mine kampe
@@ -89,8 +96,8 @@ export default function MineKampeSide() {
 
       const initialEloMap: EloMap = {}
       spillereData.forEach((s: any) => {
-        if (!s?.visningsnavn) return
-        initialEloMap[s.visningsnavn.trim()] = s.startElo ?? 1500
+        const key = (s?.visningsnavn ?? '').toString().trim()
+        if (key) initialEloMap[key] = s.startElo ?? 1500
       })
 
       const resultaterData = await hentAlleResultater()
@@ -99,10 +106,10 @@ export default function MineKampeSide() {
         return
       }
 
-      // Beregn Elo på hele historikken for at få korrekte before/after
+      // Beregn Elo på hele historikken for korrekte before/after
       const { nyEloMap, eloChanges } = beregnEloForKampe(resultaterData, initialEloMap)
 
-      // Gruppér alle sæt i kampe
+      // Gruppér i kampe
       const grupper: Record<number, Kamp[]> = {}
       resultaterData.forEach((kamp) => {
         const key = kamp.kampid ?? 0
@@ -110,9 +117,8 @@ export default function MineKampeSide() {
         grupper[key].push(kamp)
       })
 
-      // Lav array + filtrér til kampe hvor jeg deltog
+      // Filtrér til mine kampe
       const myName = (mitNavn ?? '').trim()
-
       const kampGrupperArray: KampGruppe[] = Object.entries(grupper)
         .map(([kampid, sætUnTyped]) => {
           const sæt = sætUnTyped as Kamp[]
@@ -124,12 +130,11 @@ export default function MineKampeSide() {
         })
         .filter((gruppe) =>
           gruppe.sæt.some((k) => {
-            return (
-              k.holdA1?.trim() === myName ||
-              k.holdA2?.trim() === myName ||
-              k.holdB1?.trim() === myName ||
-              k.holdB2?.trim() === myName
-            )
+            const a1 = k.holdA1?.toString().trim()
+            const a2 = k.holdA2?.toString().trim()
+            const b1 = k.holdB1?.toString().trim()
+            const b2 = k.holdB2?.toString().trim()
+            return a1 === myName || a2 === myName || b1 === myName || b2 === myName
           })
         )
         .sort((a, b) => b.kampid - a.kampid)
@@ -164,26 +169,27 @@ export default function MineKampeSide() {
     return '💩💩'
   }
 
+  // Brug samme robuste indsendelse som /lastgames
   async function sendBeskedTilAdmin(kampid: number) {
-    const besked = kommentarer[kampid]
-    if (!besked) return
+    const raw = kommentarer[kampid]
+    const besked = (raw ?? '').toString().trim()
+    if (!besked) {
+      alert('Skriv hvad der er forkert, før du sender.')
+      return
+    }
 
-    const { data: userData, error: authError } = await supabase.auth.getUser()
-    if (authError || !userData?.user) {
+    const visningsnavn = await hentVisningsnavn()
+    if (!visningsnavn) {
       alert('Du skal være logget ind for at sende besked.')
       return
     }
 
-    const visningsnavn = (userData.user.user_metadata?.visningsnavn || '').trim()
-
-    const { error } = await supabase.from('admin_messages').insert([
-      {
-        kampid,
-        besked,
-        tidspunkt: new Date().toISOString(),
-        visningsnavn,
-      },
-    ])
+    const { error } = await supabase.from('admin_messages').insert([{
+      kampid,
+      besked,
+      tidspunkt: new Date().toISOString(),
+      visningsnavn, // trimmed og fyldt
+    }])
 
     if (error) {
       alert('Kunne ikke sende besked: ' + error.message)
@@ -195,7 +201,32 @@ export default function MineKampeSide() {
 
   if (loading && !mitNavn) {
     return (
-      <div style={{ padding: '1rem', maxWidth: 700, margin: 'auto' }}>
+      <div style={{ padding: '1rem', maxWidth: 700, margin: 'auto', position: 'relative' }}>
+        {/* Tilbage-knap */}
+        <button
+          onClick={() => { if (typeof window !== 'undefined') window.history.back() }}
+          aria-label="Tilbage"
+          title="Tilbage"
+          style={{
+            position: 'fixed',
+            top: '12px',
+            left: '12px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            background: '#fff0f5',
+            border: '2px solid #ec407a',
+            color: '#ec407a',
+            padding: '6px 10px',
+            borderRadius: '999px',
+            cursor: 'pointer',
+            fontWeight: 700,
+            boxShadow: '0 0 6px rgba(236,64,122,0.15)',
+            zIndex: 50,
+          }}
+        >
+          ← Tilbage
+        </button>
         <p>Indlæser...</p>
       </div>
     )
@@ -203,7 +234,33 @@ export default function MineKampeSide() {
 
   if (!mitNavn) {
     return (
-      <div style={{ padding: '1rem', maxWidth: 700, margin: 'auto' }}>
+      <div style={{ padding: '1rem', maxWidth: 700, margin: 'auto', position: 'relative' }}>
+        {/* Tilbage-knap */}
+        <button
+          onClick={() => { if (typeof window !== 'undefined') window.history.back() }}
+          aria-label="Tilbage"
+          title="Tilbage"
+          style={{
+            position: 'fixed',
+            top: '12px',
+            left: '12px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            background: '#fff0f5',
+            border: '2px solid #ec407a',
+            color: '#ec407a',
+            padding: '6px 10px',
+            borderRadius: '999px',
+            cursor: 'pointer',
+            fontWeight: 700,
+            boxShadow: '0 0 6px rgba(236,64,122,0.15)',
+            zIndex: 50,
+          }}
+        >
+          ← Tilbage
+        </button>
+
         <h1 style={{ textAlign: 'center' }}>🎾 Dine seneste kampe</h1>
         <p style={{ textAlign: 'center', color: '#666' }}>
           Du skal være logget ind for at se dine kampe.
@@ -221,9 +278,38 @@ export default function MineKampeSide() {
         margin: 'auto',
         color: 'inherit',
         backgroundColor: 'inherit',
+        position: 'relative',
       }}
     >
-      <h1 style={{ textAlign: 'center', marginBottom: '0.5rem' }}>🎾 Dine seneste kampe med Elo-ændringer</h1>
+      {/* Tilbage-knap i øverste venstre hjørne (samme som /lastgames) */}
+      <button
+        onClick={() => { if (typeof window !== 'undefined') window.history.back() }}
+        aria-label="Tilbage"
+        title="Tilbage"
+        style={{
+          position: 'fixed',
+          top: '12px',
+          left: '12px',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '6px',
+          background: '#fff0f5',
+          border: '2px solid #ec407a',
+          color: '#ec407a',
+          padding: '6px 10px',
+          borderRadius: '999px',
+          cursor: 'pointer',
+          fontWeight: 700,
+          boxShadow: '0 0 6px rgba(236,64,122,0.15)',
+          zIndex: 50,
+        }}
+      >
+        ← Tilbage
+      </button>
+
+      <h1 style={{ textAlign: 'center', marginBottom: '0.5rem' }}>
+        🎾 Dine seneste kampe med Elo-ændringer
+      </h1>
       <p style={{ textAlign: 'center', marginBottom: '2rem', color: '#666' }}>
         Viser dine seneste 20 kampe
       </p>
@@ -390,7 +476,7 @@ export default function MineKampeSide() {
             </div>
 
             {/* Indberettet af */}
-            {indberettetAf && (
+            {indberettetAf?.toString().trim() && (
               <div
                 style={{
                   position: 'absolute',
@@ -400,55 +486,53 @@ export default function MineKampeSide() {
                   color: '#888',
                 }}
               >
-                Indberettet af {indberettetAf}
+                Indberettet af {(indberettetAf ?? '').toString().trim()}
               </div>
             )}
 
-            {/* Kommentar */}
+            {/* Indrapportér fejl */}
             <div style={{ marginTop: '1.5rem' }}>
-              <div>
-                <label
-                  style={{
-                    display: 'block',
-                    marginBottom: '0.3rem',
-                    fontSize: '0.85rem',
-                    fontWeight: 'bold',
-                  }}
-                >
-                  🚫 Indberet fejl i kampen:
-                </label>
-                <textarea
-                  placeholder="Skriv hvad der er forkert..."
-                  value={kommentarer[kampid] || ''}
-                  onChange={(e) =>
-                    setKommentarer((prev) => ({ ...prev, [kampid]: e.target.value }))
-                  }
-                  style={{
-                    width: '100%',
-                    padding: '0.5rem',
-                    borderRadius: '6px',
-                    border: '1px solid #ccc',
-                    minHeight: '60px',
-                    marginBottom: '0.5rem',
-                    fontFamily: 'inherit',
-                  }}
-                />
-                <button
-                  onClick={() => sendBeskedTilAdmin(kampid)}
-                  style={{
-                    backgroundColor: '#ec407a',
-                    color: '#fff',
-                    padding: '0.4rem 0.8rem',
-                    borderRadius: '6px',
-                    border: 'none',
-                    cursor: 'pointer',
-                    fontWeight: 'bold',
-                    marginRight: '0.5rem',
-                  }}
-                >
-                  📩 Send besked
-                </button>
-                </div>
+              <label
+                style={{
+                  display: 'block',
+                  marginBottom: '0.3rem',
+                  fontSize: '0.85rem',
+                  fontWeight: 'bold',
+                }}
+              >
+                🚫 Indberet fejl i kampen:
+              </label>
+              <textarea
+                placeholder="Skriv hvad der er forkert..."
+                value={kommentarer[kampid] || ''}
+                onChange={(e) =>
+                  setKommentarer((prev) => ({ ...prev, [kampid]: e.target.value }))
+                }
+                style={{
+                  width: '100%',
+                  padding: '0.5rem',
+                  borderRadius: '6px',
+                  border: '1px solid #ccc',
+                  minHeight: '60px',
+                  marginBottom: '0.5rem',
+                  fontFamily: 'inherit',
+                }}
+              />
+              <button
+                onClick={() => sendBeskedTilAdmin(kampid)}
+                style={{
+                  backgroundColor: '#ec407a',
+                  color: '#fff',
+                  padding: '0.4rem 0.8rem',
+                  borderRadius: '6px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  marginRight: '0.5rem',
+                }}
+              >
+                📩 Send besked
+              </button>
             </div>
           </div>
         )
