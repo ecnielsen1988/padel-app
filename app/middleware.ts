@@ -6,13 +6,8 @@ import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs'
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next()
   const supabase = createMiddlewareClient({ req, res })
-  // forny/vedligehold session-cookies på hver request
   await supabase.auth.getSession()
   return res
 }
 
-// kør kun hvor det giver mening (mindre overhead)
-export const config = {
-  matcher: ['/login', '/admin/:path*', '/auth/callback'],
-}
-
+export const config = { matcher: '/(.*)' } // midlertidigt bred

@@ -98,11 +98,12 @@ async function togglePaidAction(formData: FormData) {
 export default async function Page() {
   const supabase = createServerComponentClient<any>({ cookies });
 
-  // 🔒 Kræv server-session (ellers redirect til login)
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) {
-    redirect(`/login?next=/admin/tilmelding`);
-  }
+ const ADMIN_PATH = '/admin/tilmelding' // <- vigtig! brug samme overalt
+
+const { data: { session } } = await supabase.auth.getSession()
+if (!session) {
+  redirect(`/login?next=${ADMIN_PATH}`)
+}
 
   // Vi blokerer ikke længere på session, men logger for at kunne debugge.
   let sessionUserId: string | undefined;
