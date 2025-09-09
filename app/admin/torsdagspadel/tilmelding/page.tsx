@@ -3,12 +3,15 @@
 export const revalidate = 0;
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
+export const runtime = 'nodejs'
 
 import { cookies } from "next/headers";
 import { createServerComponentClient, createServerActionClient } from "@supabase/auth-helpers-nextjs";
 import { revalidatePath } from "next/cache";
 import React from "react";
 import { beregnNyRangliste } from "@/lib/beregnNyRangliste";
+import { redirect } from 'next/navigation'
+
 
 // --- Helpers ---
 function getCopenhagenNowAsUTCDate() {
@@ -94,6 +97,12 @@ async function togglePaidAction(formData: FormData) {
 
 export default async function Page() {
   const supabase = createServerComponentClient<any>({ cookies });
+
+  // 🔒 Kræv server-session (ellers redirect til login)
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) {
+    redirect(`/login?next=/admin/tilmelding`);
+  }
 
   // Vi blokerer ikke længere på session, men logger for at kunne debugge.
   let sessionUserId: string | undefined;
@@ -278,7 +287,7 @@ export default async function Page() {
         </div>
       </section>
 
-      <footer className="text-xs text-gray-200">
+      <footer className="text-xs text-gray-400">
         <p>
           Betalingssum tæller rækker i <code>event_signups</code> med <code>paid = true</code> for {thursday}. Afkrydsninger gemmes via server action ovenfor.
         </p>
