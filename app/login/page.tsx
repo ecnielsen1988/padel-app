@@ -1,10 +1,19 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
 export default function LoginPage() {
+  // 👇 Next kræver en Suspense boundary når man bruger useSearchParams i en page-komponent
+  return (
+    <Suspense fallback={<div />}>
+      <LoginContent />
+    </Suspense>
+  );
+}
+
+function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClientComponentClient();
@@ -30,7 +39,7 @@ export default function LoginPage() {
       return;
     }
 
-    // Valgfrit: vælg fallback-destination baseret på om profil findes (kun hvis ?next mangler)
+    // Valgfrit: vælg fallback når ?next mangler (om profil findes)
     let dest = next;
     if (!searchParams.get('next')) {
       const { data: profil } = await supabase
@@ -47,16 +56,16 @@ export default function LoginPage() {
   }
 
   async function handleForgotPassword() {
-    if (!email) {
-      setMsg('❗ Indtast din e-mail først.');
-      return;
-    }
+    if (!email) { setMsg('❗ Indtast din e-mail først.'); return; }
     setLoading(true);
-    const origin =
-      typeof window !== 'undefined' ? window.location.origin : 'https://padelhuset-app.netlify.app';
+    const origin = typeof window !== 'undefined'
+      ? window.location.origin
+      : 'https://padelhuset-app.netlify.app';
+
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${origin}/opdater-adgangskode`,
     });
+
     setLoading(false);
     setMsg(error ? '❌ ' + error.message : '📧 Vi har sendt et link til nulstilling af adgangskode.');
   }
@@ -70,24 +79,14 @@ export default function LoginPage() {
 
       <form onSubmit={handleLogin} style={{ width: '100%' }}>
         <input
-          type="email"
-          placeholder="E-mail"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          style={styles.input}
-          required
-          autoComplete="email"
+          type="email" placeholder="E-mail" value={email}
+          onChange={(e) => setEmail(e.target.value)} required autoComplete="email" style={styles.input}
         />
         <input
-          type="password"
-          placeholder="Adgangskode"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          style={styles.input}
-          required
-          autoComplete="current-password"
+          type="password" placeholder="Adgangskode" value={password}
+          onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" style={styles.input}
         />
-        <button type="submit" style={styles.button} disabled={loading}>
+        <button type="submit" disabled={loading} style={styles.button}>
           {loading ? 'Logger ind…' : 'Log ind'}
         </button>
       </form>
@@ -101,10 +100,7 @@ export default function LoginPage() {
       {msg && <p style={{ marginTop: '0.75rem' }}>{msg}</p>}
 
       <p style={{ marginTop: '1rem' }}>
-        Har du ikke en bruger?{' '}
-        <a href="/signup" style={{ color: '#ff69b4' }}>
-          Opret en her
-        </a>
+        Har du ikke en bruger? <a href="/signup" style={{ color: '#ff69b4' }}>Opret en her</a>
       </p>
     </main>
   );
@@ -112,41 +108,21 @@ export default function LoginPage() {
 
 const styles: { [key: string]: React.CSSProperties } = {
   main: {
-    maxWidth: 500,
-    margin: '3rem auto',
-    padding: '2rem',
-    backgroundColor: '#222',
-    borderRadius: 8,
-    color: 'white',
-    textAlign: 'center',
+    maxWidth: 500, margin: '3rem auto', padding: '2rem',
+    backgroundColor: '#222', borderRadius: 8, color: 'white', textAlign: 'center',
   },
   input: {
-    width: '100%',
-    padding: '1rem',
-    margin: '0.5rem 0',
-    borderRadius: 6,
-    border: '1px solid #444',
-    backgroundColor: '#111',
-    color: 'white',
-    fontSize: '1rem',
+    width: '100%', padding: '1rem', margin: '0.5rem 0',
+    borderRadius: 6, border: '1px solid #444', backgroundColor: '#111',
+    color: 'white', fontSize: '1rem',
   },
   button: {
-    backgroundColor: '#ff69b4',
-    color: 'white',
-    padding: '1rem',
-    borderRadius: 6,
-    border: 'none',
-    fontWeight: 'bold',
-    fontSize: '1.1rem',
-    cursor: 'pointer',
-    marginTop: '0.5rem',
-    width: '100%',
+    backgroundColor: '#ff69b4', color: 'white', padding: '1rem',
+    borderRadius: 6, border: 'none', fontWeight: 'bold',
+    fontSize: '1.1rem', cursor: 'pointer', marginTop: '.5rem', width: '100%',
   },
   linkButton: {
-    background: 'none',
-    border: 'none',
-    color: '#ff69b4',
-    textDecoration: 'underline',
-    cursor: 'pointer',
+    background: 'none', border: 'none', color: '#ff69b4',
+    textDecoration: 'underline', cursor: 'pointer',
   },
 };
