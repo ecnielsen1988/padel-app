@@ -278,7 +278,7 @@ export default async function Page() {
         </div>
       </section>
 
-      <footer className="text-xs text-gray-400">
+      <footer className="text-xs text-gray-200">
         <p>
           Betalingssum tæller rækker i <code>event_signups</code> med <code>paid = true</code> for {thursday}. Afkrydsninger gemmes via server action ovenfor.
         </p>
