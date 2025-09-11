@@ -12,53 +12,74 @@ type AktivSpiller = {
   pluspoint: number
 }
 
+// Række-type for newresults (kun felter vi bruger her)
+type KampRow = {
+  holdA1?: string | null
+  holdA2?: string | null
+  holdB1?: string | null
+  holdB2?: string | null
+}
+
 export default function MestAktiveSide() {
   const [mestAktive, setMestAktive] = useState<AktivSpiller[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const hentData = async () => {
-      const eloData = await beregnEloÆndringerForIndeværendeMåned()
+      setLoading(true)
+      try {
+        // 1) Elo-data for måneden (bruger din eksisterende funktion)
+        const eloData = await beregnEloÆndringerForIndeværendeMåned()
 
-      const now = new Date()
-      const year = now.getFullYear()
-      const month = now.getMonth() + 1
-      const startDato = `${year}-${month.toString().padStart(2, '0')}-01`
-      const slutMonth = month === 12 ? 1 : month + 1
-      const slutYear = month === 12 ? year + 1 : year
-      const slutDato = `${slutYear}-${slutMonth.toString().padStart(2, '0')}-01`
+        // 2) Dato-interval for indeværende måned
+        const now = new Date()
+        const year = now.getFullYear()
+        const month = now.getMonth() + 1
+        const startDato = `${year}-${String(month).padStart(2, '0')}-01`
+        const slutMonth = month === 12 ? 1 : month + 1
+        const slutYear = month === 12 ? year + 1 : year
+        const slutDato = `${slutYear}-${String(slutMonth).padStart(2, '0')}-01`
 
-      const { data: kampeData, error } = await supabase
-        .from('newresults')
-        .select('holdA1, holdA2, holdB1, holdB2')
-        .gte('date', startDato)
-        .lt('date', slutDato)
-        .eq('finish', true)
+        // 3) Hent færdigspillede sæt i måneden
+        const { data: kampeData, error } = await supabase
+          .from('newresults')
+          .select('holdA1, holdA2, holdB1, holdB2')
+          .gte('date', startDato)
+          .lt('date', slutDato)
+          .eq('finish', true)
 
-      if (error) {
-        console.error('Fejl ved hentning af kampe:', error)
-        return
-      }
+        if (error) {
+          console.error('Fejl ved hentning af kampe:', error)
+          setMestAktive([])
+          return
+        }
 
-      const tæller: Record<string, number> = {}
-      kampeData.forEach(kamp => {
-        ;[kamp.holdA1, kamp.holdA2, kamp.holdB1, kamp.holdB2].forEach(spiller => {
-          if (spiller) {
-            tæller[spiller] = (tæller[spiller] ?? 0) + 1
+        // 4) Sikker optælling af deltagelser pr. spiller
+        const tæller: Record<string, number> = Object.create(null)
+
+        for (const kamp of (kampeData as KampRow[] | null) ?? []) {
+          const navne = [kamp.holdA1, kamp.holdA2, kamp.holdB1, kamp.holdB2]
+          for (const n of navne) {
+            const key = typeof n === 'string' ? n.trim() : ''
+            if (key) tæller[key] = (tæller[key] ?? 0) + 1
           }
+        }
+
+        // 5) Flet med Elo (pluspoint) og sorter
+        const samlet: AktivSpiller[] = Object.entries(tæller).map(([visningsnavn, sæt]) => {
+          const elo = eloData.find((e) => e.visningsnavn === visningsnavn)?.pluspoint ?? 0
+          return { visningsnavn, sæt, pluspoint: elo }
         })
-      })
 
-      const samlet: AktivSpiller[] = Object.entries(tæller).map(([visningsnavn, sæt]) => {
-        const elo = eloData.find(e => e.visningsnavn === visningsnavn)?.pluspoint ?? 0
-        return { visningsnavn, sæt, pluspoint: elo }
-      })
+        samlet.sort((a, b) => {
+          if (b.sæt !== a.sæt) return b.sæt - a.sæt
+          return b.pluspoint - a.pluspoint
+        })
 
-      samlet.sort((a, b) => {
-        if (b.sæt !== a.sæt) return b.sæt - a.sæt
-        return b.pluspoint - a.pluspoint
-      })
-
-      setMestAktive(samlet.slice(0, 20))
+        setMestAktive(samlet.slice(0, 20))
+      } finally {
+        setLoading(false)
+      }
     }
 
     hentData()
@@ -97,7 +118,9 @@ export default function MestAktiveSide() {
         🏃‍♂️ Mest aktive spillere i måneden
       </h1>
 
-      {mestAktive.length === 0 ? (
+      {loading ? (
+        <p className="text-center text-gray-500 dark:text-gray-400">Indlæser…</p>
+      ) : mestAktive.length === 0 ? (
         <p className="text-center text-gray-500 dark:text-gray-400">
           Ingen aktive spillere registreret endnu.
         </p>
@@ -105,7 +128,6 @@ export default function MestAktiveSide() {
         <ol className="space-y-4 max-w-2xl mx-auto">
           {mestAktive.map((spiller, index) => {
             const emoji = emojiForPlacering(index)
-
             return (
               <li
                 key={spiller.visningsnavn}
@@ -138,4 +160,3 @@ export default function MestAktiveSide() {
     </main>
   )
 }
-

@@ -22,6 +22,9 @@ type EventSet = {
   holdb2: string
 }
 
+// 👇 tilføjet: lokal type til maybeSingle()
+type ProfileRow = { visningsnavn: string | null }
+
 export default function KommendeKampePage() {
   const [visningsnavn, setVisningsnavn] = useState<string | null>(null)
   const [mineSets, setMineSets] = useState<EventSet[]>([])
@@ -68,14 +71,19 @@ export default function KommendeKampePage() {
           setAlleUpcoming([])
           return
         }
+
         let navn = (user.user_metadata?.visningsnavn || '').trim()
         if (!navn) {
           const { data: profile } = await supabase
             .from('profiles')
             .select('visningsnavn')
             .eq('id', user.id)
-            .maybeSingle()
-          navn = (profile?.visningsnavn || '').trim()
+            .maybeSingle<ProfileRow>() // 👈 TS ved nu at visningsnavn er string|null
+
+          navn =
+            typeof profile?.visningsnavn === 'string'
+              ? profile.visningsnavn.trim()
+              : ''
         }
         setVisningsnavn(navn || null)
 
@@ -112,11 +120,12 @@ export default function KommendeKampePage() {
         setAlleUpcoming(rows) // gem alle rækker til senere “fuldt program”
 
         const n = (navn || '').trim()
-        const mine = rows.filter((r) =>
-          r.holda1?.trim() === n ||
-          r.holda2?.trim() === n ||
-          r.holdb1?.trim() === n ||
-          r.holdb2?.trim() === n
+        const mine = rows.filter(
+          (r) =>
+            r.holda1?.trim() === n ||
+            r.holda2?.trim() === n ||
+            r.holdb1?.trim() === n ||
+            r.holdb2?.trim() === n
         )
 
         setMineSets(mine)
@@ -133,7 +142,7 @@ export default function KommendeKampePage() {
     setProgramOpen(true)
     setProgramDato(dato)
     // Prøv cache først
-    const cached = alleUpcoming.filter(r => r.event_dato === dato)
+    const cached = alleUpcoming.filter((r) => r.event_dato === dato)
     if (cached.length > 0) {
       setProgramRows(cached)
       return
@@ -208,7 +217,9 @@ export default function KommendeKampePage() {
             ← Tilbage
           </button>
         </div>
-        <p className="text-center text-zinc-600 dark:text-zinc-300">Indlæser kommende kampe...</p>
+        <p className="text-center text-zinc-600 dark:text-zinc-300">
+          Indlæser kommende kampe...
+        </p>
       </main>
     )
   }
@@ -254,13 +265,13 @@ export default function KommendeKampePage() {
 
       <h1 className="text-3xl font-bold mb-6 text-center">📅 Kommende kampe</h1>
 
-      {error && (
-        <p className="text-center text-red-600 mb-4">{error}</p>
-      )}
+      {error && <p className="text-center text-red-600 mb-4">{error}</p>}
 
       {dates.length === 0 ? (
         <div className="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4">
-          <p className="text-zinc-700 dark:text-zinc-300">Ingen kommende kampe fundet for dig.</p>
+          <p className="text-zinc-700 dark:text-zinc-300">
+            Ingen kommende kampe fundet for dig.
+          </p>
           <p className="text-sm mt-1 text-zinc-600 dark:text-zinc-400">
             Enten er planerne ikke publiceret endnu, eller også er du ikke sat på kommende events.
           </p>
@@ -325,7 +336,9 @@ export default function KommendeKampePage() {
       {programOpen && (
         <div
           className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm flex items-stretch sm:items-center justify-center p-4 sm:p-6"
-          onClick={(e) => { if (e.target === e.currentTarget) lukProgram() }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) lukProgram()
+          }}
         >
           {/* Card */}
           <div
@@ -335,7 +348,7 @@ export default function KommendeKampePage() {
               rounded-none sm:rounded-2xl
               flex flex-col min-h-0
               h-full sm:h-auto
-              max-h-[90vh] max-h-[90dvh]   /* Fallback + moderne enhed */
+              max-h-[90vh] max-h-[90dvh]
             "
             onClick={(e) => e.stopPropagation()}
             role="dialog"
@@ -475,4 +488,3 @@ function groupByMatch(rows: EventSet[]) {
   }
   return map
 }
-
