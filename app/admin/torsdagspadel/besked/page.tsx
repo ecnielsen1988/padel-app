@@ -4,8 +4,9 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 
 function MarkdownPreview({ body }: { body: string }) {
-  const lines = (body ?? '').replace(/\r/g, '').split('\n');
+  const lines = (body ?? '').replace(/\r/g, '').split('\n')
 
+  // Simpel markdown-ish preview: ###, punktliste og afsnit
   return (
     <article className="mt-2 text-sm leading-6">
       {lines.map((line, i) => {
@@ -41,17 +42,21 @@ export default function Page() {
         const { data: auth } = await supabase.auth.getUser()
         const user = auth?.user
         if (!user) { setIsAdmin(false); return }
-        const jwtRole = (user.app_metadata as any)?.rolle
+
+        // 1) Tjek evt. rolle i JWT app_metadata
+        const jwtRole = (user as any)?.app_metadata?.rolle
         let admin = jwtRole === 'admin'
+
+        // 2) Fallback: tjek profiles.rolle
         if (!admin) {
-          const { data: me } = await supabase
-            .from('profiles')
+          const { data: me } = await (supabase.from('profiles') as any)
             .select('rolle')
             .eq('id', user.id)
-            .single()
-          if (me?.rolle === 'admin') admin = true
+            .maybeSingle()
+          if ((me as any)?.rolle === 'admin') admin = true
         }
-        setIsAdmin(admin)
+
+        setIsAdmin(!!admin)
       } finally {
         setLoading(false)
       }
@@ -62,21 +67,33 @@ export default function Page() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
     setResultMsg(null)
-    if (!title.trim() || !body.trim()) {
+
+    const t = title.trim()
+    const b = body.trim()
+    if (!t || !b) {
       setResultMsg('Titel og besked skal udfyldes.')
       return
     }
 
     setSubmitting(true)
     try {
-      // Broadcast direkte til DM-tabellen `beskeder`
-      const { data, error } = await supabase.rpc('broadcast_torsdagspadel_dm', {
-        p_title: title.trim(),
-        p_body: body.trim(),
-        p_include_self: true, // så du også modtager beskeden i /beskeder
+      // Kald RPC uden at snuble over typer (cast til any)
+      const { data, error } = await (supabase.rpc as any)('broadcast_torsdagspadel_dm', {
+        p_title: t,
+        p_body: b,
+        p_include_self: true,
       })
+
       if (error) throw error
-      const count = typeof data === 'number' ? data : undefined
+
+      // Forsøg at vise antal modtagere hvis funktionen returnerer et tal
+      const count =
+        typeof data === 'number'
+          ? data
+          : typeof (data?.count) === 'number'
+          ? data.count
+          : undefined
+
       setResultMsg(count != null ? `Besked sendt ✅ (${count} modtagere)` : 'Besked sendt ✅')
       setTitle('')
       setBody('')
@@ -145,7 +162,9 @@ export default function Page() {
           >
             Nulstil
           </button>
-          <span className="text-xs opacity-70">Målgruppe: <code>torsdagspadel = true</code> (inkl. dig selv)</span>
+          <span className="text-xs opacity-70">
+            Målgruppe: <code>torsdagspadel = true</code> (inkl. dig selv)
+          </span>
         </div>
 
         {resultMsg && <div className="text-sm mt-1">{resultMsg}</div>}

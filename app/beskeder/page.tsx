@@ -2,10 +2,9 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
 import Link from 'next/link';
+import { supabase } from '@/lib/supabaseClient';
 import { notifyUser } from '@/lib/notify';
-
 
 type Message = {
   id: string;
@@ -45,14 +44,14 @@ export default function BeskederThreadView() {
 
   // Indlæs bruger, profiler og beskeder
   useEffect(() => {
-    let mounted = true;
+    let cancelled = false;
 
     (async () => {
       const { data: { session } } = await supabase.auth.getSession();
       const user = session?.user;
 
       if (!user) {
-        if (mounted) {
+        if (!cancelled) {
           setMeId(null);
           setMeName(null);
           setMessages([]);
@@ -69,10 +68,9 @@ export default function BeskederThreadView() {
         .maybeSingle();
 
       const visningsnavn =
-        prof?.visningsnavn ??
-        ((user.user_metadata as any)?.visningsnavn ?? null);
+        (prof?.visningsnavn ?? (user.user_metadata as any)?.visningsnavn ?? null) || null;
 
-      if (mounted) {
+      if (!cancelled) {
         setMeId(user.id);
         setMeName(visningsnavn);
       }
@@ -82,7 +80,14 @@ export default function BeskederThreadView() {
         .from('profiles')
         .select('visningsnavn')
         .order('visningsnavn', { ascending: true });
-      if (mounted) setAllNames((names ?? []).map((n: any) => n.visningsnavn));
+
+      if (!cancelled) {
+        setAllNames(
+          (names ?? [])
+            .map((n: any) => n?.visningsnavn)
+            .filter((v: unknown): v is string => typeof v === 'string' && v.trim().length > 0)
+        );
+      }
 
       // Hent alle mine beskeder (ind/ud)
       const { data: msgs } = await supabase
@@ -92,7 +97,7 @@ export default function BeskederThreadView() {
         .order('created_at', { ascending: false })
         .limit(500);
 
-      if (mounted) {
+      if (!cancelled) {
         const list = (msgs ?? []) as Message[];
         setMessages(list);
         setLoading(false);
@@ -106,46 +111,50 @@ export default function BeskederThreadView() {
       }
     })();
 
-    // Realtime: INSERT/DELETE/UPDATE(read)
+    return () => { cancelled = true; };
+  }, []);
+
+  // Realtime (kun mine rækker) + deduplikering
+  useEffect(() => {
+    if (!meId) return;
+
+    const addIfNew = (m: Message) =>
+      setMessages(prev => (prev.some(x => x.id === m.id) ? prev : [m, ...prev]));
+
     const channel = supabase
       .channel('beskeder-threads')
+      // Kun inserts hvor jeg er afsender/modtager
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'beskeder' },
-        (payload) => {
-          const m = payload.new as Message;
-          // kun beskeder der involverer mig
-          setMessages((prev) => {
-            if (!meId) return prev;
-            if (m.sender_id !== meId && m.recipient_id !== meId) return prev;
-            return [m, ...prev];
-          });
-        }
+        { event: 'INSERT', schema: 'public', table: 'beskeder', filter: `recipient_id=eq.${meId}` },
+        (payload) => addIfNew(payload.new as Message)
       )
       .on(
         'postgres_changes',
-        { event: 'DELETE', schema: 'public', table: 'beskeder' },
+        { event: 'INSERT', schema: 'public', table: 'beskeder', filter: `sender_id=eq.${meId}` },
+        (payload) => addIfNew(payload.new as Message)
+      )
+      // Slet kun hvis jeg er afsender (det er den eneste vi tilbyder i UI)
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'beskeder', filter: `sender_id=eq.${meId}` },
         (payload) => {
           const deletedId = (payload.old as any)?.id;
-          if (deletedId) {
-            setMessages((prev) => prev.filter((x) => x.id !== deletedId));
-          }
+          if (deletedId) setMessages(prev => prev.filter(x => x.id !== deletedId));
         }
       )
+      // Markering som læst (kun indgående)
       .on(
         'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'beskeder' },
+        { event: 'UPDATE', schema: 'public', table: 'beskeder', filter: `recipient_id=eq.${meId}` },
         (payload) => {
           const updated = payload.new as Message;
-          setMessages((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+          setMessages(prev => prev.map(m => (m.id === updated.id ? updated : m)));
         }
       )
       .subscribe();
 
-    return () => {
-      mounted = false;
-      supabase.removeChannel(channel);
-    };
+    return () => { supabase.removeChannel(channel); };
   }, [meId]);
 
   // Afledte: tråde
@@ -220,9 +229,7 @@ export default function BeskederThreadView() {
         .in('id', idsToMark);
       if (!error) {
         setMessages((prev) =>
-          prev.map((m) =>
-            idsToMark.includes(m.id) ? { ...m, read_at: now } : m
-          )
+          prev.map((m) => (idsToMark.includes(m.id) ? { ...m, read_at: now } : m))
         );
       }
     })();
@@ -272,29 +279,29 @@ export default function BeskederThreadView() {
       alert('Kunne ikke sende beskeden.');
       return;
     }
-    setMessages((prev) => [...prev, data as Message]); // vi viser i stigende orden i tråden
 
-    // 🚀 Push til modtageren
-try {
-  await notifyUser({
-    user_id: recipientId,
-    title: 'Ny besked',
-    body: `${meName}: ${row.body}`,
-    url: '/beskeder'
-  });
-} catch (e) {
-  console.warn('Kunne ikke sende push (beskeder):', e);
-}
+    // Dedupe i tilfælde af at realtime INSERT lander samtidigt
+    setMessages(prev => (prev.some(m => m.id === (data as Message).id) ? prev : [...prev, data as Message]));
 
+    // Push til modtageren (ignorer fejl)
+    try {
+      await notifyUser({
+        user_id: recipientId,
+        title: 'Ny besked',
+        body: `${meName}: ${row.body}`,
+        url: '/beskeder'
+      });
+    } catch (e) {
+      console.warn('Kunne ikke sende push (beskeder):', e);
+    }
   }
 
-
-  
   // Hard delete (afsender altid)
   function canHardDelete(m: Message) {
     return !!meId && m.sender_id === meId;
   }
   async function hardDeleteEverywhere(m: Message) {
+    if (!canHardDelete(m)) return;
     const ok = confirm('Slet denne besked for begge parter? Dette kan ikke fortrydes.');
     if (!ok) return;
     const { error } = await supabase.from('beskeder').delete().eq('id', m.id);
@@ -562,3 +569,4 @@ function ThreadComposer({ onSend }: { onSend: (text: string) => Promise<void> })
     </div>
   );
 }
+

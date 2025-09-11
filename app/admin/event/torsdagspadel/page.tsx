@@ -36,6 +36,15 @@ type DraftPayload = {
 
 const DRAFT_KEY = "torsdagspadel"; // unik kladde pr. bruger for torsdag
 
+// Små hjælpe-interfaces til typed maybeSingle/mapping
+type ProfileNameRow = { visningsnavn: string | null };
+type SignupRow = {
+  visningsnavn: string;
+  kan_spille: boolean | null;
+  tidligste_tid: string | null;
+  event_dato: string;
+};
+
 // ===== Hjælpere =====
 const erFærdigtSæt = (a: number, b: number) => {
   const max = Math.max(a, b);
@@ -44,15 +53,20 @@ const erFærdigtSæt = (a: number, b: number) => {
 };
 
 function getNextThursdayISO(): string {
-  const nowCph = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Copenhagen" }));
+  // Brug Europe/Copenhagen så vi rammer lokal torsdag korrekt
+  const nowCph = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Copenhagen' }));
   const day = nowCph.getDay(); // 0=søn ... 4=tors
+
+  // Antal dage frem til torsdag (4). På torsdag bliver addDays=0 (i dag).
   let addDays = (4 - day + 7) % 7;
-  if (addDays === 0) addDays = 7; // altid NÆSTE torsdag
+
+  // VIGTIGT: ingen "if (addDays === 0) addDays = 7" — så torsdag = i dag.
   const d = new Date(nowCph);
   d.setDate(nowCph.getDate() + addDays);
+
   const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
   return `${yyyy}-${mm}-${dd}`;
 }
 
@@ -88,7 +102,7 @@ function emojiForPluspoint(p: number) {
   return "💩💩";
 }
 
-// === NY HJÆLPER: rehydrer spillere med nyeste Elo og sortér efter Elo
+// Rehydrer spillere med nyeste Elo og sortér efter Elo
 function withLatestElo(players: Spiller[], map: Record<string, number>) {
   return players
     .map((p) => ({
@@ -116,9 +130,11 @@ export default function EventLayout() {
       const rangliste = await res.json();
       const map: Record<string, number> = {};
       (rangliste || []).forEach((s: any) => {
-        map[s.visningsnavn] = Math.round(s.elo);
+        if (s?.visningsnavn) map[(s.visningsnavn as string).trim()] = Math.round(s.elo);
       });
       setEloMap(map);
+
+      const thursdayISO = getNextThursdayISO();
 
       // Kun torsdagsflag-profiler
       const { data: profiles } = await supabase
@@ -126,26 +142,34 @@ export default function EventLayout() {
         .select("visningsnavn")
         .eq("torsdagspadel", true);
 
-      const thursdayISO = getNextThursdayISO();
-
       // Signups for den kommende torsdag
       const { data: signups } = await supabase
         .from("event_signups")
         .select("visningsnavn, kan_spille, tidligste_tid, event_dato")
         .eq("event_dato", thursdayISO);
 
-      const signupByName = new Map((signups ?? []).map((s) => [s.visningsnavn, s]));
-
-      const spillereMedElo: Spiller[] = (profiles ?? []).map((p) => ({
-        visningsnavn: p.visningsnavn,
-        elo: map[p.visningsnavn] ?? 1000,
-        tidligste_tid: signupByName.get(p.visningsnavn)?.tidligste_tid ?? null,
+      const profilesArr = ((profiles as ProfileNameRow[] | null) ?? []).map((p) => ({
+        visningsnavn: (p.visningsnavn || "").trim(),
       }));
+      const signupsArr = ((signups as SignupRow[] | null) ?? []).map((s) => ({
+        ...s,
+        visningsnavn: (s.visningsnavn || "").trim(),
+      }));
+
+      const signupByName = new Map(signupsArr.map((s) => [s.visningsnavn, s]));
+
+      const spillereMedElo: Spiller[] = profilesArr
+        .filter((p) => !!p.visningsnavn)
+        .map((p) => ({
+          visningsnavn: p.visningsnavn,
+          elo: map[p.visningsnavn] ?? 1000,
+          tidligste_tid: signupByName.get(p.visningsnavn)?.tidligste_tid ?? null,
+        }));
 
       setAlleSpillere(spillereMedElo);
 
       // Forudfyld med dem der har tilmeldt sig (kan_spille = true)
-      const preselected = (profiles ?? [])
+      const preselected = profilesArr
         .filter((p) => signupByName.get(p.visningsnavn)?.kan_spille === true)
         .map((p) => ({
           visningsnavn: p.visningsnavn,
@@ -162,7 +186,7 @@ export default function EventLayout() {
     hentData();
   }, []);
 
-  // Rehydrer automatisk hvis eloMap ændrer sig senere (fx hvis /api/rangliste opdateres)
+  // Rehydrer automatisk hvis eloMap ændrer sig senere
   useEffect(() => {
     if (!Object.keys(eloMap).length || !valgteSpillere.length) return;
     setValgteSpillere((prev) => withLatestElo(prev, eloMap));
@@ -170,20 +194,22 @@ export default function EventLayout() {
 
   // === Spillere ===
   const tilføjSpiller = (spiller: Spiller) => {
-    if (!valgteSpillere.find((s) => s.visningsnavn === spiller.visningsnavn)) {
+    const navn = spiller.visningsnavn.trim();
+    if (!navn) return;
+    if (!valgteSpillere.find((s) => s.visningsnavn === navn)) {
       const spillerMedElo = {
         ...spiller,
-        elo: eloMap[spiller.visningsnavn] ?? 1000,
+        visningsnavn: navn,
+        elo: eloMap[navn] ?? 1000,
       };
-      setValgteSpillere((prev) =>
-        withLatestElo([...prev, spillerMedElo], eloMap)
-      );
+      setValgteSpillere((prev) => withLatestElo([...prev, spillerMedElo], eloMap));
     }
     setSearch("");
   };
 
   const fjernSpiller = (visningsnavn: string) => {
-    setValgteSpillere((prev) => prev.filter((s) => s.visningsnavn !== visningsnavn));
+    const navn = visningsnavn.trim();
+    setValgteSpillere((prev) => prev.filter((s) => s.visningsnavn !== navn));
   };
 
   const moveSpillerUp = (index: number) => {
@@ -307,9 +333,9 @@ export default function EventLayout() {
         .from("profiles")
         .select("visningsnavn")
         .eq("id", user.id)
-        .single();
+        .maybeSingle<ProfileNameRow>();
 
-      const vn = profil?.visningsnavn;
+      const vn = (profil?.visningsnavn || "").trim();
       if (!vn) {
         alert("❌ Kunne ikke finde dit visningsnavn.");
         return;
@@ -321,20 +347,11 @@ export default function EventLayout() {
         savedAt: new Date().toISOString(),
       };
 
-      const { error } = await supabase
-        .from("event_drafts")
-        .upsert(
-          [
-            {
-              visningsnavn: vn,
-              draft_key: DRAFT_KEY,
-              payload,
-            },
-          ],
-          {
-            onConflict: "visningsnavn, draft_key",
-          }
-        );
+      // TS-stabil upsert
+      const { error } = await (supabase.from("event_drafts") as any).upsert(
+        [{ visningsnavn: vn, draft_key: DRAFT_KEY, payload }],
+        { onConflict: "visningsnavn, draft_key" }
+      );
 
       if (error) throw error;
 
@@ -362,16 +379,16 @@ export default function EventLayout() {
           .from("profiles")
           .select("visningsnavn")
           .eq("id", user.id)
-          .single();
+          .maybeSingle<ProfileNameRow>();
 
-        const vn = profil?.visningsnavn;
+        const vn = (profil?.visningsnavn || "").trim();
         if (vn) {
           const { data } = await supabase
             .from("event_drafts")
             .select("payload")
             .eq("visningsnavn", vn)
             .eq("draft_key", DRAFT_KEY)
-            .maybeSingle();
+            .maybeSingle<{ payload: DraftPayload }>();
 
           if (data?.payload) loaded = data.payload as DraftPayload;
         }
@@ -392,7 +409,7 @@ export default function EventLayout() {
       setKampe(loaded.kampe ?? []);
       setLastSavedAt(loaded.savedAt ?? null);
 
-      // NYT: Rehydrer med nyeste Elo (hvis eloMap allerede er der)
+      // Rehydrer med nyeste Elo (hvis eloMap allerede er der)
       setValgteSpillere((prev) => withLatestElo(prev, eloMap));
 
       alert("📥 Kladde indlæst!");
@@ -427,9 +444,9 @@ export default function EventLayout() {
         }))
       );
 
-      await supabase.from("event_sets").delete().eq("event_dato", eventDato);
+      await (supabase.from("event_sets") as any).delete().eq("event_dato", eventDato);
 
-      const { error } = await supabase.from("event_sets").insert(rows);
+      const { error } = await (supabase.from("event_sets") as any).insert(rows);
       if (error) throw error;
 
       alert("📢 Eventplan publiceret – spillerne kan nu se deres kampe!");
@@ -446,10 +463,8 @@ export default function EventLayout() {
     );
     if (!ok) return;
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
+    const { data: auth, error: userError } = await supabase.auth.getUser();
+    const user = auth?.user;
 
     if (userError || !user) {
       alert("❌ Du skal være logget ind for at indsende resultater.");
@@ -460,14 +475,15 @@ export default function EventLayout() {
       .from("profiles")
       .select("visningsnavn")
       .eq("id", user.id)
-      .single();
+      .maybeSingle<ProfileNameRow>();
 
     if (profilError || !profil?.visningsnavn) {
       alert("❌ Kunne ikke finde dit brugernavn.");
       return;
     }
 
-    const visningsnavn = profil.visningsnavn;
+    const visningsnavn = (profil.visningsnavn || "").trim();
+
     const { data: maxData } = await supabase
       .from("newresults")
       .select("kampid")
@@ -475,7 +491,7 @@ export default function EventLayout() {
       .order("kampid", { ascending: false })
       .limit(1);
 
-    const startKampid = (maxData?.[0]?.kampid || 0) + 1;
+    const startKampid = ((maxData as any)?.[0]?.kampid || 0) + 1;
 
     const alleSaet = kampe.flatMap((kamp) =>
       kamp.sæt
@@ -510,7 +526,7 @@ export default function EventLayout() {
       )
       .flat();
 
-    const { error } = await supabase.from("newresults").insert(resultater);
+    const { error } = await (supabase.from("newresults") as any).insert(resultater);
 
     if (error) {
       alert("❌ Noget gik galt: " + error.message);

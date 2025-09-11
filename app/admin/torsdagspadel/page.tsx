@@ -23,16 +23,16 @@ export default function AdminTorsdagsPage() {
         if (!user) { setLoading(false); return }
 
         // Admin-check: JWT app_metadata.rolle eller profiles.rolle
-        const jwtRole = (user.app_metadata as any)?.rolle
+        const jwtRole = (user as any)?.app_metadata?.rolle
         let admin = jwtRole === 'admin'
 
         if (!admin) {
-          const { data: me } = await supabase
-            .from('profiles')
+          const { data: me } = await (supabase.from('profiles') as any)
             .select('id, rolle')
             .eq('id', user.id)
-            .single()
-          if (me?.rolle === 'admin') admin = true
+            .maybeSingle()
+
+          if ((me as any)?.rolle === 'admin') admin = true
         }
 
         setIsAdmin(admin)

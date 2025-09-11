@@ -7,7 +7,8 @@ import { supabase } from "@/lib/supabaseClient";
 // Utils
 // ---------------------------------------
 const toOre = (kr: number) => Math.round(kr * 100);
-const fmt = (ore: number) => new Intl.NumberFormat("da-DK", { style: "currency", currency: "DKK" }).format(ore / 100);
+const fmt = (ore: number) =>
+  new Intl.NumberFormat("da-DK", { style: "currency", currency: "DKK" }).format(ore / 100);
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
 // ---------------------------------------
@@ -29,7 +30,7 @@ const PRODUCTS = {
   lunarkamp: { label: "🏸 Lunarkamp", priceKr: 50, sign: -1 },
 
   // Merchandise
-  tshirt: { label: "👕 T‑shirt", priceKr: 300, sign: -1 },
+  tshirt: { label: "👕 T-shirt", priceKr: 300, sign: -1 },
   shorts: { label: "🩳 Shorts", priceKr: 200, sign: -1 },
 } as const;
 
@@ -113,7 +114,17 @@ const PRIZE_BUTTONS: { key: PrizeKey; label: string; amountKr: number }[] = [
 // ---------------------------------------
 // Simpel Modal
 // ---------------------------------------
-function Modal({ open, title, children, onClose }: { open: boolean; title: string; children: React.ReactNode; onClose: () => void }) {
+function Modal({
+  open,
+  title,
+  children,
+  onClose,
+}: {
+  open: boolean;
+  title: string;
+  children: React.ReactNode;
+  onClose: () => void;
+}) {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
@@ -121,7 +132,9 @@ function Modal({ open, title, children, onClose }: { open: boolean; title: strin
         <div className="mb-4 text-lg font-semibold">{title}</div>
         {children}
         <div className="mt-4 text-right">
-          <button className="rounded-xl border px-4 py-2" onClick={onClose}>Luk</button>
+          <button className="rounded-xl border px-4 py-2" onClick={onClose}>
+            Luk
+          </button>
         </div>
       </div>
     </div>
@@ -150,7 +163,13 @@ export default function AdminButikPage() {
   const [indbBelob, setIndbBelob] = useState("");
   const [indbNote, setIndbNote] = useState("MobilePay");
 
-  const [totals, setTotals] = useState<{ sales_ore: number; payments_ore: number; discounts_ore: number; prizes_ore: number; net_ore: number }>({ sales_ore: 0, payments_ore: 0, discounts_ore: 0, prizes_ore: 0, net_ore: 0 });
+  const [totals, setTotals] = useState<{
+    sales_ore: number;
+    payments_ore: number;
+    discounts_ore: number;
+    prizes_ore: number;
+    net_ore: number;
+  }>({ sales_ore: 0, payments_ore: 0, discounts_ore: 0, prizes_ore: 0, net_ore: 0 });
 
   const [freeFirstDrink, setFreeFirstDrink] = useState<boolean | null>(null);
   const [askSessionOpen, setAskSessionOpen] = useState(false);
@@ -212,31 +231,57 @@ export default function AdminButikPage() {
 
   // Aftentotaler
   async function refreshTotals() {
-    const { data } = await supabase
-      .from("bar_entries")
-      .select("product, amount_ore")
-      .eq("event_date", today);
+    const { data } = await supabase.from("bar_entries").select("product, amount_ore").eq("event_date", today);
     if (!data) return;
-    let sales = 0, payments = 0, discounts = 0, prizes = 0, net = 0;
+    let sales = 0,
+      payments = 0,
+      discounts = 0,
+      prizes = 0,
+      net = 0;
     for (const r of data as Pick<Entry, "product" | "amount_ore">[]) {
       net += r.amount_ore;
       if ((PURCHASE_KEYS as readonly string[]).includes(r.product as ProductKey) && r.amount_ore < 0) sales += -r.amount_ore;
       if (r.product === "indbetaling" && r.amount_ore > 0) payments += r.amount_ore;
       if (r.product === "rabat" && r.amount_ore > 0) discounts += r.amount_ore;
-      if ((["praemie_aften_1","praemie_aften_2","praemie_aften_3","praemie_maaned_1","praemie_maaned_2","praemie_maaned_3","praemie_maaned_mest_aktive"] as const).includes(r.product as any) && r.amount_ore > 0) prizes += r.amount_ore;
+      if (
+        ([
+          "praemie_aften_1",
+          "praemie_aften_2",
+          "praemie_aften_3",
+          "praemie_maaned_1",
+          "praemie_maaned_2",
+          "praemie_maaned_3",
+          "praemie_maaned_mest_aktive",
+        ] as const).includes(r.product as any) &&
+        r.amount_ore > 0
+      )
+        prizes += r.amount_ore;
     }
     setTotals({ sales_ore: sales, payments_ore: payments, discounts_ore: discounts, prizes_ore: prizes, net_ore: net });
   }
 
-  useEffect(() => { refreshTotals(); }, [today, selected, entries.length]);
+  useEffect(() => {
+    refreshTotals();
+  }, [today, selected, entries.length]);
 
   const saldoOre = useMemo(() => entries.reduce((acc, e) => acc + e.amount_ore, 0), [entries]);
 
   // Helpers
-  async function insertRows(rows: Array<{ visningsnavn: string; product: string; amount_ore: number; qty?: number; note?: string | null }>) {
+  type BarEntryInsert = {
+    event_date: string;
+    visningsnavn: string;
+    product: string;
+    qty: number;
+    amount_ore: number;
+    note: string | null;
+  };
+
+  async function insertRows(
+    rows: Array<{ visningsnavn: string; product: string; amount_ore: number; qty?: number; note?: string | null }>
+  ) {
     setInserting(true);
     setError(null);
-    const payload = rows.map((r) => ({
+    const payload: BarEntryInsert[] = rows.map((r) => ({
       event_date: today,
       visningsnavn: r.visningsnavn,
       product: r.product,
@@ -244,9 +289,14 @@ export default function AdminButikPage() {
       amount_ore: r.amount_ore,
       note: r.note ?? null,
     }));
-    const { error } = await supabase.from("bar_entries").insert(payload);
+    // 👇 TS-stabilt: cast kun builder til any for at undgå never-typer
+    const qb = supabase.from("bar_entries") as any;
+    const { error } = await qb.insert(payload);
     setInserting(false);
-    if (error) { setError(error.message); return; }
+    if (error) {
+      setError(error.message);
+      return;
+    }
     if (selected) await refreshPlayerEntries(selected);
     await refreshTotals();
   }
@@ -275,15 +325,24 @@ export default function AdminButikPage() {
         setAskSessionOpen(true);
         return; // Vælg politik og klik igen
       }
-      if (freeFirstDrink && await isFirstBeverageToday(selected)) {
-        rows.push({ visningsnavn: selected, product: "rabat", amount_ore: Math.abs(amount), note: "Første drikkevare 100% rabat" });
+      if (freeFirstDrink && (await isFirstBeverageToday(selected))) {
+        rows.push({
+          visningsnavn: selected,
+          product: "rabat",
+          amount_ore: Math.abs(amount),
+          note: "Første drikkevare 100% rabat",
+        });
       }
     }
 
     await insertRows(rows);
   }
 
-  function openBode() { setBodeBelob(""); setBodeNote(""); setBodeOpen(true); }
+  function openBode() {
+    setBodeBelob("");
+    setBodeNote("");
+    setBodeOpen(true);
+  }
   async function submitBode() {
     const val = parseFloat(bodeBelob.replace(",", "."));
     if (!selected || isNaN(val) || val <= 0) return;
@@ -291,7 +350,11 @@ export default function AdminButikPage() {
     setBodeOpen(false);
   }
 
-  function openIndb() { setIndbBelob(""); setIndbNote("MobilePay"); setIndbOpen(true); }
+  function openIndb() {
+    setIndbBelob("");
+    setIndbNote("MobilePay");
+    setIndbOpen(true);
+  }
   async function submitIndb() {
     const val = parseFloat(indbBelob.replace(",", "."));
     if (!selected || isNaN(val) || val <= 0) return;
@@ -336,14 +399,16 @@ export default function AdminButikPage() {
   async function chooseFirstDrinkPolicy(flag: boolean) {
     setFreeFirstDrink(flag);
     setAskSessionOpen(false);
-    await supabase.from("bar_sessions").upsert({ event_date: today, free_first_drink: flag });
+    // 👇 TS-stabilt upsert
+    const qb = supabase.from("bar_sessions") as any;
+    await qb.upsert({ event_date: today, free_first_drink: flag });
   }
 
   // Afledte
   const filteredPlayers = useMemo(() => {
     const q = playerFilter.trim().toLowerCase();
     if (!q) return players;
-    return players.filter(p => p.visningsnavn.toLowerCase().includes(q));
+    return players.filter((p) => p.visningsnavn.toLowerCase().includes(q));
   }, [players, playerFilter]);
 
   return (
@@ -357,8 +422,12 @@ export default function AdminButikPage() {
             <span className="text-white/90">Første drik gratis:</span>
             <button
               onClick={() => chooseFirstDrinkPolicy(!(freeFirstDrink ?? false))}
-              className={`rounded-full px-3 py-1 font-medium ${freeFirstDrink ? 'bg-emerald-500 text-white' : 'bg-white/20 text-white'}`}
-            >{freeFirstDrink ? 'Ja' : 'Nej'}</button>
+              className={`rounded-full px-3 py-1 font-medium ${
+                freeFirstDrink ? "bg-emerald-500 text-white" : "bg-white/20 text-white"
+              }`}
+            >
+              {freeFirstDrink ? "Ja" : "Nej"}
+            </button>
           </div>
         </div>
       </div>
@@ -375,7 +444,12 @@ export default function AdminButikPage() {
               <Kpi label="💸 Indbetalinger" value={fmt(totals.payments_ore)} />
               <Kpi label="🏷️ Rabatter" value={fmt(totals.discounts_ore)} />
               <Kpi label="🎁 Præmier" value={fmt(totals.prizes_ore)} />
-              <Kpi label="⚖️ Netto" value={fmt(totals.net_ore)} emphasis={totals.net_ore < 0 ? 'neg' : 'pos'} className="col-span-2" />
+              <Kpi
+                label="⚖️ Netto"
+                value={fmt(totals.net_ore)}
+                emphasis={totals.net_ore < 0 ? "neg" : "pos"}
+                className="col-span-2"
+              />
             </div>
           </div>
 
@@ -386,17 +460,23 @@ export default function AdminButikPage() {
                 <>
                   <span className="text-gray-600">Saldo for </span>
                   <span className="font-semibold">{selected}</span>
-                  <span className={`ml-2 font-semibold ${saldoOre < 0 ? 'text-rose-600' : 'text-emerald-700'}`}>{fmt(saldoOre)}</span>
+                  <span className={`ml-2 font-semibold ${saldoOre < 0 ? "text-rose-600" : "text-emerald-700"}`}>
+                    {fmt(saldoOre)}
+                  </span>
                 </>
               ) : (
                 <span className="text-gray-500">Vælg en spiller…</span>
               )}
             </div>
-            <button onClick={undoLast} disabled={!selected || inserting || entries.length === 0} className="rounded-xl border px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-40">
+            <button
+              onClick={undoLast}
+              disabled={!selected || inserting || entries.length === 0}
+              className="rounded-xl border px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-40"
+            >
               Fortryd sidste
             </button>
           </div>
-        <RecentEntries entries={entries} entriesLoading={entriesLoading} />
+          <RecentEntries entries={entries} entriesLoading={entriesLoading} />
         </aside>
 
         {/* Midte: Produkter i faner */}
@@ -406,7 +486,9 @@ export default function AdminButikPage() {
               <button
                 key={g}
                 onClick={() => setActiveGroup(g)}
-                className={`rounded-full px-4 py-2 text-sm font-medium shadow ${activeGroup === g ? 'bg-pink-600 text-white' : 'bg-white text-gray-800 border'}`}
+                className={`rounded-full px-4 py-2 text-sm font-medium shadow ${
+                  activeGroup === g ? "bg-pink-600 text-white" : "bg-white text-gray-800 border"
+                }`}
               >
                 {g}
               </button>
@@ -478,8 +560,6 @@ export default function AdminButikPage() {
             setSelected={setSelected}
           />
 
-          
-
           {error && <div className="rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
         </section>
       </div>
@@ -511,7 +591,12 @@ export default function AdminButikPage() {
             />
           </div>
           <div className="text-right">
-            <button onClick={submitBode} className="rounded-xl bg-amber-600 px-4 py-2 text-white shadow hover:bg-amber-700">Tilføj bøde</button>
+            <button
+              onClick={submitBode}
+              className="rounded-xl bg-amber-600 px-4 py-2 text-white shadow hover:bg-amber-700"
+            >
+              Tilføj bøde
+            </button>
           </div>
         </div>
       </Modal>
@@ -542,17 +627,36 @@ export default function AdminButikPage() {
             />
           </div>
           <div className="text-right">
-            <button onClick={submitIndb} className="rounded-xl bg-emerald-700 px-4 py-2 text-white shadow hover:bg-emerald-800">Registrér indbetaling</button>
+            <button
+              onClick={submitIndb}
+              className="rounded-xl bg-emerald-700 px-4 py-2 text-white shadow hover:bg-emerald-800"
+            >
+              Registrér indbetaling
+            </button>
           </div>
         </div>
       </Modal>
 
-      <Modal open={askSessionOpen && freeFirstDrink === null} title="Første drikkevare gratis i aften?" onClose={() => setAskSessionOpen(false)}>
+      <Modal
+        open={askSessionOpen && freeFirstDrink === null}
+        title="Første drikkevare gratis i aften?"
+        onClose={() => setAskSessionOpen(false)}
+      >
         <div className="space-y-3 text-sm">
           <p>Skal den første drikkevare pr. person være gratis i aften?</p>
           <div className="flex gap-2">
-            <button onClick={() => chooseFirstDrinkPolicy(true)} className="rounded-xl bg-emerald-600 px-4 py-2 text-white shadow hover:bg-emerald-700">Ja, gratis</button>
-            <button onClick={() => chooseFirstDrinkPolicy(false)} className="rounded-xl bg-gray-200 px-4 py-2 text-gray-800 shadow hover:bg-gray-300">Nej, alle betaler</button>
+            <button
+              onClick={() => chooseFirstDrinkPolicy(true)}
+              className="rounded-xl bg-emerald-600 px-4 py-2 text-white shadow hover:bg-emerald-700"
+            >
+              Ja, gratis
+            </button>
+            <button
+              onClick={() => chooseFirstDrinkPolicy(false)}
+              className="rounded-xl bg-gray-200 px-4 py-2 text-gray-800 shadow hover:bg-gray-300"
+            >
+              Nej, alle betaler
+            </button>
           </div>
           <p className="text-[11px] text-gray-500">Du kan altid skifte senere via knappen i toppen.</p>
         </div>
@@ -561,17 +665,45 @@ export default function AdminButikPage() {
   );
 }
 
-function Kpi({ label, value, sub, emphasis, className = "" }: { label: string; value: string; sub?: string; emphasis?: "pos" | "neg"; className?: string }) {
+function Kpi({
+  label,
+  value,
+  sub,
+  emphasis,
+  className = "",
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  emphasis?: "pos" | "neg";
+  className?: string;
+}) {
   return (
     <div className={`rounded-xl border bg-white p-3 shadow-sm ${className}`}>
       <div className="text-[11px] uppercase text-gray-500">{label}</div>
-      <div className={`text-lg font-semibold ${emphasis === 'pos' ? 'text-emerald-700' : emphasis === 'neg' ? 'text-rose-600' : ''}`}>{value}</div>
+      <div className={`text-lg font-semibold ${emphasis === "pos" ? "text-emerald-700" : emphasis === "neg" ? "text-rose-600" : ""}`}>
+        {value}
+      </div>
       {sub && <div className="text-[11px] text-gray-400">{sub}</div>}
     </div>
   );
 }
 
-function PlayerPanel({ loading, players, filter, setFilter, selected, setSelected }: { loading: boolean; players: Player[]; filter: string; setFilter: (v: string) => void; selected: string; setSelected: (v: string) => void; }) {
+function PlayerPanel({
+  loading,
+  players,
+  filter,
+  setFilter,
+  selected,
+  setSelected,
+}: {
+  loading: boolean;
+  players: Player[];
+  filter: string;
+  setFilter: (v: string) => void;
+  selected: string;
+  setSelected: (v: string) => void;
+}) {
   return (
     <div className="rounded-2xl border bg-white p-3 shadow-sm">
       <div className="mb-2 flex items-center justify-between">
@@ -584,7 +716,7 @@ function PlayerPanel({ loading, players, filter, setFilter, selected, setSelecte
         placeholder="Søg spiller…"
         className="mb-2 w-full rounded-xl border px-3 py-2 text-sm"
       />
-      {(!loading && players.length === 0) ? (
+      {!loading && players.length === 0 ? (
         <div className="text-sm text-gray-500">Ingen spillere fundet.</div>
       ) : (
         <ul className="max-h-[62vh] space-y-1 overflow-auto pr-1">
@@ -592,7 +724,9 @@ function PlayerPanel({ loading, players, filter, setFilter, selected, setSelecte
             <li key={p.visningsnavn}>
               <button
                 onClick={() => setSelected(p.visningsnavn)}
-                className={`w-full rounded-xl px-3 py-2 text-left transition ${selected === p.visningsnavn ? "bg-pink-100 ring-2 ring-pink-300" : "hover:bg-gray-50"}`}
+                className={`w-full rounded-xl px-3 py-2 text-left transition ${
+                  selected === p.visningsnavn ? "bg-pink-100 ring-2 ring-pink-300" : "hover:bg-gray-50"
+                }`}
               >
                 {p.visningsnavn}
               </button>
@@ -620,10 +754,15 @@ function RecentEntries({ entries, entriesLoading }: { entries: Entry[]; entriesL
           {entries.map((e) => (
             <li key={e.id} className="grid grid-cols-12 items-center gap-2 p-3 text-sm">
               <div className="col-span-6 truncate">
-                {labelForProduct(e.product)}{e.note ? ` – ${e.note}` : ""}
+                {labelForProduct(e.product)}
+                {e.note ? ` – ${e.note}` : ""}
               </div>
-              <div className="col-span-3 text-gray-500">{new Date(e.created_at).toLocaleTimeString("da-DK", { hour: "2-digit", minute: "2-digit" })}</div>
-              <div className={`col-span-3 text-right font-medium ${e.amount_ore < 0 ? "text-rose-600" : "text-emerald-700"}`}>{fmt(e.amount_ore)}</div>
+              <div className="col-span-3 text-gray-500">
+                {new Date(e.created_at).toLocaleTimeString("da-DK", { hour: "2-digit", minute: "2-digit" })}
+              </div>
+              <div className={`col-span-3 text-right font-medium ${e.amount_ore < 0 ? "text-rose-600" : "text-emerald-700"}`}>
+                {fmt(e.amount_ore)}
+              </div>
             </li>
           ))}
         </ul>
@@ -635,35 +774,56 @@ function RecentEntries({ entries, entriesLoading }: { entries: Entry[]; entriesL
 function labelForProduct(key: string) {
   switch (key) {
     // Drikke
-    case "stor_fadoel": return "🍺 Stor Fadøl";
-    case "lille_fadoel": return "🍺 Lille Fadøl";
-    case "stor_oel": return "🍻 Stor Øl";
-    case "lille_oel": return "🍻 Lille Øl";
-    case "sodavand": return "🥤 Sodavand";
+    case "stor_fadoel":
+      return "🍺 Stor Fadøl";
+    case "lille_fadoel":
+      return "🍺 Lille Fadøl";
+    case "stor_oel":
+      return "🍻 Stor Øl";
+    case "lille_oel":
+      return "🍻 Lille Øl";
+    case "sodavand":
+      return "🥤 Sodavand";
 
     // Mad/snacks
-    case "chips": return "🍟 Chips";
-    case "toast": return "🥪 Toast";
+    case "chips":
+      return "🍟 Chips";
+    case "toast":
+      return "🥪 Toast";
 
     // Event/aktivitet
-    case "lunarkamp": return "🏸 Lunarkamp";
+    case "lunarkamp":
+      return "🏸 Lunarkamp";
 
     // Merchandise
-    case "tshirt": return "👕 T‑shirt";
-    case "shorts": return "🩳 Shorts";
+    case "tshirt":
+      return "👕 T-shirt";
+    case "shorts":
+      return "🩳 Shorts";
 
     // Øvrige
-    case "boede": return "🚫 Bøde";
-    case "indbetaling": return "💳 Indbetaling";
-    case "rabat": return "🏷️ Rabat";
-    case "praemie_aften_1": return "🎁 Præmie: Aftenens Spiller";
-    case "praemie_aften_2": return "🎁 Præmie: Aftenens nr. 2";
-    case "praemie_aften_3": return "🎁 Præmie: Aftenens nr. 3";
-    case "praemie_maaned_1": return "🎁 Præmie: Månedens Spiller";
-    case "praemie_maaned_2": return "🎁 Præmie: Månedens nr. 2";
-    case "praemie_maaned_3": return "🎁 Præmie: Månedens nr. 3";
-    case "praemie_maaned_mest_aktive": return "🎁 Præmie: Månedens mest aktive";
-    default: return key;
+    case "boede":
+      return "🚫 Bøde";
+    case "indbetaling":
+      return "💳 Indbetaling";
+    case "rabat":
+      return "🏷️ Rabat";
+    case "praemie_aften_1":
+      return "🎁 Præmie: Aftenens Spiller";
+    case "praemie_aften_2":
+      return "🎁 Præmie: Aftenens nr. 2";
+    case "praemie_aften_3":
+      return "🎁 Præmie: Aftenens nr. 3";
+    case "praemie_maaned_1":
+      return "🎁 Præmie: Månedens Spiller";
+    case "praemie_maaned_2":
+      return "🎁 Præmie: Månedens nr. 2";
+    case "praemie_maaned_3":
+      return "🎁 Præmie: Månedens nr. 3";
+    case "praemie_maaned_mest_aktive":
+      return "🎁 Præmie: Månedens mest aktive";
+    default:
+      return key;
   }
 }
 

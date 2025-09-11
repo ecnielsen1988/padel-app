@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { beregnEloForKampe } from '@/lib/beregnElo';
-import { notifyUser } from "@/lib/notify"; // din notify.ts
+import { notifyUser } from '@/lib/notify';
 
 // ===== Baner (standard for onsdag) =====
 const COURTS = ['Bane 1', 'Bane 2', 'Bane 3'] as const;
@@ -21,7 +21,7 @@ const DRAFT_KEY = 'onsdag';
 export type Spiller = {
   visningsnavn: string;
   elo?: number;
-  slots?: number[]; // de slots spilleren kan
+  slots?: number[];
 };
 
 export type Sæt = {
@@ -36,7 +36,7 @@ export type Sæt = {
 export type Kamp = {
   id: string;
   bane: string;
-  slot: number;     // 1..N (afhængig af dags slots)
+  slot: number;     // 1..N
   starttid: string; // 'HH:MM'
   sluttid: string;  // 'HH:MM'
   sæt: Sæt[];
@@ -48,6 +48,9 @@ type DraftPayload = {
   savedAt: string;
 };
 
+// Små hjælpetypes til maybeSingle
+type ProfileNameRow = { visningsnavn: string | null };
+
 // ===== Hjælpere =====
 const erFærdigtSæt = (a: number, b: number) => {
   const max = Math.max(a, b);
@@ -56,11 +59,10 @@ const erFærdigtSæt = (a: number, b: number) => {
 };
 
 function getNextWednesdayISO(): string {
-  // Find næste onsdag (3) i Europe/Copenhagen
   const nowCph = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Copenhagen' }));
-  const day = nowCph.getDay(); // 0= søn, 1=man, 2=tirs, 3=ons, ...
+  const day = nowCph.getDay(); // 0=søn ... 3=ons
   let addDays = (3 - day + 7) % 7;
-  if (addDays === 0) addDays = 7; // altid NÆSTE onsdag
+  if (addDays === 0) addDays = 7;
   const d = new Date(nowCph);
   d.setDate(nowCph.getDate() + addDays);
   const yyyy = d.getFullYear();
@@ -90,13 +92,11 @@ function emojiForPluspoint(p: number) {
 }
 
 export default function OnsdagPage() {
-  // Dato + slots for netop den kommende onsdag
   const [eventDato, setEventDato] = useState<string>(() => getNextWednesdayISO());
   const [slots, setSlots] = useState<{ id: number; label: string; start: string; end: string }[]>(
     DEFAULT_SLOTS as any
   );
 
-  // Data
   const [alleSpillere, setAlleSpillere] = useState<Spiller[]>([]);
   const [valgteSpillere, setValgteSpillere] = useState<Spiller[]>([]);
   const [eloMap, setEloMap] = useState<Record<string, number>>({});
@@ -117,8 +117,8 @@ export default function OnsdagPage() {
       const res = await fetch('/api/rangliste');
       const rangliste = await res.json();
       const map: Record<string, number> = {};
-      rangliste.forEach((s: any) => {
-        map[s.visningsnavn] = s.elo;
+      (rangliste || []).forEach((s: any) => {
+        if (s?.visningsnavn) map[s.visningsnavn] = s.elo;
       });
       setEloMap(map);
 
@@ -126,11 +126,11 @@ export default function OnsdagPage() {
       if (!profiles) return;
 
       const defaultSlotIds = slots.map((s) => s.id);
-      const spillereMedElo = profiles.map((p) => ({
-        visningsnavn: p.visningsnavn,
-        elo: map[p.visningsnavn] ?? 1000,
-        slots: defaultSlotIds, // default = alle slots for DENNE onsdag
-      }));
+      const spillereMedElo = (profiles as ProfileNameRow[]).map((p) => ({
+        visningsnavn: (p.visningsnavn || '').trim(),
+        elo: map[(p.visningsnavn || '').trim()] ?? 1000,
+        slots: defaultSlotIds,
+      })).filter(p => p.visningsnavn);
 
       setAlleSpillere(spillereMedElo);
     };
@@ -193,7 +193,6 @@ export default function OnsdagPage() {
     const getSpillerSlots = (navn: string) => {
       const sp = valgteSpillere.find((v) => v.visningsnavn === navn);
       const raw = sp?.slots && sp.slots.length ? sp.slots : defaultSlotIds;
-      // klip til dagens slots
       return raw.filter((id) => defaultSlotIds.includes(id));
     };
 
@@ -205,7 +204,6 @@ export default function OnsdagPage() {
     const chooseSlot = (names: string[]) => {
       const inter = commonSlots(names);
       if (inter.length) return inter[0];
-      // Ellers: vælg det slot flest af de 4 kan (tie -> laveste id)
       const scored = defaultSlotIds
         .map((id) => ({
           id,
@@ -225,7 +223,6 @@ export default function OnsdagPage() {
       const slotId = chooseSlot([p1, p2, p3, p4]);
       const cfg = slotCfgById(slotId);
 
-      // Bane følger COURTS-listen
       const courtIndex = Math.floor(i / 4);
       const baneNavn = COURTS[courtIndex] ?? COURTS[COURTS.length - 1];
 
@@ -283,7 +280,7 @@ export default function OnsdagPage() {
     });
   };
 
-  // Elo-preview (uændret)
+  // Elo-preview
   const sætMedId = kampe.flatMap((kamp, kampIndex) =>
     kamp.sæt.map((sæt, sætIndex) => {
       const score = [sæt.scoreA, sæt.scoreB];
@@ -321,7 +318,7 @@ export default function OnsdagPage() {
     return max > 0 ? `+${max.toFixed(1)}` : null;
   };
 
-  // ======== Draft: GEM / HENT (normaliserer tider!!) ========
+  // ======== Draft: GEM / HENT ========
   const saveDraft = async () => {
     setBusy('saving');
     try {
@@ -335,9 +332,9 @@ export default function OnsdagPage() {
         .from('profiles')
         .select('visningsnavn')
         .eq('id', user.id)
-        .single();
+        .maybeSingle<ProfileNameRow>();
 
-      const vn = profil?.visningsnavn;
+      const vn = (profil?.visningsnavn || '').trim();
       if (!vn) {
         alert('❌ Kunne ikke finde dit visningsnavn.');
         return;
@@ -346,7 +343,6 @@ export default function OnsdagPage() {
       const ids = slots.map((s) => s.id);
       const cfgById = (id: number) => slots.find((s) => s.id === id) ?? slots[0];
 
-      // Normalisér: spillere + kampe til DAGENS slots
       const normSpillere = valgteSpillere.map((v) => {
         const filtered = (v.slots && v.slots.length ? v.slots : ids).filter((id) => ids.includes(id));
         return { ...v, slots: filtered.length ? filtered : [ids[0]] };
@@ -364,11 +360,12 @@ export default function OnsdagPage() {
         savedAt: new Date().toISOString(),
       };
 
-      const { error } = await supabase
-        .from('event_drafts')
-        .upsert([{ visningsnavn: vn, draft_key: DRAFT_KEY, payload }], {
-          onConflict: 'visningsnavn, draft_key',
-        });
+      // TS-stabil upsert
+      const qb = supabase.from('event_drafts') as any;
+      const { error } = await qb.upsert(
+        [{ visningsnavn: vn, draft_key: DRAFT_KEY, payload }],
+        { onConflict: 'visningsnavn, draft_key' }
+      );
 
       if (error) throw error;
 
@@ -396,16 +393,16 @@ export default function OnsdagPage() {
           .from('profiles')
           .select('visningsnavn')
           .eq('id', user.id)
-          .single();
+          .maybeSingle<ProfileNameRow>();
 
-        const vn = profil?.visningsnavn;
+        const vn = (profil?.visningsnavn || '').trim();
         if (vn) {
           const { data } = await supabase
             .from('event_drafts')
             .select('payload')
             .eq('visningsnavn', vn)
             .eq('draft_key', DRAFT_KEY)
-            .maybeSingle();
+            .maybeSingle<{ payload: DraftPayload }>();
 
           if (data?.payload) loaded = data.payload as DraftPayload;
         }
@@ -421,7 +418,6 @@ export default function OnsdagPage() {
         return;
       }
 
-      // Normalisér loaded til DAGENS slots
       const ids = slots.map((s) => s.id);
       const cfgById = (id: number) => slots.find((s) => s.id === id) ?? slots[0];
 
@@ -475,55 +471,49 @@ export default function OnsdagPage() {
       })
     );
 
-    // Slet eksisterende plan for datoen (undgå konflikt)
-    await supabase.from('event_sets').delete().eq('event_dato', eventDatoISO);
+    // Slet eksisterende plan for datoen
+    await (supabase.from('event_sets') as any).delete().eq('event_dato', eventDatoISO);
 
-    const { error } = await supabase.from("event_sets").insert(rows);
-if (error) {
-  alert("❌ Kunne ikke publicere planen: " + error.message);
-} else {
-  // ✅ Publiceret
-  alert("📢 Plan publiceret – spillerne kan nu se deres kampe!");
-
-  // --- NYT: Send push til den loggede bruger, hvis vedkommende deltager ---
-  try {
-    // 1) Hent logget bruger + visningsnavn
-    const { data: auth } = await supabase.auth.getUser();
-    const me = auth?.user;
-    if (me) {
-      const { data: prof } = await supabase
-        .from("profiles")
-        .select("visningsnavn")
-        .eq("id", me.id)
-        .single();
-
-      const myName = prof?.visningsnavn;
-
-      // 2) Udtræk alle navne fra kampe/sæt
-      const participants = Array.from(
-        new Set(
-          kampe.flatMap((k) =>
-            k.sæt.flatMap((s) => [s.holdA1, s.holdA2, s.holdB1, s.holdB2])
-          )
-        )
-      );
-
-      // 3) Hvis jeg deltager → push
-      if (myName && participants.includes(myName)) {
-        await notifyUser({
-          user_id: me.id,
-          title: "📢 Dine kampe er klar",
-          body: `Planen for ${new Date(eventDatoISO + "T00:00:00").toLocaleDateString("da-DK")} er publiceret.`,
-          url: `/event?date=${encodeURIComponent(eventDatoISO)}`,
-        });
-      }
+    // Indsæt ny plan (TS-stabil cast)
+    const { error } = await (supabase.from('event_sets') as any).insert(rows);
+    if (error) {
+      alert('❌ Kunne ikke publicere planen: ' + error.message);
+      return;
     }
-  } catch (e) {
-    // Valgfrit: log men lad publiceringen være succesfuld
-    console.error("notifyUser error", e);
-  }
-}
 
+    alert('📢 Plan publiceret – spillerne kan nu se deres kampe!');
+
+    // Send push til den loggede bruger, hvis vedkommende deltager
+    try {
+      const { data: auth } = await supabase.auth.getUser();
+      const me = auth?.user;
+      if (me) {
+        const { data: prof } = await supabase
+          .from('profiles')
+          .select('visningsnavn')
+          .eq('id', me.id)
+          .maybeSingle<ProfileNameRow>();
+
+        const myName = (prof?.visningsnavn || '').trim();
+
+        const participants = Array.from(
+          new Set(
+            kampe.flatMap((k) => k.sæt.flatMap((s) => [s.holdA1, s.holdA2, s.holdB1, s.holdB2]))
+          )
+        );
+
+        if (myName && participants.includes(myName)) {
+          await notifyUser({
+            user_id: me.id,
+            title: '📢 Dine kampe er klar',
+            body: `Planen for ${new Date(eventDatoISO + 'T00:00:00').toLocaleDateString('da-DK')} er publiceret.`,
+            url: `/event?date=${encodeURIComponent(eventDatoISO)}`,
+          });
+        }
+      }
+    } catch (e) {
+      console.error('notifyUser error', e);
+    }
   };
 
   const sendEventResultater = async () => {
@@ -534,10 +524,8 @@ Dette vil slette event-data og indsende alle sæt permanent til ranglisten.`
     );
     if (!ok) return;
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
+    const { data: auth, error: userError } = await supabase.auth.getUser();
+    const user = auth?.user;
 
     if (userError || !user) {
       alert('❌ Du skal være logget ind for at indsende resultater.');
@@ -548,14 +536,15 @@ Dette vil slette event-data og indsende alle sæt permanent til ranglisten.`
       .from('profiles')
       .select('visningsnavn')
       .eq('id', user.id)
-      .single();
+      .maybeSingle<ProfileNameRow>();
 
     if (profilError || !profil?.visningsnavn) {
       alert('❌ Kunne ikke finde dit brugernavn.');
       return;
     }
 
-    const visningsnavn = profil.visningsnavn;
+    const visningsnavn = (profil.visningsnavn || '').trim();
+
     const { data: maxData } = await supabase
       .from('newresults')
       .select('kampid')
@@ -563,7 +552,7 @@ Dette vil slette event-data og indsende alle sæt permanent til ranglisten.`
       .order('kampid', { ascending: false })
       .limit(1);
 
-    const startKampid = (maxData?.[0]?.kampid || 0) + 1;
+    const startKampid = ((maxData as any)?.[0]?.kampid || 0) + 1;
 
     // Fladgør sæt (ignorer 0-0)
     const alleSaet = kampe.flatMap((kamp) =>
@@ -600,7 +589,7 @@ Dette vil slette event-data og indsende alle sæt permanent til ranglisten.`
       )
       .flat();
 
-    const { error } = await supabase.from('newresults').insert(resultater);
+    const { error } = await (supabase.from('newresults') as any).insert(resultater);
 
     if (error) {
       alert('❌ Noget gik galt: ' + error.message);
@@ -691,62 +680,62 @@ Dette vil slette event-data og indsende alle sæt permanent til ranglisten.`
         )}
 
         <div className="mt-3">
-  {valgteSpillere.map((spiller, idx) => (
-    <React.Fragment key={spiller.visningsnavn}>
-      <div className="bg-pink-100 dark:bg-zinc-700 rounded px-2 py-1 text-xs mb-1">
-        <div className="flex justify-between items-center">
-          <span className="truncate mr-2">{spiller.visningsnavn}</span>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-600 dark:text-gray-300">
-              {Math.round(spiller.elo ?? 1000)}
-            </span>
-            <button
-              onClick={() => moveSpillerUp(idx)}
-              disabled={idx === 0}
-              className="text-xs inline-flex items-center rounded border px-2 py-0.5 disabled:opacity-40"
-              title="Ryk spilleren én plads op"
-            >
-              ▲
-            </button>
-            <button
-              onClick={() => fjernSpiller(spiller.visningsnavn)}
-              className="text-red-500"
-              title="Fjern spiller"
-            >
-              🗑
-            </button>
-          </div>
+          {valgteSpillere.map((spiller, idx) => (
+            <React.Fragment key={spiller.visningsnavn}>
+              <div className="bg-pink-100 dark:bg-zinc-700 rounded px-2 py-1 text-xs mb-1">
+                <div className="flex justify-between items-center">
+                  <span className="truncate mr-2">{spiller.visningsnavn}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-600 dark:text-gray-300">
+                      {Math.round(spiller.elo ?? 1000)}
+                    </span>
+                    <button
+                      onClick={() => moveSpillerUp(idx)}
+                      disabled={idx === 0}
+                      className="text-xs inline-flex items-center rounded border px-2 py-0.5 disabled:opacity-40"
+                      title="Ryk spilleren én plads op"
+                    >
+                      ▲
+                    </button>
+                    <button
+                      onClick={() => fjernSpiller(spiller.visningsnavn)}
+                      className="text-red-500"
+                      title="Fjern spiller"
+                    >
+                      🗑
+                    </button>
+                  </div>
+                </div>
+
+                {/* Slot toggles */}
+                <div className="mt-1 flex gap-1">
+                  {slots.map((s) => {
+                    const selected = (spiller.slots ?? slots.map((x) => x.id)).includes(s.id);
+                    return (
+                      <button
+                        key={s.id}
+                        onClick={() => toggleSlotForSpiller(spiller.visningsnavn, s.id)}
+                        title={`Slot ${s.id}: ${s.label}`}
+                        className={`px-2 py-0.5 rounded text-[11px] border ${
+                          selected
+                            ? 'bg-green-600 text-white border-green-700'
+                            : 'bg-zinc-300 dark:bg-zinc-600 text-zinc-900 dark:text-zinc-100 border-transparent'
+                        }`}
+                      >
+                        {s.id}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {((idx + 1) % 4 === 0) && idx !== valgteSpillere.length - 1 && (
+                <div className="-mx-1 my-2 h-px bg-zinc-300 dark:bg-zinc-600 opacity-60" />
+              )}
+            </React.Fragment>
+          ))}
         </div>
 
-        {/* Slot toggles */}
-        <div className="mt-1 flex gap-1">
-          {slots.map((s) => {
-            const selected = (spiller.slots ?? slots.map((x) => x.id)).includes(s.id);
-            return (
-              <button
-                key={s.id}
-                onClick={() => toggleSlotForSpiller(spiller.visningsnavn, s.id)}
-                title={`Slot ${s.id}: ${s.label}`}
-                className={`px-2 py-0.5 rounded text-[11px] border ${
-                  selected
-                    ? 'bg-green-600 text-white border-green-700'
-                    : 'bg-zinc-300 dark:bg-zinc-600 text-zinc-900 dark:text-zinc-100 border-transparent'
-                }`}
-              >
-                {s.id}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* tynd streg efter hver 4. spiller (men ikke efter sidste) */}
-      {((idx + 1) % 4 === 0) && idx !== valgteSpillere.length - 1 && (
-        <div className="-mx-1 my-2 h-px bg-zinc-300 dark:bg-zinc-600 opacity-60" />
-      )}
-    </React.Fragment>
-  ))}
-</div>
         <button
           onClick={lavEventFraSpillere}
           disabled={kampe.some((kamp) => kamp.sæt.some((sæt) => sæt.scoreA !== 0 || sæt.scoreB !== 0))}
