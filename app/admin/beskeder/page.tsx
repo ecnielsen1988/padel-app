@@ -9,8 +9,11 @@ interface Besked {
   besked: string
   tidspunkt: string
   visningsnavn: string
-  læst: boolean
+  read: boolean
 }
+
+// Kun det vi skal bruge for rollecheck
+type ProfileRow = { rolle: 'admin' | 'netværk' | 'spiller' | null }
 
 export default function AdminBeskeder() {
   const [beskeder, setBeskeder] = useState<Besked[]>([])
@@ -19,18 +22,23 @@ export default function AdminBeskeder() {
 
   useEffect(() => {
     async function checkAdgangOgHentBeskeder() {
-      const { data: { user }, error: userError } = await supabase.auth.getUser()
+      setLoading(true)
+
+      // 1) Auth
+      const { data: auth, error: userError } = await supabase.auth.getUser()
+      const user = auth?.user
       if (userError || !user) {
         setAdgangTilladt(false)
         setLoading(false)
         return
       }
 
+      // 2) Rolle-tjek (admin?)
       const { data: profil, error: profilError } = await supabase
         .from('profiles')
         .select('rolle')
         .eq('id', user.id)
-        .single()
+        .maybeSingle<ProfileRow>()
 
       if (profilError || profil?.rolle !== 'admin') {
         setAdgangTilladt(false)
@@ -40,15 +48,20 @@ export default function AdminBeskeder() {
 
       setAdgangTilladt(true)
 
+      // 3) Hent beskeder
       const { data, error } = await supabase
         .from('admin_messages')
-        .select('id, kampid, besked, tidspunkt, visningsnavn, læst')
+        .select('id, kampid, besked, tidspunkt, visningsnavn, read')
         .order('tidspunkt', { ascending: false })
 
-      if (!error && Array.isArray(data)) {
+      if (error) {
+        console.error('❌ Fejl ved hentning af beskeder:', error)
+        setBeskeder([])
+      } else if (Array.isArray(data)) {
         setBeskeder(data as unknown as Besked[])
       } else {
-        console.error('❌ Ugyldig dataformat:', data)
+        console.error('❌ Ugyldigt dataformat for beskeder:', data)
+        setBeskeder([])
       }
 
       setLoading(false)
@@ -57,25 +70,36 @@ export default function AdminBeskeder() {
     checkAdgangOgHentBeskeder()
   }, [])
 
+  // Marker én besked som læst (read = true)
   const markerSomLæst = async (id: number) => {
-    const { error } = await supabase
-      .from('admin_messages')
-      .update({ læst: true })
-      .eq('id', id)
+    try {
+      // Lille TS-hack kun her: cast query builder til any, så { read: true } ikke fejler
+      const qb = supabase.from('admin_messages') as any
+      const { error } = await qb.update({ ['read']: true }).eq('id', id)
 
-    if (!error) {
+      if (error) {
+        console.error('Kunne ikke markere som læst:', error)
+        return
+      }
+
       setBeskeder(prev =>
-        prev.map(msg => (msg.id === id ? { ...msg, læst: true } : msg))
+        prev.map(msg => (msg.id === id ? { ...msg, read: true } : msg))
       )
+    } catch (e) {
+      console.error('Uventet fejl ved markering som læst:', e)
     }
   }
 
   if (adgangTilladt === false) {
-    return <p style={{ padding: '2rem', color: 'crimson' }}>⛔️ Du har ikke adgang til denne side.</p>
+    return (
+      <div style={{ maxWidth: 800, margin: '2rem auto', padding: '1rem' }}>
+        <p style={{ color: 'crimson' }}>⛔️ Du har ikke adgang til denne side.</p>
+      </div>
+    )
   }
 
   return (
-    <div style={{ maxWidth: '800px', margin: 'auto', padding: '2rem' }}>
+    <div style={{ maxWidth: 800, margin: '2rem auto', padding: '1rem' }}>
       <h1 style={{ fontSize: '1.8rem', marginBottom: '1rem' }}>📬 Indkomne beskeder</h1>
 
       {loading && <p>Indlæser...</p>}
@@ -86,11 +110,11 @@ export default function AdminBeskeder() {
           key={msg.id}
           style={{
             border: '1px solid #444',
-            borderRadius: '8px',
+            borderRadius: 8,
             padding: '1rem',
             marginBottom: '1rem',
-            backgroundColor: msg.læst ? '#1a1a1a' : '#ffe4f0',
-            color: msg.læst ? '#ccc' : '#000',
+            backgroundColor: msg.read ? '#1a1a1a' : '#ffe4f0',
+            color: msg.read ? '#ccc' : '#000',
           }}
         >
           <p><strong>Kamp:</strong> #{msg.kampid}</p>
@@ -98,11 +122,11 @@ export default function AdminBeskeder() {
           <p style={{ whiteSpace: 'pre-line' }}>
             <strong>Besked:</strong><br />{msg.besked}
           </p>
-          <p style={{ fontSize: '0.9rem', color: msg.læst ? '#888' : '#555' }}>
+          <p style={{ fontSize: '0.9rem', color: msg.read ? '#888' : '#555' }}>
             ⏱ {new Date(msg.tidspunkt).toLocaleString('da-DK')}
           </p>
 
-          {!msg.læst && (
+          {!msg.read && (
             <button
               onClick={() => markerSomLæst(msg.id)}
               style={{
@@ -111,7 +135,7 @@ export default function AdminBeskeder() {
                 color: 'white',
                 padding: '0.4rem 0.8rem',
                 border: 'none',
-                borderRadius: '6px',
+                borderRadius: 6,
                 cursor: 'pointer',
               }}
             >
@@ -123,3 +147,4 @@ export default function AdminBeskeder() {
     </div>
   )
 }
+
