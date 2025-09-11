@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { supabase } from '@/lib/supabaseClient'
+import { useRouter } from 'next/navigation'
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 
 type Bruger = {
   visningsnavn: string
@@ -11,6 +12,9 @@ type Bruger = {
 }
 
 export default function StartSide() {
+  const router = useRouter()
+  const supabase = createClientComponentClient()
+
   const [bruger, setBruger] = useState<Bruger | null>(null)
   const [loading, setLoading] = useState(true)
   const [ulæsteDM, setUlæsteDM] = useState<number>(0)
@@ -72,14 +76,24 @@ export default function StartSide() {
 
     hentAlt()
 
-    return () => { mounted = false }
-  }, [])
+    // 👇 Lyt til auth-ændringer (f.eks. efter login/logout i andre faner)
+    const { data: sub } = supabase.auth.onAuthStateChange(() => {
+      hentAlt()
+    })
+
+    return () => {
+      mounted = false
+      sub.subscription.unsubscribe()
+    }
+  }, [supabase])
 
   const logUd = async () => {
     await supabase.auth.signOut()
     setBruger(null)
     setUlæsteDM(0)
     setUlæsteAdmin(0)
+    router.refresh()        // sørg for at SSR-sider ser logout med det samme
+    // router.replace('/login') // valgfrit: send dem til login
   }
 
   if (loading) {
@@ -134,9 +148,8 @@ export default function StartSide() {
         </button>
       </div>
 
-      {/* Knap-grid (kun det ønskede) */}
+      {/* Knap-grid */}
       <div className="grid gap-4">
-        {/* Beskeder */}
         <Link
           href="/beskeder"
           className="rounded-2xl bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-black font-semibold py-3 px-5 shadow text-center"
@@ -151,7 +164,6 @@ export default function StartSide() {
           </span>
         </Link>
 
-        {/* Indtast Resultater */}
         <Link
           href="/newscore"
           className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
@@ -159,7 +171,6 @@ export default function StartSide() {
           ➕ Indtast Resultater
         </Link>
 
-        {/* Se Resultater (ny side) */}
         <Link
           href="/resultater"
           className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
@@ -167,7 +178,6 @@ export default function StartSide() {
           🧾 Se Resultater
         </Link>
 
-        {/* Ranglister (ny samleside) */}
         <Link
           href="/ranglister"
           className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
@@ -175,7 +185,6 @@ export default function StartSide() {
           📊 Ranglister
         </Link>
 
-        {/* Kommende kampe */}
         <Link
           href="/kommende"
           className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
@@ -183,7 +192,6 @@ export default function StartSide() {
           📅 Kommende kampe
         </Link>
 
-        {/* Torsdagspadel (kun hvis flag) */}
         {bruger.torsdagspadel && (
           <Link
             href="/torsdagspadel"
@@ -193,7 +201,6 @@ export default function StartSide() {
           </Link>
         )}
 
-        {/* Admin (kun admin) */}
         {bruger.rolle === 'admin' && (
           <>
             <Link
