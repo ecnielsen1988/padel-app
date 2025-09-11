@@ -1,14 +1,13 @@
 'use client'
+export const dynamic = 'force-dynamic'
 
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 
 type Bruger = { visningsnavn: string; torsdagspadel: boolean }
 type Tilmelding = { kan_spille: boolean; tidligste_tid?: string | null } | null
 
-// Brug lowercase felter her (tilpas hvis din DB har snake_case)
 type EventSet = {
   id: number
   event_dato: string
@@ -23,73 +22,87 @@ type EventSet = {
   holdb2: string
 }
 
-// Hjælper: find altid NÆSTE torsdag i Europe/Copenhagen (også hvis i dag er torsdag)
-function getNextThursdayISO(): string {
-  const nowCph = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Copenhagen' }))
-  const day = nowCph.getDay() // 0=søn ... 4=tors
+// ——— Tidszone-sikre helpers ———
+function nowInCopenhagen(): Date {
+  // Bygger kan mangle full-ICU → catch og fald tilbage til lokal tid
+  try {
+    return new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Copenhagen' }))
+  } catch {
+    return new Date()
+  }
+}
+
+function getNextThursdayISOFrom(d: Date): string {
+  const day = d.getDay() // 0..6 (torsdag=4)
   let addDays = (4 - day + 7) % 7
   if (addDays === 0) addDays = 7
-  const nextThu = new Date(nowCph)
-  nextThu.setDate(nowCph.getDate() + addDays)
+  const nextThu = new Date(d)
+  nextThu.setDate(d.getDate() + addDays)
   const yyyy = nextThu.getFullYear()
   const mm = String(nextThu.getMonth() + 1).padStart(2, '0')
   const dd = String(nextThu.getDate()).padStart(2, '0')
   return `${yyyy}-${mm}-${dd}`
 }
 
-function formatDanishDate(isoDate: string): string {
-  const d = new Date(`${isoDate}T00:00:00`)
-  return d.toLocaleDateString('da-DK', {
-    day: '2-digit',
-    month: 'long',
-    timeZone: 'Europe/Copenhagen',
-  })
-}
-
-function getThisThursdayISO(): string | null {
-  const nowCph = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Copenhagen' }))
-  return nowCph.getDay() === 4
-    ? `${nowCph.getFullYear()}-${String(nowCph.getMonth()+1).padStart(2,'0')}-${String(nowCph.getDate()).padStart(2,'0')}`
+function getThisThursdayISOFrom(d: Date): string | null {
+  return d.getDay() === 4
+    ? `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
     : null
 }
 
-// Beløb i øre → DKK
+function formatDanishDate(isoDate: string): string {
+  const dt = new Date(`${isoDate}T00:00:00`)
+  try {
+    return dt.toLocaleDateString('da-DK', {
+      day: '2-digit',
+      month: 'long',
+      timeZone: 'Europe/Copenhagen',
+    })
+  } catch {
+    // fallback uden specificeret timeZone
+    return dt.toLocaleDateString('da-DK', { day: '2-digit', month: 'long' })
+  }
+}
+
 function oreToDKK(ore: any): number {
   const n = Number(ore ?? 0)
   return Number.isFinite(n) ? n / 100 : 0
 }
 
 export default function TorsdagStartside() {
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const paramUser = searchParams.get('user')
-
   const [bruger, setBruger] = useState<Bruger | null>(null)
   const [loading, setLoading] = useState(true)
   const [tilmelding, setTilmelding] = useState<Tilmelding>(null)
   const [status, setStatus] = useState<'idle' | 'updating' | 'done' | 'editing'>('idle')
 
-  // mine sæt (din(e) kamp(e))
   const [mineSaet, setMineSaet] = useState<EventSet[] | null>(null)
   const [loadingSaet, setLoadingSaet] = useState(true)
 
-  // total regnskab i DKK
   const [totalDKK, setTotalDKK] = useState<number>(0)
 
-  // Tilmelding: ALTID næste torsdag
-  const signupDato = useMemo(() => getNextThursdayISO(), [])
-  const signupDatoTekst = useMemo(() => formatDanishDate(signupDato), [signupDato])
+  // ❗️NYT: Beregn datoer efter mount (så server-prerender ikke rammer timeZone-fejl)
+  const [signupDato, setSignupDato] = useState<string>('') // næste torsdag
+  const [planDato, setPlanDato] = useState<string>('')     // i dag hvis torsdag, ellers næste
 
-  // Planvisning: I DAG hvis det er torsdag – ellers næste torsdag
-  const thisThursday = useMemo(() => getThisThursdayISO(), [])
-  const planDato = thisThursday ?? signupDato
-  const planDatoTekst = useMemo(() => formatDanishDate(planDato), [planDato])
+  useEffect(() => {
+    const now = nowInCopenhagen()
+    const nextThu = getNextThursdayISOFrom(now)
+    const thisThu = getThisThursdayISOFrom(now)
+    setSignupDato(nextThu)
+    setPlanDato(thisThu ?? nextThu)
+  }, [])
+
+  const signupDatoTekst = useMemo(() => (signupDato ? formatDanishDate(signupDato) : ''), [signupDato])
+  const planDatoTekst   = useMemo(() => (planDato   ? formatDanishDate(planDato)   : ''), [planDato])
 
   const tider = ['17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00']
 
   useEffect(() => {
     const hentBruger = async () => {
       try {
+        // Vent til datoer er sat (ellers spilder vi kald)
+        if (!signupDato || !planDato) return
+
         const { data: auth } = await supabase.auth.getUser()
         const user = auth?.user
         if (!user) {
@@ -98,14 +111,13 @@ export default function TorsdagStartside() {
           return
         }
 
-        // PROFIL (any-shim + cast efterfølgende)
+        // PROFIL (any-shim)
         const profResp = await (supabase.from('profiles') as any)
           .select('visningsnavn, torsdagspadel')
           .eq('id', user.id)
           .maybeSingle()
 
         const profile = (profResp?.data ?? null) as { visningsnavn?: string; torsdagspadel?: boolean } | null
-
         if (!profile?.torsdagspadel || !profile?.visningsnavn) {
           setLoading(false)
           setLoadingSaet(false)
@@ -114,7 +126,7 @@ export default function TorsdagStartside() {
 
         setBruger({ visningsnavn: profile.visningsnavn, torsdagspadel: !!profile.torsdagspadel })
 
-        // EVT. EKSISTERENDE TILMELDING (any-shim)
+        // EVT. EKSISTERENDE TILMELDING
         const tilmResp = await (supabase.from('event_signups') as any)
           .select('kan_spille, tidligste_tid')
           .eq('visningsnavn', profile.visningsnavn)
@@ -123,14 +135,11 @@ export default function TorsdagStartside() {
 
         if (tilmResp?.data) {
           const t = tilmResp.data as { kan_spille?: boolean; tidligste_tid?: string | null }
-          setTilmelding({
-            kan_spille: !!t.kan_spille,
-            tidligste_tid: t.tidligste_tid ?? null,
-          })
+          setTilmelding({ kan_spille: !!t.kan_spille, tidligste_tid: t.tidligste_tid ?? null })
           setStatus('done')
         }
 
-        // HENT DINE SÆT TIL PLAN-DATOEN (any-shim)
+        // HENT DINE SÆT TIL PLAN-DATOEN
         setLoadingSaet(true)
         const setsResp = await (supabase.from('event_sets') as any)
           .select('id, event_dato, kamp_nr, saet_nr, bane, starttid, sluttid, holda1, holda2, holdb1, holdb2')
@@ -153,7 +162,7 @@ export default function TorsdagStartside() {
           setMineSaet(mine)
         }
 
-        // HENT BAR-ENTRIES TIL TOTAL (any-shim)
+        // HENT BAR-ENTRIES TIL TOTAL
         const barResp = await (supabase.from('bar_entries') as any)
           .select('amount_ore')
           .eq('visningsnavn', profile.visningsnavn)
@@ -181,16 +190,15 @@ export default function TorsdagStartside() {
     setStatus('updating')
     const { data: auth } = await supabase.auth.getUser()
     const user = auth?.user
-    if (!user || !bruger) return
+    if (!user || !bruger || !signupDato) return
 
     const payload = {
       visningsnavn: bruger.visningsnavn,
-      event_dato: signupDato, // dynamisk næste torsdag
+      event_dato: signupDato,
       kan_spille: kanSpille,
       tidligste_tid: kanSpille ? (tidligsteTid ?? null) : null,
     }
 
-    // any-shim på upsert + onConflict
     const upResp = await (supabase.from('event_signups') as any)
       .upsert(payload, { onConflict: 'visningsnavn,event_dato' })
 
@@ -203,20 +211,20 @@ export default function TorsdagStartside() {
     }
   }
 
-  if (loading)
+  if (loading || !signupDato || !planDato) {
     return <p className="text-center mt-10 text-gray-700 dark:text-white">Indlæser...</p>
+  }
 
-  if (!bruger)
+  if (!bruger) {
     return (
       <p className="text-center mt-10 text-gray-700 dark:text-white">
         Du har ikke adgang til denne side.
       </p>
     )
+  }
 
-  // Hjælpere til visning
-  const fmt = (t?: string | null) => (t ? t.slice(0, 5) : t) // "HH:MM:SS" -> "HH:MM"
+  const fmt = (t?: string | null) => (t ? t.slice(0, 5) : t)
 
-  // Gruppér mine sæt pr. kamp_nr
   const grupperet = (mineSaet ?? []).reduce<Map<number, EventSet[]>>((m, row) => {
     const key = row.kamp_nr
     if (!m.has(key)) m.set(key, [])
@@ -224,16 +232,15 @@ export default function TorsdagStartside() {
     return m
   }, new Map())
 
-  // Labels/klasse til statusboksen
   const totalLabel =
     totalDKK > 0 ? 'Du har til gode'
-    : totalDKK < 0 ? 'Du skylder'
-    : 'Alt i nul'
+      : totalDKK < 0 ? 'Du skylder'
+      : 'Alt i nul'
 
   const totalClass =
     totalDKK > 0 ? 'text-green-700'
-    : totalDKK < 0 ? 'text-red-600'
-    : 'text-zinc-700 dark:text-zinc-300'
+      : totalDKK < 0 ? 'text-red-600'
+      : 'text-zinc-700 dark:text-zinc-300'
 
   return (
     <main className="max-w-xl mx-auto p-8 text-gray-900 dark:text-white">
@@ -384,3 +391,4 @@ export default function TorsdagStartside() {
     </main>
   )
 }
+
