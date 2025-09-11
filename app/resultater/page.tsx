@@ -18,15 +18,20 @@ export default function ResultaterPage() {
         if (mounted) { setLoggedIn(false); setLoading(false) }
         return
       }
-      // Hent navn (valgfrit, kun for at sige hej)
-      const { data: p } = await supabase
-        .from('profiles')
+
+      // TS-safe: cast builder til any og drop generics på maybeSingle()
+      const { data: p } = await (supabase
+        .from('profiles') as any)
         .select('visningsnavn')
         .eq('id', user.id)
         .maybeSingle()
+
       if (mounted) {
         setLoggedIn(true)
-        setVisningsnavn(p?.visningsnavn || user.email || 'Spiller')
+        const navn = typeof p?.visningsnavn === 'string' && p.visningsnavn
+          ? p.visningsnavn
+          : (user.email || 'Spiller')
+        setVisningsnavn(navn)
         setLoading(false)
       }
     })()
@@ -64,7 +69,6 @@ export default function ResultaterPage() {
       </header>
 
       <div className="grid gap-4">
-        {/* Mine resultater */}
         <Link
           href="/mine"
           className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
@@ -72,7 +76,6 @@ export default function ResultaterPage() {
           🧾 Mine resultater
         </Link>
 
-        {/* Seneste resultater */}
         <Link
           href="/lastgames"
           className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
@@ -80,7 +83,6 @@ export default function ResultaterPage() {
           🕓 Seneste resultater
         </Link>
 
-        {/* Tilbage til start (valgfri lille hjælper) */}
         <Link
           href="/startside"
           className="bg-gray-800 hover:bg-gray-900 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"

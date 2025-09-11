@@ -1,3 +1,4 @@
+// app/newscore/page.tsx
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
@@ -16,6 +17,8 @@ export type SaetState = {
   scoreA: number
   scoreB: number
 }
+
+type ProfileNameRow = { visningsnavn: string | null }
 
 // Gyldige “færdigspillet” sæt (klassisk padel/tennis logik)
 const VALID_FINISHES = new Set([
@@ -52,7 +55,10 @@ export default function NewScorePage() {
         .order('visningsnavn', { ascending: true })
 
       if (!error) {
-        setSpillere((data || []).map((s: any) => ({ value: s.visningsnavn, label: s.visningsnavn })))
+        setSpillere((data || []).map((s: any) => {
+          const v = (s?.visningsnavn ?? '').toString()
+          return { value: v, label: v }
+        }))
       }
     })()
   }, [])
@@ -128,15 +134,27 @@ export default function NewScorePage() {
     if (userError || !user) { setBusy(false); setMessage('❌ Du skal være logget ind.'); return }
 
     const { data: profil, error: profilError } = await supabase
-      .from('profiles').select('visningsnavn').eq('id', user.id).single()
+      .from('profiles')
+      .select('visningsnavn')
+      .eq('id', user.id)
+      .maybeSingle<ProfileNameRow>()
     if (profilError || !profil?.visningsnavn) { setBusy(false); setMessage('❌ Kunne ikke finde visningsnavn.'); return }
-    const visningsnavn = profil.visningsnavn.trim()
+    const visningsnavn = (profil.visningsnavn ?? '').toString().trim()
 
-    const { data: maxData, error: maxError } = await supabase
-      .from('newresults').select('kampid').not('kampid', 'is', null)
-      .order('kampid', { ascending: false }).limit(1)
-    if (maxError) { setBusy(false); setMessage('❌ Fejl ved hentning af kampid: ' + maxError.message); return }
-    const nyKampid = (maxData?.[0]?.kampid || 0) + 1
+    type KampIdRow = { kampid: number | null }
+
+const { data: maxData, error: maxError } = await supabase
+  .from('newresults')
+  .select('kampid')
+  .not('kampid', 'is', null)
+  .order('kampid', { ascending: false })
+  .limit(1)
+
+if (maxError) { setBusy(false); setMessage('❌ Fejl ved hentning af kampid: ' + maxError.message); return }
+
+const lastKampid = Number(((maxData as KampIdRow[] | null)?.[0]?.kampid) ?? 0)
+const nyKampid = (Number.isFinite(lastKampid) ? lastKampid : 0) + 1
+
 
     const all = [...afsluttedeSaet, aktivtSaet]
     const rows = all
@@ -156,7 +174,8 @@ export default function NewScorePage() {
         indberettet_af: visningsnavn,
       }))
 
-    const { error } = await supabase.from('newresults').insert(rows)
+    // TS-fix: cast kanal som any (undgår streng row-type på insert)
+    const { error } = await (supabase.from('newresults') as any).insert(rows as any)
     if (error) {
       setMessage('❌ Fejl: ' + error.message)
     } else {

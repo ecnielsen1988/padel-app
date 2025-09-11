@@ -1,166 +1,177 @@
-'use client'
-export const dynamic = 'force-dynamic'
+// app/lastgames/page.tsx
+'use client';
+export const dynamic = 'force-dynamic';
 
-import { supabase } from '../../lib/supabaseClient'
-import React, { useEffect, useState } from 'react'
-import { Kamp, EloChange, EloMap, beregnEloForKampe } from '../../lib/beregnElo'
+import React, { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabaseClient';
+import { Kamp, EloChange, EloMap, beregnEloForKampe } from '@/lib/beregnElo';
 
 interface KampGruppe {
-  kampid: number
-  sæt: Kamp[]
-  indberettetAf?: string
+  kampid: number;
+  sæt: Kamp[];
+  indberettetAf?: string;
 }
 
 export default function SenesteKampeSide() {
-  const [kampGrupper, setKampGrupper] = useState<KampGruppe[]>([])
-  const [eloMap, setEloMap] = useState<EloMap>({})
-  const [eloChanges, setEloChanges] = useState<Record<number, { [key: string]: EloChange }>>({})
-  const [kommentarer, setKommentarer] = useState<Record<number, string>>({})
+  const [kampGrupper, setKampGrupper] = useState<KampGruppe[]>([]);
+  const [eloMap, setEloMap] = useState<EloMap>({});
+  const [eloChanges, setEloChanges] = useState<Record<number, { [key: string]: EloChange }>>({});
+  const [kommentarer, setKommentarer] = useState<Record<number, string>>({});
 
   useEffect(() => {
     async function hentAlleResultater(): Promise<Kamp[]> {
-      const batchSize = 1000
-      let alleResultater: Kamp[] = []
-      let lastId = 0
+      const batchSize = 1000;
+      let alleResultater: Kamp[] = [];
+      let lastId = 0;
 
       while (true) {
-        const { data: batch, error } = await supabase
-          .from('newresults')
+        const res = await (supabase.from('newresults') as any)
           .select('*')
           .order('date', { ascending: true })
           .order('id', { ascending: true })
           .gt('id', lastId)
-          .limit(batchSize)
+          .limit(batchSize);
 
-        if (error) break
-        if (!batch || batch.length === 0) break
+        const batch = (res?.data ?? []) as any[];
+        const error = res?.error as any;
 
-        alleResultater = alleResultater.concat(batch as any)
-        lastId = (batch[batch.length - 1] as any).id
-        if (batch.length < batchSize) break
+        if (error) break;
+        if (!batch || batch.length === 0) break;
+
+        alleResultater = alleResultater.concat(batch as unknown as Kamp[]);
+        lastId = Number((batch[batch.length - 1] as any).id) || lastId;
+        if (batch.length < batchSize) break;
       }
 
-      return alleResultater
+      return alleResultater;
     }
 
     async function hentResultaterOgBeregnElo() {
-      const { data: spillereData } = await supabase.from('profiles').select('*')
-      if (!spillereData) return
+      // Hent profiler for startElo
+      const profRes = await (supabase.from('profiles') as any).select('*');
+      const spillereData = (profRes?.data ?? []) as any[];
+      if (!spillereData) return;
 
-      const initialEloMap: EloMap = {}
+      const initialEloMap: EloMap = {};
       spillereData.forEach((s: any) => {
-        const key = (s.visningsnavn ?? '').toString().trim()
-        if (key) initialEloMap[key] = s.startElo ?? 1500
-      })
+        const key = (s?.visningsnavn ?? '').toString().trim();
+        if (key) initialEloMap[key] = s?.startElo ?? 1500;
+      });
 
-      const resultaterData = await hentAlleResultater()
-      if (!resultaterData) return
+      const resultaterData = await hentAlleResultater();
+      if (!resultaterData || resultaterData.length === 0) return;
 
-      const { nyEloMap, eloChanges } = beregnEloForKampe(resultaterData, initialEloMap)
+      const { nyEloMap, eloChanges } = beregnEloForKampe(resultaterData, initialEloMap);
 
-      const grupper: Record<number, Kamp[]> = {}
+      // Gruppér pr. kampid
+      const grupper: Record<number, Kamp[]> = {};
       resultaterData.forEach((kamp) => {
-        const key = kamp.kampid ?? 0
-        if (!grupper[key]) grupper[key] = []
-        grupper[key].push(kamp)
-      })
+        const key = Number((kamp as any).kampid ?? 0);
+        if (!grupper[key]) grupper[key] = [];
+        grupper[key].push(kamp);
+      });
 
       const kampGrupperArray: KampGruppe[] = Object.entries(grupper)
         .map(([kampid, sætUnTyped]) => {
-          const sæt = sætUnTyped as Kamp[]
+          const sæt = sætUnTyped as Kamp[];
           return {
             kampid: Number(kampid),
             sæt,
-            indberettetAf: (sæt[0].indberettet_af ?? undefined) as string | undefined,
-          }
+            indberettetAf: (sæt[0] as any)?.indberettet_af
+              ? String((sæt[0] as any).indberettet_af)
+              : undefined,
+          };
         })
         .sort((a, b) => b.kampid - a.kampid)
-        .slice(0, 20)
+        .slice(0, 20);
 
-      setKampGrupper(kampGrupperArray)
-      setEloMap(nyEloMap)
-      setEloChanges(eloChanges)
+      setKampGrupper(kampGrupperArray);
+      setEloMap(nyEloMap);
+      setEloChanges(eloChanges);
     }
 
-    hentResultaterOgBeregnElo()
-  }, [])
+    hentResultaterOgBeregnElo();
+  }, []);
 
   function getEmojiForEloDiff(diff: number): string {
-    if (diff >= 100) return '🍾'
-    if (diff >= 50) return '🏆'
-    if (diff >= 40) return '🏅'
-    if (diff >= 30) return '☄️'
-    if (diff >= 20) return '🚀'
-    if (diff >= 10) return '🔥'
-    if (diff >= 5) return '📈'
-    if (diff >= 0) return '💪'
-    if (diff > -5) return '🎲'
-    if (diff > -10) return '📉'
-    if (diff > -20) return '🧯'
-    if (diff > -30) return '🪂'
-    if (diff > -40) return '❄️'
-    if (diff > -50) return '🙈'
-    if (diff > -100) return '🥊'
-    if (diff > -150) return '💩'
-    return '💩💩'
+    if (diff >= 100) return '🍾';
+    if (diff >= 50) return '🏆';
+    if (diff >= 40) return '🏅';
+    if (diff >= 30) return '☄️';
+    if (diff >= 20) return '🚀';
+    if (diff >= 10) return '🔥';
+    if (diff >= 5) return '📈';
+    if (diff >= 0) return '💪';
+    if (diff > -5) return '🎲';
+    if (diff > -10) return '📉';
+    if (diff > -20) return '🧯';
+    if (diff > -30) return '🪂';
+    if (diff > -40) return '❄️';
+    if (diff > -50) return '🙈';
+    if (diff > -100) return '🥊';
+    if (diff > -150) return '💩';
+    return '💩💩';
   }
 
   // Hent visningsnavn — foretræk profiles, dernæst auth metadata
   async function hentVisningsnavn(): Promise<string | null> {
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) return null
+    const { data: auth } = await supabase.auth.getUser();
+    const user = auth?.user;
+    if (!user) return null;
 
-    // 1) Profiles (foretrukket – mange af dine data ligger her)
-    let navn = ''
-    const { data: profileData } = await supabase
-      .from('profiles')
+    // 1) Profiles
+    const profRes = await (supabase.from('profiles') as any)
       .select('visningsnavn')
       .eq('id', user.id)
-      .maybeSingle()
+      .maybeSingle();
 
-    navn = (profileData?.visningsnavn ?? '').toString().trim()
+    const profileData = (profRes?.data ?? null) as { visningsnavn?: string } | null;
+    let navn = (profileData?.visningsnavn ?? '').toString().trim();
 
     // 2) Fallback: auth.user_metadata.visningsnavn
     if (!navn) {
-      navn = (user.user_metadata?.visningsnavn ?? '').toString().trim()
+      navn = ((user.user_metadata as any)?.visningsnavn ?? '').toString().trim();
     }
 
     // 3) Sidste fallback: name/email
     if (!navn) {
       navn =
-        (user.user_metadata?.name ?? '').toString().trim() ||
-        (user.email ? user.email.split('@')[0] : '')
+        ((user.user_metadata as any)?.name ?? '').toString().trim() ||
+        (user.email ? user.email.split('@')[0] : '');
     }
 
-    return navn || null
+    return navn || null;
   }
 
   async function sendBeskedTilAdmin(kampid: number) {
-    const raw = kommentarer[kampid]
-    const besked = (raw ?? '').toString().trim()
+    const raw = kommentarer[kampid];
+    const besked = (raw ?? '').toString().trim();
     if (!besked) {
-      alert('Skriv en kommentar før du sender.')
-      return
+      alert('Skriv en kommentar før du sender.');
+      return;
     }
 
-    const visningsnavn = await hentVisningsnavn()
+    const visningsnavn = await hentVisningsnavn();
     if (!visningsnavn) {
-      alert('Du skal være logget ind (med visningsnavn) for at sende besked.')
-      return
+      alert('Du skal være logget ind (med visningsnavn) for at sende besked.');
+      return;
     }
 
-    const { error } = await supabase.from('admin_messages').insert([{
-      kampid,
-      besked,
-      tidspunkt: new Date().toISOString(),
-      visningsnavn, // trimmed og korrekt
-    }])
+    const insertRes = await (supabase.from('admin_messages') as any).insert([
+      {
+        kampid,
+        besked,
+        tidspunkt: new Date().toISOString(),
+        visningsnavn,
+      },
+    ]);
+    const error = insertRes?.error as any;
 
     if (error) {
-      alert('Kunne ikke sende besked: ' + error.message)
+      alert('Kunne ikke sende besked: ' + error.message);
     } else {
-      alert('Besked sendt til admin.')
-      setKommentarer((prev) => ({ ...prev, [kampid]: '' }))
+      alert('Besked sendt til admin.');
+      setKommentarer((prev) => ({ ...prev, [kampid]: '' }));
     }
   }
 
@@ -178,7 +189,9 @@ export default function SenesteKampeSide() {
     >
       {/* Tilbage-knap øverst venstre */}
       <button
-        onClick={() => { if (typeof window !== 'undefined') window.history.back() }}
+        onClick={() => {
+          if (typeof window !== 'undefined') window.history.back();
+        }}
         aria-label="Tilbage"
         title="Tilbage"
         style={{
@@ -208,9 +221,9 @@ export default function SenesteKampeSide() {
       </p>
 
       {kampGrupper.map(({ kampid, sæt, indberettetAf }) => {
-        const førsteSæt = sæt[0]
-        const førsteElo = eloChanges[førsteSæt.id]
-        let spillere: { navn: string; startElo: number }[] = []
+        const førsteSæt = sæt[0];
+        const førsteElo = eloChanges[førsteSæt.id];
+        let spillere: { navn: string; startElo: number }[] = [];
 
         if (førsteElo) {
           spillere = [
@@ -218,26 +231,26 @@ export default function SenesteKampeSide() {
             { navn: førsteSæt.holdA2, startElo: førsteElo[førsteSæt.holdA2]?.before ?? 1500 },
             { navn: førsteSæt.holdB1, startElo: førsteElo[førsteSæt.holdB1]?.before ?? 1500 },
             { navn: førsteSæt.holdB2, startElo: førsteElo[førsteSæt.holdB2]?.before ?? 1500 },
-          ].sort((a, b) => b.startElo - a.startElo)
+          ].sort((a, b) => b.startElo - a.startElo);
         }
 
-        const samletEloChanges: { [key: string]: EloChange } = {}
+        const samletEloChanges: { [key: string]: EloChange } = {};
         sæt.forEach((kamp) => {
-          const changes = eloChanges[kamp.id]
+          const changes = eloChanges[kamp.id];
           if (changes) {
             Object.entries(changes).forEach(([navn, change]) => {
               if (!samletEloChanges[navn]) {
-                samletEloChanges[navn] = { before: change.before, after: change.after, diff: 0 }
+                samletEloChanges[navn] = { before: change.before, after: change.after, diff: 0 };
               }
-              samletEloChanges[navn].diff += change.diff
-              samletEloChanges[navn].after = change.after
-            })
+              samletEloChanges[navn].diff += change.diff;
+              samletEloChanges[navn].after = change.after;
+            });
           }
-        })
+        });
 
         const totalEloSorted = Object.entries(samletEloChanges).sort(
           (a, b) => b[1].after - a[1].after
-        )
+        );
 
         return (
           <div
@@ -277,7 +290,9 @@ export default function SenesteKampeSide() {
                     lineHeight: '1.2',
                   }}
                 >
-                  <span style={{ fontSize: 'clamp(0.9rem, 3vw, 1rem)', marginRight: '0.4rem' }}>🎾</span>
+                  <span style={{ fontSize: 'clamp(0.9rem, 3vw, 1rem)', marginRight: '0.4rem' }}>
+                    🎾
+                  </span>
                   <strong
                     style={{
                       marginRight: '0.5rem',
@@ -288,7 +303,9 @@ export default function SenesteKampeSide() {
                     {navn}
                   </strong>
 
-                  <span style={{ color: '#555', fontSize: '0.8em' }}>ELO før: {startElo.toFixed(1)}</span>
+                  <span style={{ color: '#555', fontSize: '0.8em' }}>
+                    ELO før: {startElo.toFixed(1)}
+                  </span>
                 </div>
               ))}
             </div>
@@ -296,11 +313,11 @@ export default function SenesteKampeSide() {
             {/* Sætvisning */}
             <div style={{ marginBottom: '1rem' }}>
               {sæt.map((kamp, index) => {
-                const changes = eloChanges[kamp.id]
-                let setElo = 0
+                const changes = eloChanges[kamp.id];
+                let setElo = 0;
                 if (changes) {
-                  const maxDiff = Math.max(...Object.values(changes).map((c) => c.diff))
-                  setElo = maxDiff > 0 ? maxDiff : 0
+                  const maxDiff = Math.max(...Object.values(changes).map((c) => c.diff));
+                  setElo = maxDiff > 0 ? maxDiff : 0;
                 }
 
                 return (
@@ -320,11 +337,18 @@ export default function SenesteKampeSide() {
                     <div style={{ width: '70px', textAlign: 'center' }}>
                       {kamp.scoreA} - {kamp.scoreB}
                     </div>
-                    <div style={{ width: '50px', textAlign: 'right', fontWeight: '500', color: '#2e7d32' }}>
+                    <div
+                      style={{
+                        width: '50px',
+                        textAlign: 'right',
+                        fontWeight: '500',
+                        color: '#2e7d32',
+                      }}
+                    >
                       {setElo.toFixed(1)}
                     </div>
                   </div>
-                )
+                );
               })}
             </div>
 
@@ -349,7 +373,9 @@ export default function SenesteKampeSide() {
                     flexWrap: 'wrap',
                   }}
                 >
-                  <span style={{ fontSize: '1rem', marginRight: '0.5rem' }}>{getEmojiForEloDiff(elo.diff)}</span>
+                  <span style={{ fontSize: '1rem', marginRight: '0.5rem' }}>
+                    {getEmojiForEloDiff(elo.diff)}
+                  </span>
                   <strong style={{ marginRight: '0.5rem' }}>{navn}</strong>
                   <span style={{ color: '#555', fontSize: '0.85rem', marginRight: '0.5rem' }}>
                     Elo: {elo.after.toFixed(1)}
@@ -358,7 +384,8 @@ export default function SenesteKampeSide() {
                     style={{
                       fontSize: '0.9rem',
                       fontWeight: 'bold',
-                      color: elo.diff > 0 ? '#2e7d32' : elo.diff < 0 ? '#c62828' : '#666',
+                      color:
+                        elo.diff > 0 ? '#2e7d32' : elo.diff < 0 ? '#c62828' : '#666',
                     }}
                   >
                     ({elo.diff > 0 ? '+' : ''}
@@ -368,15 +395,17 @@ export default function SenesteKampeSide() {
               ))}
             </div>
 
-            {/* Indberettet af (fra selve kampen) */}
-            {indberettetAf?.toString().trim() && (
-              <div style={{
-                position: 'absolute',
-                bottom: '0.4rem',
-                right: '0.8rem',
-                fontSize: '0.75rem',
-                color: '#888',
-              }}>
+            {/* Indberettet af */}
+            {(indberettetAf ?? '').toString().trim() && (
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: '0.4rem',
+                  right: '0.8rem',
+                  fontSize: '0.75rem',
+                  color: '#888',
+                }}
+              >
                 Indberettet af {(indberettetAf ?? '').toString().trim()}
               </div>
             )}
@@ -425,9 +454,9 @@ export default function SenesteKampeSide() {
               </button>
             </div>
           </div>
-        )
+        );
       })}
     </div>
-  )
+  );
 }
 

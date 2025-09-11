@@ -1,42 +1,50 @@
-export const dynamic = 'force-dynamic'
+export const dynamic = 'force-dynamic';
 
-import { beregnEloÆndringerForIndeværendeMåned, MånedensSpiller } from '@/lib/beregnEloChange'
-import { supabase } from '@/lib/supabaseClient'
+import { beregnEloÆndringerForIndeværendeMåned, MånedensSpiller } from '@/lib/beregnEloChange';
+import { supabase } from '@/lib/supabaseClient';
+
+type TorsdagRow = { visningsnavn: string | null };
 
 export default async function TorsdagsMånedensSpillerSide() {
-  const alleSpillere: MånedensSpiller[] = await beregnEloÆndringerForIndeværendeMåned()
+  // Hele ranglisten for måneden
+  const alleSpillere: MånedensSpiller[] = await beregnEloÆndringerForIndeværendeMåned();
 
-  const { data: torsdagspillere, error } = await supabase
-    .from('profiles')
+  // Hent alle torsdagsspillere (kun navne)
+  const { data: torsdagspillere } = await (supabase
+    .from('profiles') as any)
     .select('visningsnavn')
-    .eq('torsdagspadel', true)
+    .eq('torsdagspadel', true);
 
+  // Robust map: håndter null/undefined navne og trim
   const torsdagNavneSet = new Set(
-    torsdagspillere?.map(s => s.visningsnavn.trim())
-  )
+    ((torsdagspillere as TorsdagRow[] | null) ?? [])
+      .map((r) => (r?.visningsnavn ?? '').toString().trim())
+      .filter((v) => v.length > 0)
+  );
 
-  const maanedens = alleSpillere.filter(spiller =>
-    torsdagNavneSet.has(spiller.visningsnavn.trim())
-  )
+  // Filtrér månedens spillere ned til dem der er torsdagsspillere
+  const maanedens = alleSpillere.filter((spiller) =>
+    torsdagNavneSet.has(spiller.visningsnavn.toString().trim())
+  );
 
   function emojiForPluspoint(p: number) {
-    if (p >= 100) return '🍾'
-    if (p >= 50) return '🏆'
-    if (p >= 40) return '🏅'
-    if (p >= 30) return '☄️'
-    if (p >= 20) return '🚀'
-    if (p >= 10) return '🔥'
-    if (p >= 5) return '📈'
-    if (p >= 0) return '💪'
-    if (p > -5) return '🎲'
-    if (p > -10) return '📉'
-    if (p > -20) return '🧯'
-    if (p > -30) return '🪂'
-    if (p > -40) return '❄️'
-    if (p > -50) return '🙈'
-    if (p > -100) return '🥊'
-    if (p > -150) return '💩'
-    return '💩💩'
+    if (p >= 100) return '🍾';
+    if (p >= 50) return '🏆';
+    if (p >= 40) return '🏅';
+    if (p >= 30) return '☄️';
+    if (p >= 20) return '🚀';
+    if (p >= 10) return '🔥';
+    if (p >= 5) return '📈';
+    if (p >= 0) return '💪';
+    if (p > -5) return '🎲';
+    if (p > -10) return '📉';
+    if (p > -20) return '🧯';
+    if (p > -30) return '🪂';
+    if (p > -40) return '❄️';
+    if (p > -50) return '🙈';
+    if (p > -100) return '🥊';
+    if (p > -150) return '💩';
+    return '💩💩';
   }
 
   return (
@@ -52,14 +60,14 @@ export default async function TorsdagsMånedensSpillerSide() {
       ) : (
         <ol className="space-y-4 max-w-2xl mx-auto">
           {maanedens.map((spiller, index) => {
-            const emoji = emojiForPluspoint(spiller.pluspoint)
+            const emoji = emojiForPluspoint(spiller.pluspoint);
 
             return (
               <li
                 key={spiller.visningsnavn}
                 className={`flex items-center justify-between rounded-2xl px-6 py-4 shadow transition-all ${
                   index === 0
-                   ? 'bg-gradient-to-r from-green-900 to-green-800 text-white scale-[1.03]'
+                    ? 'bg-gradient-to-r from-green-900 to-green-800 text-white scale-[1.03]'
                     : index === 1
                     ? 'bg-green-500 dark:bg-green-400/30'
                     : index === 2
@@ -80,11 +88,10 @@ export default async function TorsdagsMånedensSpillerSide() {
                   {spiller.pluspoint.toFixed(1)} {emoji}
                 </span>
               </li>
-            )
+            );
           })}
         </ol>
       )}
     </main>
-  )
+  );
 }
-

@@ -29,18 +29,17 @@ export default function Registrer() {
   useEffect(() => {
     const init = async () => {
       try {
-        // parse #access_token & #refresh_token fra URL (Supabase redirect)
         if (typeof window !== "undefined" && window.location.hash) {
           const params = new URLSearchParams(window.location.hash.slice(1));
           const access_token = params.get("access_token");
           const refresh_token = params.get("refresh_token");
           if (access_token && refresh_token) {
-            const { data, error } = await supabase.auth.setSession({
+            const { error } = await supabase.auth.setSession({
               access_token,
               refresh_token,
             });
             if (!error) {
-              // fjern tokens fra URL, bevar evt. querystring
+              // Fjern tokens fra URL, bevar evt. querystring
               window.history.replaceState(
                 {},
                 document.title,
@@ -50,7 +49,7 @@ export default function Registrer() {
           }
         }
 
-        // hent session
+        // Hent session
         const { data: sessionData } = await supabase.auth.getSession();
         const user = sessionData?.session?.user ?? null;
         setUserId(user?.id || null);
@@ -105,9 +104,9 @@ export default function Registrer() {
       return;
     }
 
-    // Tjek unikt visningsnavn
-    const { data: eksisterende, error: visningsnavnFejl } = await supabase
-      .from("profiles")
+    // Tjek unikt visningsnavn (TS-safe)
+    const { data: eksisterende, error: visningsnavnFejl } = await (supabase
+      .from("profiles") as any)
       .select("id")
       .eq("visningsnavn", visningsnavn.trim());
 
@@ -120,8 +119,8 @@ export default function Registrer() {
       return;
     }
 
-    // Opret profil
-    const { error: profilFejl } = await supabase.from("profiles").insert({
+    // Opret profil (TS-safe + array til insert)
+    const row: any = {
       id: user.id,
       fornavn,
       efternavn,
@@ -132,8 +131,12 @@ export default function Registrer() {
       rolle: "bruger",
       niveau,
       startElo,
-      ...(fødselsdato ? { fødselsdato } : {}),
-    });
+    };
+    if (fødselsdato) row["fødselsdato"] = fødselsdato;
+
+    const { error: profilFejl } = await (supabase
+      .from("profiles") as any)
+      .insert([row]);
 
     if (profilFejl) {
       console.error("Profilfejl:", profilFejl);
@@ -161,7 +164,7 @@ export default function Registrer() {
         <h1 style={styles.heading}>Fuldfør registrering</h1>
         <div style={styles.boks}>
           <p style={{ marginBottom: "1rem" }}>
-            Du er ikke logget ind i denne browser. Åbn verifikationsmailen på **samme enhed og browser**,
+            Du er ikke logget ind i denne browser. Åbn verifikationsmailen på <strong>samme enhed og browser</strong>,
             eller log ind herunder og kom tilbage til denne side.
           </p>
           <Link
@@ -325,4 +328,3 @@ const styles: { [key: string]: React.CSSProperties } = {
     textAlign: "center",
   },
 };
-

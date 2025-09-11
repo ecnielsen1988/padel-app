@@ -11,9 +11,10 @@ type Player = { visningsnavn: string }
 
 function formatDKDate(isoOrDate: string | Date | null | undefined) {
   if (!isoOrDate) return ''
-  const d = typeof isoOrDate === 'string'
-    ? new Date(isoOrDate.includes('T') ? isoOrDate : `${isoOrDate}T00:00:00`)
-    : isoOrDate
+  const d =
+    typeof isoOrDate === 'string'
+      ? new Date(isoOrDate.includes('T') ? isoOrDate : `${isoOrDate}T00:00:00`)
+      : isoOrDate
   return d.toLocaleDateString('da-DK', {
     timeZone: 'Europe/Copenhagen',
     year: 'numeric',
@@ -31,8 +32,7 @@ function extractDate(row: BarEntry) {
   return row.event_date ?? row.date ?? row.created_at ?? null
 }
 
-// ⭐ Opdateret til at understøtte Toast, Lunarkamp, T‑shirt, Shorts
-//    + ensretter chips til 🍟 for at matche admin-siden
+// ⭐ Understøtter Toast, Lunarkamp, T-shirt, Shorts + ensretter chips til 🍟
 function productToEmojiText(productRaw?: string | null, note?: string | null, qty?: number | null) {
   const product = (productRaw ?? '').trim()
   const p = product.toLowerCase()
@@ -64,7 +64,7 @@ function productToEmojiText(productRaw?: string | null, note?: string | null, qt
   if (p.includes('chips'))                   return add('🍟')
   if (p.includes('toast'))                   return add('🥪 Toast')
   if (p.includes('lunarkamp'))               return add('🏸 Lunarkamp')
-  if (p.includes('tshirt') || p.includes('t-shirt') || p.includes('t‑shirt')) return add('👕 T‑shirt')
+  if (p.includes('tshirt') || p.includes('t-shirt') || p.includes('t-shirt')) return add('👕 T-shirt')
   if (p.includes('shorts'))                  return add('🩳 Shorts')
   if (p.includes('øl') || p.includes('oel')) return add('🍺')
   if (p.includes('rabat'))                   return add('🤑', true)      // behold note
@@ -94,43 +94,55 @@ export default function RegnskabPage() {
         const user = auth?.user
         if (!user) { setLoading(false); return }
 
-        // Hent egen profil + rolle
-        const { data: profile, error: pErr } = await supabase
-          .from('profiles')
-          .select('id, visningsnavn, torsdagspadel, rolle')
-          .eq('id', user.id)
-          .single()
-        if (pErr) { setLoading(false); return }
+        // Hent egen profil + rolle (cast 'from' til any for at undgå TS-generic bøvl)
+       const profResp = await (supabase
+  .from('profiles') as any)
+  .select('id, visningsnavn, torsdagspadel, rolle')
+  .eq('id', user.id)
+  .maybeSingle();
+
+if (profResp.error) { setLoading(false); return }
+
+const profile = (profResp.data ?? null) as Bruger | null
 
         // Admin-check (JWT eller profiles)
         const jwtRole = (user.app_metadata as any)?.rolle
-        const admin = jwtRole === 'admin' || profile?.rolle === 'admin'
-        setIsAdmin(admin)
-        setMe(profile as Bruger)
+const admin = jwtRole === 'admin' || profile?.rolle === 'admin'
+setIsAdmin(!!admin)
+setMe(profile)
+
 
         // Hent alle torsdagsspillere til dropdown (kun admin)
         if (admin) {
-          const { data: pls } = await supabase
-            .from('profiles')
+          const { data: pls } = await (supabase
+            .from('profiles') as any)
             .select('visningsnavn')
             .eq('torsdagspadel', true)
-          setPlayers((pls as Player[] ?? []).sort((a,b) => a.visningsnavn.localeCompare(b.visningsnavn, 'da-DK')))
+
+          const cleanPlayers: Player[] = ((pls as Array<{ visningsnavn: string | null }> | null) ?? [])
+            .map(p => ({ visningsnavn: (p?.visningsnavn ?? '').toString().trim() }))
+            .filter(p => p.visningsnavn.length > 0)
+            .sort((a,b) => a.visningsnavn.localeCompare(b.visningsnavn, 'da-DK'))
+
+          setPlayers(cleanPlayers)
         }
 
         // Bestem hvilket navn vi kigger på
-        const target = (admin && paramUser && paramUser.trim().length > 0)
-          ? paramUser
-          : (profile?.visningsnavn ?? null)
+        const target =
+          (admin && paramUser && paramUser.trim().length > 0)
+            ? paramUser
+            : (profile?.visningsnavn ?? null)
         setSelectedName(target)
 
         // Hent entries for target
         if (target) {
-          const { data, error } = await supabase
-            .from('bar_entries')
+          const { data, error } = await (supabase
+            .from('bar_entries') as any)
             .select('*')
             .eq('visningsnavn', target)
             .order('event_date', { ascending: false })
-          if (!error) setEntries(data as BarEntry[] ?? [])
+
+          if (!error) setEntries((data as BarEntry[] | null) ?? [])
           else setEntries([])
         } else {
           setEntries([])
@@ -156,7 +168,7 @@ export default function RegnskabPage() {
     )
   }
 
-  // Adgang: alm. bruger må kun se sin egen (men det håndteres af at vi ignorerer ?user= hvis ikke admin)
+  // Adgang: alm. bruger må kun se sin egen (vi ignorerer ?user= hvis ikke admin)
   if (!me) {
     return (
       <main className="max-w-xl mx-auto p-8 text-gray-900 dark:text-white">
@@ -227,7 +239,10 @@ export default function RegnskabPage() {
             const label = productToEmojiText(row.Product ?? row.product, row.note, row.qty)
             const amount = extractAmountDKK(row)
             return (
-              <li key={`${row.event_date ?? 'row'}-${row.Product ?? 'p'}-${idx}`} className="p-4 flex items-center justify-between gap-4">
+              <li
+                key={`${row.event_date ?? row.created_at ?? 'row'}-${row.Product ?? row.product ?? 'p'}-${idx}`}
+                className="p-4 flex items-center justify-between gap-4"
+              >
                 <div className="min-w-0">
                   <div className="text-xs opacity-70">{formatDKDate(dateVal)}</div>
                   <div className="font-medium truncate">{label}</div>
@@ -251,3 +266,4 @@ export default function RegnskabPage() {
     </main>
   )
 }
+

@@ -1,36 +1,40 @@
-export const dynamic = 'force-dynamic'
+export const dynamic = 'force-dynamic';
 
-import { supabase } from '@/lib/supabaseClient'
-import { beregnNyRangliste } from '@/lib/beregnNyRangliste'
+import { supabase } from '@/lib/supabaseClient';
+import { beregnNyRangliste } from '@/lib/beregnNyRangliste';
 
 type Spiller = {
-  visningsnavn: string
-  elo: number
-  koen: string | null
-  
-}
+  visningsnavn: string;
+  elo: number;
+  koen: string | null;
+};
+
+type TorsdagProfilRow = { visningsnavn: string | null };
 
 export default async function TorsdagspadelRangliste() {
-  const alleSpillere: Spiller[] = await beregnNyRangliste()
+  // Hele ranglisten
+  const alleSpillere: Spiller[] = await beregnNyRangliste();
 
-  // Hent spillere med torsdagspadel = true
-  const { data: torsdagsProfiler, error } = await supabase
-    .from('profiles')
+  // Hent torsdags-profiler (kun navne)
+  const { data: torsdagsProfiler } = await (supabase
+    .from('profiles') as any)
     .select('visningsnavn')
-    .eq('torsdagspadel', true)
+    .eq('torsdagspadel', true);
 
-  if (error) {
-    console.error('Fejl ved hentning af torsdagspadel-profiler:', error)
-    return <p>Fejl ved indlæsning...</p>
-  }
+  // Robust normalisering af navne (trim + drop tomme)
+  const torsdagsNavneSet = new Set(
+    ((torsdagsProfiler as TorsdagProfilRow[] | null) ?? [])
+      .map((p) => (p?.visningsnavn ?? '').toString().trim())
+      .filter((v) => v.length > 0)
+  );
 
-  const torsdagsNavne = torsdagsProfiler?.map((p) => p.visningsnavn) || []
+  // Filtrér kun spillere med torsdags-flag
   const rangliste = alleSpillere.filter((spiller) =>
-    torsdagsNavne.includes(spiller.visningsnavn)
-  )
+    torsdagsNavneSet.has(spiller.visningsnavn.toString().trim())
+  );
 
-  const bedsteMand = rangliste.find((s) => s.koen === 'mand')
-  const bedsteKvinde = rangliste.find((s) => s.koen === 'kvinde')
+  const bedsteMand = rangliste.find((s) => s.koen === 'mand') ?? null;
+  const bedsteKvinde = rangliste.find((s) => s.koen === 'kvinde') ?? null;
 
   return (
     <main className="min-h-screen py-10 px-4 sm:px-8 md:px-16 bg-white dark:bg-[#1e1e1e] text-gray-900 dark:text-white font-sans">
@@ -39,12 +43,14 @@ export default async function TorsdagspadelRangliste() {
       </h1>
 
       {rangliste.length === 0 ? (
-        <p className="text-center text-gray-500 dark:text-gray-400">Ingen spillere i ranglisten</p>
+        <p className="text-center text-gray-500 dark:text-gray-400">
+          Ingen spillere i ranglisten
+        </p>
       ) : (
         <ol className="space-y-4 max-w-2xl mx-auto">
           {rangliste.map((spiller, index) => {
-            const erKonge = spiller.visningsnavn === bedsteMand?.visningsnavn
-            const erDronning = spiller.visningsnavn === bedsteKvinde?.visningsnavn
+            const erKonge = bedsteMand && spiller.visningsnavn === bedsteMand.visningsnavn;
+            const erDronning = bedsteKvinde && spiller.visningsnavn === bedsteKvinde.visningsnavn;
 
             return (
               <li
@@ -59,6 +65,7 @@ export default async function TorsdagspadelRangliste() {
                     : 'bg-white dark:bg-[#2a2a2a]'
                 }`}
               >
+                {/* Venstre: placering + navn */}
                 <div className="flex items-center gap-2 sm:gap-3">
                   <span className="text-base sm:text-xl font-bold text-green-600 dark:text-green-400">
                     #{index + 1}
@@ -67,15 +74,16 @@ export default async function TorsdagspadelRangliste() {
                     {spiller.visningsnavn} {erKonge ? '👑' : erDronning ? '👸' : ''}
                   </span>
                 </div>
+
+                {/* Højre: Elo */}
                 <span className="text-sm sm:text-base font-semibold whitespace-nowrap">
                   Elo: {Math.round(spiller.elo)}
                 </span>
               </li>
-            )
+            );
           })}
         </ol>
       )}
     </main>
-  )
+  );
 }
-

@@ -2,12 +2,13 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 
 type Bruger = { visningsnavn: string; torsdagspadel: boolean }
 type Tilmelding = { kan_spille: boolean; tidligste_tid?: string | null } | null
 
-// ← Brug lowercase felter her (tilpas hvis du har snake_case i DB)
+// Brug lowercase felter her (tilpas hvis din DB har snake_case)
 type EventSet = {
   id: number
   event_dato: string
@@ -59,16 +60,20 @@ function oreToDKK(ore: any): number {
 }
 
 export default function TorsdagStartside() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const paramUser = searchParams.get('user')
+
   const [bruger, setBruger] = useState<Bruger | null>(null)
   const [loading, setLoading] = useState(true)
   const [tilmelding, setTilmelding] = useState<Tilmelding>(null)
   const [status, setStatus] = useState<'idle' | 'updating' | 'done' | 'editing'>('idle')
 
-  // NYT: mine sæt (din(e) kamp(e))
+  // mine sæt (din(e) kamp(e))
   const [mineSaet, setMineSaet] = useState<EventSet[] | null>(null)
   const [loadingSaet, setLoadingSaet] = useState(true)
 
-  // NYT: total regnskab i DKK (samme som i /regnskab-boksen)
+  // total regnskab i DKK
   const [totalDKK, setTotalDKK] = useState<number>(0)
 
   // Tilmelding: ALTID næste torsdag
@@ -93,47 +98,51 @@ export default function TorsdagStartside() {
           return
         }
 
-        const { data: profile, error: profileError } = await supabase
-          .from('profiles')
+        // PROFIL (any-shim + cast efterfølgende)
+        const profResp = await (supabase.from('profiles') as any)
           .select('visningsnavn, torsdagspadel')
           .eq('id', user.id)
-          .single()
+          .maybeSingle()
 
-        if (profileError || !profile?.torsdagspadel) {
+        const profile = (profResp?.data ?? null) as { visningsnavn?: string; torsdagspadel?: boolean } | null
+
+        if (!profile?.torsdagspadel || !profile?.visningsnavn) {
           setLoading(false)
           setLoadingSaet(false)
           return
         }
 
-        setBruger(profile)
+        setBruger({ visningsnavn: profile.visningsnavn, torsdagspadel: !!profile.torsdagspadel })
 
-        // Hent evt. eksisterende tilmelding
-        const { data: tilmeldingData } = await supabase
-          .from('event_signups')
+        // EVT. EKSISTERENDE TILMELDING (any-shim)
+        const tilmResp = await (supabase.from('event_signups') as any)
           .select('kan_spille, tidligste_tid')
           .eq('visningsnavn', profile.visningsnavn)
           .eq('event_dato', signupDato)
-          .single()
+          .maybeSingle()
 
-        if (tilmeldingData) {
-          setTilmelding(tilmeldingData as Tilmelding)
+        if (tilmResp?.data) {
+          const t = tilmResp.data as { kan_spille?: boolean; tidligste_tid?: string | null }
+          setTilmelding({
+            kan_spille: !!t.kan_spille,
+            tidligste_tid: t.tidligste_tid ?? null,
+          })
           setStatus('done')
         }
 
-        // Hent "din kamp" fra event_sets
+        // HENT DINE SÆT TIL PLAN-DATOEN (any-shim)
         setLoadingSaet(true)
-        const { data: setsData, error: setsError } = await supabase
-          .from('event_sets')
-          .select('*')
+        const setsResp = await (supabase.from('event_sets') as any)
+          .select('id, event_dato, kamp_nr, saet_nr, bane, starttid, sluttid, holda1, holda2, holdb1, holdb2')
           .eq('event_dato', planDato)
           .order('kamp_nr', { ascending: true })
           .order('saet_nr', { ascending: true })
 
-        if (setsError) {
-          console.error('Fejl ved hentning af event_sets:', setsError)
+        if (setsResp?.error) {
+          console.error('Fejl ved hentning af event_sets:', setsResp.error)
           setMineSaet([])
         } else {
-          const rows = (setsData as EventSet[]) ?? []
+          const rows = (setsResp?.data ?? []) as EventSet[]
           const mine = rows.filter(
             r =>
               r.holda1 === profile.visningsnavn ||
@@ -144,17 +153,19 @@ export default function TorsdagStartside() {
           setMineSaet(mine)
         }
 
-        // Hent bar_entries for at vise Samlet status (identisk med /regnskab-boksen)
-        const { data: barData, error: barErr } = await supabase
-          .from('bar_entries')
+        // HENT BAR-ENTRIES TIL TOTAL (any-shim)
+        const barResp = await (supabase.from('bar_entries') as any)
           .select('amount_ore')
           .eq('visningsnavn', profile.visningsnavn)
 
-        if (barErr) {
-          console.error('Fejl ved hentning af bar_entries:', barErr)
+        if (barResp?.error) {
+          console.error('Fejl ved hentning af bar_entries:', barResp.error)
           setTotalDKK(0)
         } else {
-          const total = (barData ?? []).reduce((sum: number, r: any) => sum + oreToDKK(r.amount_ore), 0)
+          const total = (barResp?.data ?? []).reduce(
+            (sum: number, r: any) => sum + oreToDKK(r?.amount_ore),
+            0
+          )
           setTotalDKK(total)
         }
       } finally {
@@ -179,15 +190,15 @@ export default function TorsdagStartside() {
       tidligste_tid: kanSpille ? (tidligsteTid ?? null) : null,
     }
 
-    const { error } = await supabase
-      .from('event_signups')
-      .upsert([payload], { onConflict: 'visningsnavn, event_dato' })
+    // any-shim på upsert + onConflict
+    const upResp = await (supabase.from('event_signups') as any)
+      .upsert(payload, { onConflict: 'visningsnavn,event_dato' })
 
-    if (!error) {
+    if (!upResp?.error) {
       setTilmelding({ kan_spille: kanSpille, tidligste_tid: payload.tidligste_tid })
       setStatus('done')
     } else {
-      console.error('Fejl ved tilmelding:', error)
+      console.error('Fejl ved tilmelding:', upResp.error)
       setStatus('idle')
     }
   }
@@ -213,7 +224,7 @@ export default function TorsdagStartside() {
     return m
   }, new Map())
 
-  // Labels/klasse til statusboksen (samme logik som /regnskab)
+  // Labels/klasse til statusboksen
   const totalLabel =
     totalDKK > 0 ? 'Du har til gode'
     : totalDKK < 0 ? 'Du skylder'
@@ -230,7 +241,7 @@ export default function TorsdagStartside() {
         💪 Torsdagspadel – velkommen, {bruger.visningsnavn}!
       </h1>
 
-      {/* NYT: Samlet status (identisk med /regnskab) */}
+      {/* Samlet status */}
       <div className="mb-8 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4">
         <div className="flex items-center justify-between">
           <div className="text-sm opacity-70">Samlet status</div>
@@ -373,4 +384,3 @@ export default function TorsdagStartside() {
     </main>
   )
 }
-

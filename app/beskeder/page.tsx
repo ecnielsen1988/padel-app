@@ -24,6 +24,9 @@ type Thread = {
   unread: number;
 };
 
+// Kun til typing af maybeSingle/select på profiles
+type ProfileNameRow = { visningsnavn: string | null };
+
 export default function BeskederThreadView() {
   const [meId, setMeId] = useState<string | null>(null);
   const [meName, setMeName] = useState<string | null>(null);
@@ -65,7 +68,7 @@ export default function BeskederThreadView() {
         .from('profiles')
         .select('visningsnavn')
         .eq('id', user.id)
-        .maybeSingle();
+        .maybeSingle<ProfileNameRow>();
 
       const visningsnavn =
         (prof?.visningsnavn ?? (user.user_metadata as any)?.visningsnavn ?? null) || null;
@@ -83,9 +86,9 @@ export default function BeskederThreadView() {
 
       if (!cancelled) {
         setAllNames(
-          (names ?? [])
-            .map((n: any) => n?.visningsnavn)
-            .filter((v: unknown): v is string => typeof v === 'string' && v.trim().length > 0)
+          ((names as ProfileNameRow[] | null) ?? [])
+            .map(n => n?.visningsnavn ?? '')
+            .filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
         );
       }
 
@@ -223,10 +226,9 @@ export default function BeskederThreadView() {
 
     (async () => {
       const now = new Date().toISOString();
-      const { error } = await supabase
-        .from('beskeder')
-        .update({ read_at: now })
-        .in('id', idsToMark);
+      const { error } = await (supabase.from('beskeder') as any) // 👈 TS: cast til any
+        .update({ read_at: now } as any)                         // 👈 TS: cast til any
+        .in('id', idsToMark as any);                              // 👈 TS: cast til any
       if (!error) {
         setMessages((prev) =>
           prev.map((m) => (idsToMark.includes(m.id) ? { ...m, read_at: now } : m))
@@ -250,13 +252,13 @@ export default function BeskederThreadView() {
       .from('profiles')
       .select('id, visningsnavn')
       .eq('visningsnavn', cleanName)
-      .maybeSingle();
-    if (recErr || !recipient) {
+      .maybeSingle<{ id: string; visningsnavn: string | null }>();
+    if (recErr || !recipient?.id) {
       alert('Kunne ikke finde modtageren.');
       return;
     }
 
-    await sendMessageTo(recipient.id, recipient.visningsnavn, cleanBody);
+    await sendMessageTo(recipient.id, recipient.visningsnavn ?? cleanName, cleanBody);
   }
 
   // Svar i tråd (vi kender id + navn)
@@ -269,9 +271,8 @@ export default function BeskederThreadView() {
       recipient_visningsnavn: recipientName,
       body: body.trim(),
     };
-    const { data, error } = await supabase
-      .from('beskeder')
-      .insert(row)
+    const { data, error } = await (supabase.from('beskeder') as any) // 👈 TS: cast til any
+      .insert(row as any)                                            // 👈 TS: cast til any
       .select('*')
       .single();
     if (error) {
@@ -304,7 +305,9 @@ export default function BeskederThreadView() {
     if (!canHardDelete(m)) return;
     const ok = confirm('Slet denne besked for begge parter? Dette kan ikke fortrydes.');
     if (!ok) return;
-    const { error } = await supabase.from('beskeder').delete().eq('id', m.id);
+    const { error } = await (supabase.from('beskeder') as any) // 👈 TS: cast til any
+      .delete()
+      .eq('id', m.id);
     if (error) {
       console.error(error);
       alert('Kunne ikke slette beskeden.');

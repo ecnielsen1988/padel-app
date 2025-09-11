@@ -1,44 +1,57 @@
-'use client'
+'use client';
 
-import { useEffect, useState } from 'react'
-import Link from 'next/link'
-import { supabase } from '@/lib/supabaseClient'
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { supabase } from '@/lib/supabaseClient';
 
 export default function RanglisterPage() {
-  const [loading, setLoading] = useState(true)
-  const [loggedIn, setLoggedIn] = useState(false)
-  const [visningsnavn, setVisningsnavn] = useState<string>('')
+  const [loading, setLoading] = useState(true);
+  const [loggedIn, setLoggedIn] = useState(false);
+  const [visningsnavn, setVisningsnavn] = useState<string>(''); // altid string i state
 
   useEffect(() => {
-    let mounted = true
-    ;(async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      const user = session?.user
+    let mounted = true;
+
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
+
       if (!user) {
-        if (mounted) { setLoggedIn(false); setLoading(false) }
-        return
+        if (mounted) {
+          setLoggedIn(false);
+          setLoading(false);
+        }
+        return;
       }
-      // Hent navn (valgfrit, kun til hilsen)
-      const { data: p } = await supabase
-        .from('profiles')
+
+      // TS-safe: cast .from(...) til any og undgå generics på maybeSingle()
+      const { data: p } = await (supabase
+        .from('profiles') as any)
         .select('visningsnavn')
         .eq('id', user.id)
-        .maybeSingle()
+        .maybeSingle(); // <- ingen <T>
+
       if (mounted) {
-        setLoggedIn(true)
-        setVisningsnavn(p?.visningsnavn || user.email || 'Spiller')
-        setLoading(false)
+        setLoggedIn(true);
+        const navn =
+          (p?.visningsnavn ??
+            (user.user_metadata as any)?.visningsnavn ??
+            user.email ??
+            'Spiller') as string;
+        setVisningsnavn(navn);
+        setLoading(false);
       }
-    })()
-    return () => { mounted = false }
-  }, [])
+    })();
+
+    return () => { mounted = false; };
+  }, []);
 
   if (loading) {
     return (
       <div className="p-8 max-w-xl mx-auto text-center">
         <p className="text-lg">⏳ Indlæser...</p>
       </div>
-    )
+    );
   }
 
   if (!loggedIn) {
@@ -53,7 +66,7 @@ export default function RanglisterPage() {
           Log ind
         </Link>
       </div>
-    )
+    );
   }
 
   return (
@@ -64,7 +77,6 @@ export default function RanglisterPage() {
       </header>
 
       <div className="grid gap-4">
-        {/* Ranglisten */}
         <Link
           href="/nyrangliste"
           className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
@@ -72,7 +84,6 @@ export default function RanglisterPage() {
           🥇 Ranglisten
         </Link>
 
-        {/* Månedens spiller */}
         <Link
           href="/monthly"
           className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
@@ -80,7 +91,6 @@ export default function RanglisterPage() {
           🌟 Månedens Spiller
         </Link>
 
-        {/* Mest aktive (bemærk: route i appen er typisk lowercase) */}
         <Link
           href="/active"
           className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
@@ -88,7 +98,6 @@ export default function RanglisterPage() {
           🏃‍♂️ Mest aktive
         </Link>
 
-        {/* Tilbage til start */}
         <Link
           href="/startside"
           className="bg-gray-800 hover:bg-gray-900 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
@@ -97,5 +106,6 @@ export default function RanglisterPage() {
         </Link>
       </div>
     </main>
-  )
+  );
 }
+
