@@ -1,7 +1,9 @@
 // lib/supabaseClient.ts
-'use client'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+'use client';
 
-// Én delt klient til alle client components
-export const supabase = createClientComponentClient()
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+
+// Én delt klient til ALLE client components / sider.
+// (Brug denne i filer med `use client` øverst)
+export const supabase = createClientComponentClient();
 
