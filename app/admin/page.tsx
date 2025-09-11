@@ -94,7 +94,7 @@ export default function AdminHomePage() {
 
         {/* Ret evt. stien her, hvis din side ligger på /admin/event/torsdagspadel */}
         <Link
-          href="/admin/event/torsdagspadel"
+          href="/admin/torsdagspadel"
           className="block bg-green-700 hover:bg-green-800 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
         >
           🟢 Admin · Torsdagspadel
