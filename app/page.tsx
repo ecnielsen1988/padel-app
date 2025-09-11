@@ -1,7 +1,12 @@
 import Image from "next/image";
 import Link from "next/link";
+import { beregnNyRangliste } from "@/lib/beregnNyRangliste";
 
-export default function Home() {
+// ✅ Server component
+export default async function Home() {
+  const rangliste = await beregnNyRangliste();
+  const top5 = rangliste.slice(0, 5);
+
   return (
     <main style={styles.main}>
       <div style={styles.logoContainer}>
@@ -17,51 +22,111 @@ export default function Home() {
       <h1 style={styles.title}>Velkommen til PADELHUSETS rangliste</h1>
 
       <p style={styles.text}>
-        Her kan du se ranglisten, tilmelde kampe og meget mere.
+        Hold styr på dine kampe, følg din udvikling og kæmp om pladserne på
+        ranglisten 💪
       </p>
 
-      <Link href="/login" style={styles.button}>
-        Log ind
-      </Link>
+      <ul style={styles.features}>
+        <li>🔥 Live rangliste</li>
+        <li>🏆 Se dine resultater og Elo-point</li>
+        <li>📝 Tilmeld kampe og events</li>
+        <li>📊 Følg udviklingen over tid</li>
+      </ul>
+
+      <div style={styles.buttonRow}>
+        <Link href="/login" style={styles.button}>
+          Log ind
+        </Link>
+        <Link href="/signup" style={{ ...styles.button, backgroundColor: "#333" }}>
+          Opret profil
+        </Link>
+      </div>
+
+      <div style={styles.teaser}>
+        <h2 style={styles.teaserTitle}>Top 5 lige nu</h2>
+        <ol style={styles.topList}>
+          {top5.map((spiller, index) => (
+            <li key={spiller.visningsnavn}>
+              {index === 0 && "👑 "}
+              {index === 1 && "🥈 "}
+              {index === 2 && "🥉 "}
+              {index > 2 && `${index + 1}. `}
+              {spiller.visningsnavn} ({Math.round(spiller.elo)})
+            </li>
+          ))}
+        </ol>
+      </div>
     </main>
   );
 }
 
 const styles: { [key: string]: React.CSSProperties } = {
   main: {
-    maxWidth: 500,
+    maxWidth: 600,
     margin: "3rem auto",
     padding: "2rem",
     backgroundColor: "#222",
-    borderRadius: 8,
+    borderRadius: 12,
     color: "white",
     textAlign: "center",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
+    gap: "1.5rem",
   },
   logoContainer: {
-    marginBottom: "2rem",
-  },
-  title: {
-    fontSize: "2.5rem",
-    fontWeight: "bold",
     marginBottom: "1rem",
   },
+  title: {
+    fontSize: "2.2rem",
+    fontWeight: "bold",
+    marginBottom: "0.5rem",
+  },
   text: {
-    marginBottom: "2rem",
-    maxWidth: 400,
+    marginBottom: "1rem",
+    maxWidth: 500,
+  },
+  features: {
+    textAlign: "left",
+    listStyle: "none",
+    padding: 0,
+    margin: "0 0 1rem",
+    lineHeight: 1.6,
+  },
+  buttonRow: {
+    display: "flex",
+    gap: "1rem",
+    justifyContent: "center",
+    marginBottom: "1.5rem",
   },
   button: {
     backgroundColor: "#ff69b4",
     color: "white",
-    padding: "1rem 2rem",
+    padding: "0.8rem 1.6rem",
     borderRadius: 6,
     textDecoration: "none",
     fontWeight: "bold",
-    fontSize: "1.2rem",
+    fontSize: "1.1rem",
     cursor: "pointer",
     transition: "background-color 0.3s ease",
-    display: "inline-block",
+  },
+  teaser: {
+    backgroundColor: "#333",
+    padding: "1rem",
+    borderRadius: 8,
+    width: "100%",
+    maxWidth: 400,
+  },
+  teaserTitle: {
+    fontSize: "1.4rem",
+    marginBottom: "0.5rem",
+    fontWeight: "bold",
+  },
+  topList: {
+    textAlign: "left",
+    paddingLeft: "1.2rem",
+    margin: 0,
+    lineHeight: 1.6,
   },
 };
+

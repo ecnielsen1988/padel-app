@@ -39,11 +39,18 @@ export async function beregnEloÆndringerForIndeværendeMåned(): Promise<Måned
 
   // 3) Lav initial EloMap
   const initialEloMap: EloMap = {}
-  spillereData.forEach(s => {
-    if (s.visningsnavn && typeof s.visningsnavn === 'string') {
-      initialEloMap[s.visningsnavn.trim()] = s.startElo ?? 1500
+
+if (Array.isArray(spillereData)) {
+  spillereData.forEach((s: any) => {
+    const navn =
+      typeof s.visningsnavn === "string" ? s.visningsnavn.trim() : null
+    if (navn) {
+      // fallback = 0 i stedet for 1500
+      initialEloMap[navn] = typeof s.startElo === "number" ? s.startElo : 0
     }
   })
+}
+
 
   // 4) Map kampeData til det format beregnEloForKampe forventer
   const kampeTilBeregning: Kamp[] = kampeData.map((kamp: any) => ({
