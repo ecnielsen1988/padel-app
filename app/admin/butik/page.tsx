@@ -28,6 +28,7 @@ const PRODUCTS = {
 
   // Event/aktivitet
   lunarkamp: { label: "🏸 Lunarkamp", priceKr: 50, sign: -1 },
+  torsdagsspil:{ label: "🎾 Torsdagsspil", priceKr: 140, sign: -1 },
 
   // Merchandise
   tshirt: { label: "👕 T-shirt", priceKr: 300, sign: -1 },
@@ -46,6 +47,7 @@ const PURCHASE_KEYS: readonly ProductKey[] = [
   "chips",
   "toast",
   "lunarkamp",
+  "torsdagsspil",
   "tshirt",
   "shorts",
 ] as const;
@@ -62,7 +64,7 @@ const BEVERAGE_KEYS: readonly ProductKey[] = [
 // UI-grupper (Præmier som egen fane inde i butik)
 const PRODUCT_GROUPS = {
   "🍽️ Mad & Drikke": ["stor_fadoel", "lille_fadoel", "stor_oel", "lille_oel", "sodavand", "chips", "toast"],
-  "🎟️ Events": ["lunarkamp"],
+  "🎟️ Events": ["lunarkamp", "torsdagsspil"],
   "🛍️ Merch": ["tshirt", "shorts"],
   "🎁 Præmier": [] as ProductKey[], // håndteres særskilt i UI
 } as const;
@@ -794,6 +796,9 @@ function labelForProduct(key: string) {
     // Event/aktivitet
     case "lunarkamp":
       return "🏸 Lunarkamp";
+
+      case "torsdagsspil":
+      return "🎾 Torsdagsspil";
 
     // Merchandise
     case "tshirt":
