@@ -24,39 +24,16 @@ export default function Registrer() {
   const [startElo, setStartElo] = useState(0);
   const [fejl, setFejl] = useState("");
   const [succes, setSucces] = useState("");
+  const [saving, setSaving] = useState(false);
 
-  // 1) Prøv at auto-logge ind, hvis der ligger tokens i URL-hashen (fra verifikationsmail)
+  // Hent session + forudfyld email
   useEffect(() => {
     const init = async () => {
-      try {
-        if (typeof window !== "undefined" && window.location.hash) {
-          const params = new URLSearchParams(window.location.hash.slice(1));
-          const access_token = params.get("access_token");
-          const refresh_token = params.get("refresh_token");
-          if (access_token && refresh_token) {
-            const { error } = await supabase.auth.setSession({
-              access_token,
-              refresh_token,
-            });
-            if (!error) {
-              // Fjern tokens fra URL, bevar evt. querystring
-              window.history.replaceState(
-                {},
-                document.title,
-                window.location.pathname + window.location.search
-              );
-            }
-          }
-        }
-
-        // Hent session
-        const { data: sessionData } = await supabase.auth.getSession();
-        const user = sessionData?.session?.user ?? null;
-        setUserId(user?.id || null);
-        if (user?.email) setEmail(user.email);
-      } finally {
-        setAuthLoading(false);
-      }
+      const { data } = await supabase.auth.getUser();
+      const user = data?.user ?? null;
+      setUserId(user?.id || null);
+      if (user?.email) setEmail(user.email);
+      setAuthLoading(false);
     };
     init();
   }, []);
@@ -68,8 +45,8 @@ export default function Registrer() {
     }
   }, [fornavn, efternavn]);
 
-  const niveauTilElo = (niveau: string) => {
-    switch (niveau) {
+  const niveauTilElo = (n: string) => {
+    switch (n) {
       case "1": return 500;
       case "2": return 750;
       case "3": return 1000;
@@ -88,38 +65,51 @@ export default function Registrer() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return;
+
     setFejl("");
     setSucces("");
+    setSaving(true);
 
-    // Gate igen for en sikkerheds skyld
+    // Gate igen
     const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
     const user = sessionData?.session?.user;
     if (!user || sessionError) {
+      setSaving(false);
       setFejl("Du er ikke logget ind i denne browser. Log ind først.");
       return;
     }
 
     if (!fornavn.trim() || !efternavn.trim() || !email.trim() || !niveau || !visningsnavn.trim()) {
+      setSaving(false);
       setFejl("Udfyld venligst alle nødvendige felter.");
       return;
     }
 
-    // Tjek unikt visningsnavn (TS-safe)
-    const { data: eksisterende, error: visningsnavnFejl } = await (supabase
-      .from("profiles") as any)
-      .select("id")
-      .eq("visningsnavn", visningsnavn.trim());
+   // Tjek unikt visningsnavn (ekskludér mig selv)
+const { data: nameRow, error: nameErr } = await supabase
+  .from("profiles")
+  .select("id")
+  .eq("visningsnavn", visningsnavn.trim())
+  .neq("id", user.id)     // <-- ekskludér nuværende bruger
+  .limit(1)
+  .maybeSingle();         // returnerer enten et objekt eller null
 
-    if (visningsnavnFejl) {
-      setFejl("Der opstod en fejl under tjek af visningsnavn.");
-      return;
-    }
-    if (eksisterende && eksisterende.length > 0) {
-      setFejl("Visningsnavnet er allerede i brug. Vælg et andet.");
-      return;
-    }
+if (nameErr) {
+  // Hvis der er flere matches (sjældent), vil maybeSingle give error — betragt det som "navnet er brugt"
+  setSaving(false);
+  setFejl("Visningsnavnet er allerede i brug. Vælg et andet.");
+  return;
+}
 
-    // Opret profil (TS-safe + array til insert)
+if (nameRow) {
+  // En anden profil har allerede navnet
+  setSaving(false);
+  setFejl("Visningsnavnet er allerede i brug. Vælg et andet.");
+  return;
+}
+
+    // Opret/Opdater profil
     const row: any = {
       id: user.id,
       fornavn,
@@ -134,18 +124,31 @@ export default function Registrer() {
     };
     if (fødselsdato) row["fødselsdato"] = fødselsdato;
 
-    const { error: profilFejl } = await (supabase
-      .from("profiles") as any)
-      .insert([row]);
+    const { error: profilFejl } = await supabase
+      .from("profiles")
+      .upsert(row, { onConflict: "id" });
 
     if (profilFejl) {
       console.error("Profilfejl:", profilFejl);
+      setSaving(false);
       setFejl("❌ Fejl ved oprettelse: " + profilFejl.message);
       return;
     }
 
+    // Markér som registreret + gem visningsnavn i user_metadata (dit system bruger det andre steder)
+    const { error: metaFejl } = await supabase.auth.updateUser({
+      data: { registered: true, visningsnavn: visningsnavn.trim() },
+    });
+
+    if (metaFejl) {
+      setSaving(false);
+      setFejl("Profil gemt, men kunne ikke opdatere brugerdata: " + metaFejl.message);
+      return;
+    }
+
     setSucces("Profil oprettet!");
-    setTimeout(() => router.push("/startside"), 1200);
+    setSaving(false);
+    router.replace("/startside");
   };
 
   // UI gates
@@ -245,13 +248,17 @@ export default function Registrer() {
             <option value="6">6. Meget øvet - op til padelniveau 4.0</option>
             <option value="7">7. Divisionsspiller - padelniveau 4.0+</option>
           </select>
+
+          <p style={{ marginTop: "0.5rem", opacity: 0.9 }}>
+            Start Elo sættes til: <strong>{startElo}</strong>
+          </p>
         </section>
 
         {fejl && <p style={styles.error}>{fejl}</p>}
         {succes && <p style={styles.success}>{succes}</p>}
 
-        <button type="submit" style={styles.submitButton}>
-          Fuldfør oprettelse
+        <button type="submit" style={styles.submitButton} disabled={saving}>
+          {saving ? "Gemmer…" : "Fuldfør oprettelse"}
         </button>
       </form>
     </main>

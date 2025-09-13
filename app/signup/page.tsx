@@ -9,42 +9,40 @@ export default function VelkommenPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [besked, setBesked] = useState("");
-  const [visLoginKnap, setVisLoginKnap] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
+
     setBesked("");
-    setVisLoginKnap(false);
+    setLoading(true);
 
     if (password !== confirmPassword) {
       setBesked("❗ Adgangskoderne matcher ikke.");
+      setLoading(false);
       return;
     }
 
-    const { error: signupError } = await supabase.auth.signUp({
+    const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        emailRedirectTo: `${window.location.origin}/registrer`,
+        // VIGTIGT: Land på callback, som udveksler code→session, og send derefter videre til /registrer
+        emailRedirectTo: `${window.location.origin}/auth/callback?next=/registrer`,
       },
     });
 
-    if (signupError) {
-      setBesked("Der opstod en fejl: " + signupError.message);
+    if (error) {
+      setBesked("Der opstod en fejl: " + error.message);
+      setLoading(false);
       return;
     }
 
-    const { error: loginError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (!loginError) {
-      setBesked("Denne e-mail er allerede oprettet og bekræftet. Du kan logge ind.");
-      setVisLoginKnap(true);
-    } else {
-      setBesked("Vi har sendt dig en bekræftelsesmail. Klik på linket i mailen for at fortsætte oprettelsen.");
-    }
+    setBesked(
+      "Vi har sendt dig en bekræftelsesmail. Klik på linket i mailen for at fortsætte oprettelsen."
+    );
+    setLoading(false);
   };
 
   return (
@@ -75,20 +73,18 @@ export default function VelkommenPage() {
           style={styles.input}
           required
         />
-        <button type="submit" style={styles.button}>
-          Opret konto
+        <button type="submit" style={styles.button} disabled={loading}>
+          {loading ? "Sender..." : "Opret konto"}
         </button>
       </form>
 
       {besked && <p style={{ marginTop: "1rem" }}>{besked}</p>}
 
-      {visLoginKnap && (
-        <Link href="/login">
-          <button style={{ ...styles.button, backgroundColor: "#444", marginTop: "1rem" }}>
-            Gå til login
-          </button>
-        </Link>
-      )}
+      <Link href="/login">
+        <button style={{ ...styles.button, backgroundColor: "#444", marginTop: "1rem" }}>
+          Gå til login
+        </button>
+      </Link>
     </main>
   );
 }
@@ -125,4 +121,3 @@ const styles: { [key: string]: React.CSSProperties } = {
     marginTop: "1rem",
   },
 };
-

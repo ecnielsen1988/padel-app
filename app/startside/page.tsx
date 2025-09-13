@@ -1,123 +1,117 @@
-'use client'
+"use client";
 
-import { useEffect, useState } from 'react'
-import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 type Bruger = {
-  visningsnavn: string
-  rolle: string
-  torsdagspadel: boolean
-}
+  visningsnavn: string;
+  rolle: string;
+  torsdagspadel: boolean;
+};
 
 export default function StartSide() {
-  const router = useRouter()
-  const supabase = createClientComponentClient()
+  const router = useRouter();
+  const supabase = createClientComponentClient();
 
-  const [bruger, setBruger] = useState<Bruger | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [ulæsteDM, setUlæsteDM] = useState<number>(0)
-  const [ulæsteAdmin, setUlæsteAdmin] = useState<number>(0)
+  const [bruger, setBruger] = useState<Bruger | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [ulæsteDM, setUlæsteDM] = useState<number>(0);
+  const [ulæsteAdmin, setUlæsteAdmin] = useState<number>(0);
 
   useEffect(() => {
-    let mounted = true
+    let mounted = true;
 
-    const hentAlt = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      const user = session?.user
+    const håndhævRegelOgHent = async () => {
+      // 1) Session
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
 
+      // 2) Regel: ikke logget ind → /registrer
       if (!user) {
-        if (mounted) {
-          setBruger(null)
-          setUlæsteDM(0)
-          setUlæsteAdmin(0)
-          setLoading(false)
-        }
-        return
+        router.replace("/registrer");
+        return;
       }
 
-      // Profil
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('visningsnavn, rolle, torsdagspadel')
-        .eq('id', user.id)
-        .maybeSingle()
+      // 3) Regel: ikke registered i user_metadata → /registrer
+      const isRegistered = !!user.user_metadata?.registered;
+      if (!isRegistered) {
+        router.replace("/registrer");
+        return;
+      }
 
-      const rolle = profile?.rolle ?? 'ukendt'
-      const profil: Bruger = {
-        visningsnavn: profile?.visningsnavn ?? 'Ukendt',
+      // 4) Hent profil
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("visningsnavn, rolle, torsdagspadel")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      const rolle = profile?.rolle ?? "bruger";
+      const initBruger: Bruger = {
+        visningsnavn: profile?.visningsnavn ?? (user.user_metadata?.visningsnavn || "Ukendt"),
         rolle,
         torsdagspadel: !!profile?.torsdagspadel,
-      }
-      if (mounted) setBruger(profil)
+      };
+      if (mounted) setBruger(initBruger);
 
-      // Ulæste DM
+      // 5) Ulæste DM
       const { count: dmCount } = await supabase
-        .from('beskeder')
-        .select('*', { count: 'exact', head: true })
-        .eq('recipient_id', user.id)
-        .is('read_at', null)
-      if (mounted) setUlæsteDM(dmCount ?? 0)
+        .from("beskeder")
+        .select("*", { count: "exact", head: true })
+        .eq("recipient_id", user.id)
+        .is("read_at", null);
+      if (mounted) setUlæsteDM(dmCount ?? 0);
 
-      // Ulæste admin-beskeder (kun hvis admin)
-      if (rolle === 'admin') {
+      // 6) Ulæste admin-beskeder (kun admin)
+      if (rolle === "admin") {
         const { count: adminCount } = await supabase
-          .from('admin_messages')
-          .select('*', { count: 'exact', head: true })
-          .eq('læst', false)
-        if (mounted) setUlæsteAdmin(adminCount ?? 0)
+          .from("admin_messages")
+          .select("*", { count: "exact", head: true })
+          .eq("læst", false);
+        if (mounted) setUlæsteAdmin(adminCount ?? 0);
       } else {
-        if (mounted) setUlæsteAdmin(0)
+        if (mounted) setUlæsteAdmin(0);
       }
 
-      if (mounted) setLoading(false)
-    }
+      if (mounted) setLoading(false);
+    };
 
-    hentAlt()
+    håndhævRegelOgHent();
 
-    // 👇 Lyt til auth-ændringer (f.eks. efter login/logout i andre faner)
-    const { data: sub } = supabase.auth.onAuthStateChange(() => {
-      hentAlt()
-    })
+    // Lyt til auth-ændringer (fx login/logout i andre faner)
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      const user = session?.user;
+      if (!user || !user.user_metadata?.registered) {
+        // mister session eller mister registered-flag ⇒ følg reglen
+        router.replace("/registrer");
+      } else {
+        håndhævRegelOgHent();
+      }
+    });
 
     return () => {
-      mounted = false
-      sub.subscription.unsubscribe()
-    }
-  }, [supabase])
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
+  }, [supabase, router]);
 
   const logUd = async () => {
-    await supabase.auth.signOut()
-    setBruger(null)
-    setUlæsteDM(0)
-    setUlæsteAdmin(0)
-    router.refresh()        // sørg for at SSR-sider ser logout med det samme
-    // router.replace('/login') // valgfrit: send dem til login
-  }
+    await supabase.auth.signOut();
+    router.replace("/registrer"); // efter logout ⇒ reglen
+  };
 
   if (loading) {
     return (
       <div className="p-8 max-w-xl mx-auto text-center">
         <p className="text-lg">⏳ Indlæser...</p>
       </div>
-    )
+    );
   }
 
-  if (!bruger) {
-    return (
-      <div className="p-8 max-w-xl mx-auto text-center">
-        <h1 className="text-2xl font-bold mb-4">Du er ikke logget ind</h1>
-        <p className="mb-6">Log ind for at få adgang til padelsystemet.</p>
-        <Link
-          href="/login"
-          className="inline-block bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-6 rounded-xl shadow"
-        >
-          Log ind
-        </Link>
-      </div>
-    )
-  }
+  // Brugeren er garanteret logget ind + registered her (ellers var der redirect)
+  if (!bruger) return null;
 
   return (
     <div className="p-8 max-w-xl mx-auto">
@@ -126,14 +120,10 @@ export default function StartSide() {
         <div>
           <h1 className="text-3xl font-bold">Velkommen, {bruger.visningsnavn} 👋</h1>
           <p className="text-sm text-gray-400 mt-1">
-            Din rolle:{' '}
+            Din rolle:{" "}
             <span
               className={
-                bruger.rolle === 'admin'
-                  ? 'text-yellow-400 font-bold'
-                  : bruger.rolle === 'bruger'
-                  ? 'text-green-400 font-bold'
-                  : 'text-red-400 font-bold'
+                brukerRoleClass(bruger.rolle)
               }
             >
               {bruger.rolle}
@@ -201,7 +191,7 @@ export default function StartSide() {
           </Link>
         )}
 
-        {bruger.rolle === 'admin' && (
+        {bruger.rolle === "admin" && (
           <>
             <Link
               href="/admin"
@@ -224,6 +214,13 @@ export default function StartSide() {
         )}
       </div>
     </div>
-  )
+  );
+}
+
+/** lille helper til rolle-farve */
+function brukerRoleClass(rolle: string) {
+  if (rolle === "admin") return "text-yellow-400 font-bold";
+  if (rolle === "bruger") return "text-green-400 font-bold";
+  return "text-red-400 font-bold";
 }
 
