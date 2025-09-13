@@ -5,24 +5,14 @@ import { supabase } from '@/lib/supabaseClient';
 import { beregnEloForKampe } from '@/lib/beregnElo';
 import { notifyUser } from '@/lib/notify';
 
-// ===== Baner =====
-const COURTS = ['Bane 1', 'Bane 2', 'Bane 3', 'Bane 5', 'Bane 6'] as const;
+// ================== Typer ==================
+type Slot = { id: number; label: string; start: string; end: string };
+type SlotMode = 'standard' | 'two' | 'manual';
 
-// ===== Slots (altid de oprindelige) =====
-const DEFAULT_SLOTS = [
-  { id: 1, label: '13:00–14:40', start: '13:00', end: '14:40' },
-  { id: 2, label: '14:40–16:20', start: '14:40', end: '16:20' },
-  { id: 3, label: '16:20–18:00', start: '16:20', end: '18:00' },
-] as const;
-
-// Draft-key adskilt fra /makeevent
-const DRAFT_KEY = 'sundays';
-
-// ===== Typer =====
 export type Spiller = {
   visningsnavn: string;
   elo?: number;
-  slots?: number[]; // de slots spilleren kan
+  slots?: number[]; // de slots spilleren kan (kun brugt i non-manual tilstand)
 };
 
 export type Sæt = {
@@ -37,7 +27,7 @@ export type Sæt = {
 export type Kamp = {
   id: string;
   bane: string;
-  slot: number;     // 1..N (afhængig af dags slots)
+  slot: number;     // 1..N (afhængig af aktive slots). I manual bruges feltet ikke til tider.
   starttid: string; // 'HH:MM'
   sluttid: string;  // 'HH:MM'
   sæt: Sæt[];
@@ -47,13 +37,29 @@ type DraftPayload = {
   valgteSpillere: Spiller[];
   kampe: Kamp[];
   savedAt: string;
-  eventDato?: string; // 👈 vigtig for at skelne uger
+  eventDato?: string; // skelne uger
+  slotMode?: SlotMode; // gem aktiv tilstand
 };
 
-// lille hjælpetype til maybeSingle
 type ProfileNameRow = { visningsnavn: string | null };
 
-// ===== Hjælpere =====
+// ================== Konstanter ==================
+const COURTS: string[] = ['Bane 1', 'Bane 2', 'Bane 3', 'Bane 5', 'Bane 6'];
+
+const DEFAULT_SLOTS: Slot[] = [
+  { id: 1, label: '13:00–14:40', start: '13:00', end: '14:40' },
+  { id: 2, label: '14:40–16:20', start: '14:40', end: '16:20' },
+  { id: 3, label: '16:20–18:00', start: '16:20', end: '18:00' },
+];
+
+const TWO_SLOTS: Slot[] = [
+  { id: 1, label: '15:00–16:30', start: '15:00', end: '16:30' },
+  { id: 2, label: '16:30–18:00', start: '16:30', end: '18:00' },
+];
+
+const DRAFT_KEY = 'sundays';
+
+// ================== Hjælpere ==================
 const erFærdigtSæt = (a: number, b: number) => {
   const max = Math.max(a, b);
   const min = Math.min(a, b);
@@ -76,7 +82,7 @@ function getNextSundayISO(): string {
 function emojiForPluspoint(p: number) {
   if (p >= 100) return '🍾';
   if (p >= 50) return '🏆';
-  if (p >= 40) return '🏅';
+  if (p >= 40) return '🥇';
   if (p >= 30) return '☄️';
   if (p >= 20) return '🚀';
   if (p >= 10) return '🔥';
@@ -93,29 +99,55 @@ function emojiForPluspoint(p: number) {
   return '💩💩';
 }
 
+const getSlotsByMode = (mode: SlotMode): Slot[] => {
+  switch (mode) {
+    case 'two':
+      return [...TWO_SLOTS];
+    case 'standard':
+    default:
+      return [...DEFAULT_SLOTS];
+  }
+};
+
+// ================== Component ==================
 export default function SundaysPage() {
   // Dato + slots for netop den kommende søndag
   const [eventDato, setEventDato] = useState<string>(() => getNextSundayISO());
-  const [slots, setSlots] = useState<{ id: number; label: string; start: string; end: string }[]>(
-    DEFAULT_SLOTS as any
-  );
+  const [slotMode, setSlotMode] = useState<SlotMode>('standard'); // 👈 standard som ønsket
+  const [slots, setSlots] = useState<Slot[]>(getSlotsByMode('standard'));
 
   // Data
   const [alleSpillere, setAlleSpillere] = useState<Spiller[]>([]);
   const [valgteSpillere, setValgteSpillere] = useState<Spiller[]>([]);
   const [eloMap, setEloMap] = useState<Record<string, number>>({});
   const [kampe, setKampe] = useState<Kamp[]>([]);
-  const [search, setSearch] = useState('');
 
+  // UI state
+  const [search, setSearch] = useState('');
   const [busy, setBusy] = useState<null | 'saving' | 'loading'>(null);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
 
-  // Altid brug de tre faste søndags-slots
+  // --- Slots opsætning ---
   useEffect(() => {
-    setSlots([...DEFAULT_SLOTS]);
-  }, [eventDato]);
+    // Reset slots når dato/tilstand ændres
+    setSlots(getSlotsByMode(slotMode));
+  }, [eventDato, slotMode]);
 
-  // Hent ELO + profiler
+  // Når slotMode ændres (mellem 'standard' og 'two'), opdatér spillernes slot-tilmeldinger
+  useEffect(() => {
+    if (slotMode === 'manual') return; // i manuel tilstand bruger vi ikke spillerslots
+    setValgteSpillere((prev) => {
+      const activeIds = new Set<number>(getSlotsByMode(slotMode).map((s) => s.id));
+      const fallbackId = [...activeIds][0] ?? 1;
+      return prev.map((p) => {
+        const curr = new Set<number>((p.slots && p.slots.length ? p.slots : [...activeIds]));
+        const next = [...curr].filter((id) => activeIds.has(id)).sort((a, b) => a - b);
+        return { ...p, slots: next.length ? next : [fallbackId] };
+      });
+    });
+  }, [slotMode]);
+
+  // --- Hent ELO + profiler ---
   useEffect(() => {
     const hentData = async () => {
       const res = await fetch('/api/rangliste');
@@ -129,7 +161,7 @@ export default function SundaysPage() {
       const { data: profiles } = await supabase.from('profiles').select('visningsnavn');
       if (!profiles) return;
 
-      const defaultSlotIds = slots.map((s) => s.id);
+      const defaultSlotIds = getSlotsByMode(slotMode).map((s) => s.id);
       const spillereMedElo = (profiles as ProfileNameRow[])
         .map((p) => {
           const navn = (p.visningsnavn || '').trim();
@@ -137,7 +169,7 @@ export default function SundaysPage() {
           return {
             visningsnavn: navn,
             elo: map[navn] ?? 1000,
-            slots: defaultSlotIds, // default = alle slots for DENNE søndag
+            slots: defaultSlotIds, // default = alle aktive slots for DENNE søndag (ikke brugt i manual)
           } as Spiller;
         })
         .filter(Boolean) as Spiller[];
@@ -146,17 +178,19 @@ export default function SundaysPage() {
     };
 
     hentData();
-  }, [slots]);
+  }, [slotMode]);
 
   // === Spillere ===
   const tilføjSpiller = (spiller: Spiller) => {
-    const defaultSlotIds = slots.map((s) => s.id);
+    const defaultSlotIds = getSlotsByMode(slotMode).map((s) => s.id);
     if (!valgteSpillere.find((s) => s.visningsnavn === spiller.visningsnavn)) {
       const spillerMedElo: Spiller = {
         ...spiller,
         elo: eloMap[spiller.visningsnavn] ?? 1000,
         slots:
-          spiller.slots && spiller.slots.length
+          slotMode === 'manual'
+            ? spiller.slots // i manual er slots irrelevante
+            : spiller.slots && spiller.slots.length
             ? spiller.slots.filter((id) => defaultSlotIds.includes(id))
             : defaultSlotIds,
       };
@@ -172,15 +206,16 @@ export default function SundaysPage() {
   };
 
   const toggleSlotForSpiller = (visningsnavn: string, slotId: number) => {
-    const validIds = new Set(slots.map((s) => s.id));
+    if (slotMode === 'manual') return; // ingen toggles i manual
+    const validIds = new Set(getSlotsByMode(slotMode).map((s) => s.id));
     setValgteSpillere((prev) =>
       prev.map((s) => {
         if (s.visningsnavn !== visningsnavn) return s;
-        const curr = new Set((s.slots ?? slots.map((x) => x.id)).filter((id) => validIds.has(id)));
+        const curr = new Set<number>((s.slots && s.slots.length ? s.slots : getSlotsByMode(slotMode).map((x) => x.id)).filter((id) => validIds.has(id)));
         if (curr.has(slotId)) curr.delete(slotId);
         else curr.add(slotId);
-        const next = Array.from(curr).sort((a, b) => a - b);
-        return { ...s, slots: next.length ? next : [slots[0].id] };
+        const next = [...curr].sort((a, b) => a - b);
+        return { ...s, slots: next.length ? next : [getSlotsByMode(slotMode)[0].id] };
       })
     );
   };
@@ -195,29 +230,29 @@ export default function SundaysPage() {
   };
 
   // === Kampe ===
-  const lavEventFraSpillere = () => {
-    const defaultSlotIds = slots.map((s) => s.id);
+  const slotCfgById = (id: number) => getSlotsByMode(slotMode).find((s) => s.id === id) || getSlotsByMode(slotMode)[0];
 
-    const slotCfgById = (id: number) => slots.find((s) => s.id === id) ?? slots[0];
+  const lavEventFraSpillere = () => {
+    const activeSlotIds = getSlotsByMode(slotMode).map((s) => s.id);
 
     const getSpillerSlots = (navn: string) => {
       const sp = valgteSpillere.find((v) => v.visningsnavn === navn);
-      const raw = sp?.slots && sp.slots.length ? sp.slots : defaultSlotIds;
-      return raw.filter((id) => defaultSlotIds.includes(id));
+      const raw = sp?.slots && sp.slots.length ? sp.slots : activeSlotIds;
+      return raw.filter((id) => activeSlotIds.includes(id));
     };
 
     const commonSlots = (names: string[]) => {
       const asSets = names.map((n) => new Set(getSpillerSlots(n)));
-      return defaultSlotIds.filter((id) => asSets.every((s) => s.has(id)));
+      return activeSlotIds.filter((id) => asSets.every((s) => s.has(id)));
     };
 
     const chooseSlot = (names: string[]) => {
       const inter = commonSlots(names);
       if (inter.length) return inter[0];
-      const scored = defaultSlotIds
+      const scored = activeSlotIds
         .map((id) => ({ id, c: names.filter((n) => getSpillerSlots(n).includes(id)).length }))
         .sort((a, b) => b.c - a.c || a.id - b.id);
-      return scored[0]?.id ?? defaultSlotIds[0];
+      return scored[0]?.id ?? activeSlotIds[0];
     };
 
     const nyeKampe: Kamp[] = [];
@@ -227,24 +262,40 @@ export default function SundaysPage() {
       if (gruppe.length < 4) continue;
 
       const [p1, p2, p3, p4] = gruppe.map((s) => s.visningsnavn);
-      const slotId = chooseSlot([p1, p2, p3, p4]);
-      const cfg = slotCfgById(slotId);
 
       const courtIndex = Math.floor(i / 4);
       const baneNavn = COURTS[courtIndex] ?? COURTS[COURTS.length - 1];
 
-      nyeKampe.push({
-        id: `kamp${i / 4 + 1}`,
-        bane: baneNavn,
-        slot: slotId,
-        starttid: cfg.start,
-        sluttid: cfg.end,
-        sæt: [
-          { holdA1: p1, holdA2: p2, holdB1: p3, holdB2: p4, scoreA: 0, scoreB: 0 },
-          { holdA1: p1, holdA2: p3, holdB1: p2, holdB2: p4, scoreA: 0, scoreB: 0 },
-          { holdA1: p1, holdA2: p4, holdB1: p2, holdB2: p3, scoreA: 0, scoreB: 0 },
-        ],
-      });
+      if (slotMode === 'manual') {
+        // Ingen slots – brug manuelle tider (tom som udgangspunkt)
+        nyeKampe.push({
+          id: `kamp${i / 4 + 1}`,
+          bane: baneNavn,
+          slot: 1,
+          starttid: '',
+          sluttid: '',
+          sæt: [
+            { holdA1: p1, holdA2: p2, holdB1: p3, holdB2: p4, scoreA: 0, scoreB: 0 },
+            { holdA1: p1, holdA2: p3, holdB1: p2, holdB2: p4, scoreA: 0, scoreB: 0 },
+            { holdA1: p1, holdA2: p4, holdB1: p2, holdB2: p3, scoreA: 0, scoreB: 0 },
+          ],
+        });
+      } else {
+        const slotId = chooseSlot([p1, p2, p3, p4]);
+        const cfg = slotCfgById(slotId);
+        nyeKampe.push({
+          id: `kamp${i / 4 + 1}`,
+          bane: baneNavn,
+          slot: slotId,
+          starttid: cfg.start,
+          sluttid: cfg.end,
+          sæt: [
+            { holdA1: p1, holdA2: p2, holdB1: p3, holdB2: p4, scoreA: 0, scoreB: 0 },
+            { holdA1: p1, holdA2: p3, holdB1: p2, holdB2: p4, scoreA: 0, scoreB: 0 },
+            { holdA1: p1, holdA2: p4, holdB1: p2, holdB2: p3, scoreA: 0, scoreB: 0 },
+          ],
+        });
+      }
     }
 
     setKampe(nyeKampe);
@@ -311,7 +362,7 @@ export default function SundaysPage() {
     if (sæt.scoreA === 0 && sæt.scoreB === 0) return;
     const ændringer = eloChanges[sæt.id];
     if (!ændringer) return;
-    Object.entries(ændringer).forEach(([navn, change]) => {
+    Object.entries(ændringer).forEach(([navn, change]: any) => {
       samletDiff[navn] = (samletDiff[navn] ?? 0) + change.diff;
     });
   });
@@ -321,11 +372,12 @@ export default function SundaysPage() {
     if (!ændringer) return null;
     const score = sætMedId.find((s) => s.id === id);
     if (!score || (score.scoreA === 0 && score.scoreB === 0)) return null;
-    const max = Math.max(...Object.values(ændringer).map((e) => e.diff).filter((v) => v > 0));
+    const positives = Object.values(ændringer).map((e: any) => e.diff).filter((v: number) => v > 0);
+    const max = positives.length ? Math.max(...positives) : 0;
     return max > 0 ? `+${max.toFixed(1)}` : null;
   };
 
-  // ======== Draft: GEM / HENT (fixet) ========
+  // ======== Draft: GEM / HENT ========
   const saveDraft = async () => {
     setBusy('saving');
     try {
@@ -347,18 +399,20 @@ export default function SundaysPage() {
         return;
       }
 
-      const ids = slots.map((s) => s.id);
-      const cfgById = (id: number) => slots.find((s) => s.id === id) ?? slots[0];
+      const ids = getSlotsByMode(slotMode).map((s) => s.id);
+      const cfgByIdSave = (id: number) => getSlotsByMode(slotMode).find((s) => s.id === id) ?? getSlotsByMode(slotMode)[0];
 
-      // Normalisér: spillere + kampe til DAGENS slots
+      // Normalisér: spillere + kampe til aktive slots, men bevar manuelle tider
       const normSpillere = valgteSpillere.map((v) => {
+        if (slotMode === 'manual') return v; // slots irrelevant
         const filtered = (v.slots && v.slots.length ? v.slots : ids).filter((id) => ids.includes(id));
         return { ...v, slots: filtered.length ? filtered : [ids[0]] };
       });
 
       const normKampe = kampe.map((k) => {
+        if (slotMode === 'manual') return k; // behold manuelle tider
         const validSlot = ids.includes(k.slot) ? k.slot : ids[0];
-        const cfg = cfgById(validSlot);
+        const cfg = cfgByIdSave(validSlot);
         return { ...k, slot: validSlot, starttid: cfg.start, sluttid: cfg.end };
       });
 
@@ -366,10 +420,10 @@ export default function SundaysPage() {
         valgteSpillere: normSpillere,
         kampe: normKampe,
         savedAt: new Date().toISOString(),
-        eventDato, // 👈 gem datoen i payload
+        eventDato,
+        slotMode,
       };
 
-      // TS-stabil upsert (cast query builder)
       const qb = supabase.from('event_drafts') as any;
       const { error } = await qb.upsert(
         [{ visningsnavn: vn, draft_key: DRAFT_KEY, payload }],
@@ -421,7 +475,7 @@ export default function SundaysPage() {
         if (mine?.payload) loaded = mine.payload as DraftPayload;
       }
 
-      // 2) Fallback til localStorage (ikke andres DB-kladder)
+      // 2) Fallback til localStorage
       if (!loaded) {
         const raw = localStorage.getItem('event_draft_sundays');
         if (raw) loaded = JSON.parse(raw) as DraftPayload;
@@ -432,11 +486,15 @@ export default function SundaysPage() {
         return;
       }
 
-      // Normalisér til dagens slots
-      const ids = slots.map((s) => s.id);
-      const cfgById = (id: number) => slots.find((s) => s.id === id) ?? slots[0];
+      const loadedMode: SlotMode = loaded.slotMode ?? 'standard';
+      setSlotMode(loadedMode); // triggere slots-opdatering
+
+      // Normalisér til de slots, som hører til kladdens mode; bevar manuelle tider
+      const ids = getSlotsByMode(loadedMode).map((s) => s.id);
+      const cfgByIdLoad = (id: number) => getSlotsByMode(loadedMode).find((s) => s.id === id) ?? getSlotsByMode(loadedMode)[0];
 
       const normSpillere = (loaded.valgteSpillere ?? []).map((v) => {
+        if (loadedMode === 'manual') return v;
         const filtered = (v.slots && v.slots.length ? v.slots : ids).filter((id) => ids.includes(id));
         return { ...v, slots: filtered.length ? filtered : [ids[0]] };
       });
@@ -444,8 +502,9 @@ export default function SundaysPage() {
       const sameDate = loaded.eventDato && loaded.eventDato === eventDato;
       const normKampe = sameDate
         ? (loaded.kampe ?? []).map((k) => {
+            if (loadedMode === 'manual') return k; // behold manuelle tider
             const validSlot = ids.includes(k.slot) ? k.slot : ids[0];
-            const cfg = cfgById(validSlot);
+            const cfg = cfgByIdLoad(validSlot);
             return { ...k, slot: validSlot, starttid: cfg.start, sluttid: cfg.end } as Kamp;
           })
         : [];
@@ -470,9 +529,10 @@ export default function SundaysPage() {
       kampe,
       savedAt: new Date().toISOString(),
       eventDato,
+      slotMode,
     };
     localStorage.setItem('event_draft_sundays', JSON.stringify(payload));
-  }, [valgteSpillere, kampe, eventDato]);
+  }, [valgteSpillere, kampe, eventDato, slotMode]);
 
   const publicerEventPlan = async () => {
     const ok = window.confirm('Publicér søndagsplanen så spillerne kan se deres kampe?');
@@ -480,18 +540,19 @@ export default function SundaysPage() {
 
     const eventDatoISO = eventDato;
 
-    // Fladgør -> rows (tider ALTID fra slots)
-    const cfgById = (id: number) => slots.find((s) => s.id === id) ?? slots[0];
+    const cfgByIdPub = (id: number) => getSlotsByMode(slotMode).find((s) => s.id === id) ?? getSlotsByMode(slotMode)[0];
     const rows = kampe.flatMap((kamp, kampIndex) =>
       kamp.sæt.map((sæt, sætIndex) => {
-        const cfg = cfgById(kamp.slot);
+        const cfg = cfgByIdPub(kamp.slot);
+        const start = slotMode === 'manual' ? kamp.starttid : (kamp.starttid && kamp.starttid.includes(':') ? kamp.starttid : cfg.start);
+        const slut = slotMode === 'manual' ? kamp.sluttid : (kamp.sluttid && kamp.sluttid.includes(':') ? kamp.sluttid : cfg.end);
         return {
           event_dato: eventDatoISO,
           kamp_nr: kampIndex + 1,
           saet_nr: sætIndex + 1,
           bane: kamp.bane,
-          starttid: cfg.start,
-          sluttid: cfg.end,
+          starttid: start,
+          sluttid: slut,
           holda1: sæt.holdA1,
           holda2: sæt.holdA2,
           holdb1: sæt.holdB1,
@@ -545,7 +606,9 @@ export default function SundaysPage() {
 
   const sendEventResultater = async () => {
     const ok = window.confirm(
-      `Er du sikker på, at du vil indsende alle resultater?\n\nDette vil slette event-data og indsende alle sæt permanent til ranglisten.`
+      `Er du sikker på, at du vil indsende alle resultater?
+
+Dette vil slette event-data og indsende alle sæt permanent til ranglisten.`
     );
     if (!ok) return;
 
@@ -642,7 +705,7 @@ export default function SundaysPage() {
   const slotCounts = slots.reduce<Record<number, number>>((acc, s) => {
     acc[s.id] = valgteSpillere.filter((v) => (v.slots ?? slots.map((x) => x.id)).includes(s.id)).length;
     return acc;
-  }, {} as any);
+  }, {} as Record<number, number>);
 
   // ======== RENDER ========
   return (
@@ -653,24 +716,64 @@ export default function SundaysPage() {
         <p className="text-[11px] text-zinc-500 mb-2">Næste event: {eventDatoLabel}</p>
 
         <div className="mb-2 text-[11px] text-zinc-600 dark:text-zinc-300">
-          <span className="font-medium mr-1">Timeslots:</span>
-          {slots.map((s) => (
-            <span key={s.id} className="mr-2">
-              {s.id}: {s.label}
-            </span>
-          ))}
+          <span className="font-medium mr-1">Tilstand:</span>
+          <div className="mt-1 space-y-1">
+            <label className="flex items-center gap-2 text-xs cursor-pointer">
+              <input
+                type="radio"
+                name="slotmode"
+                value="standard"
+                checked={slotMode === 'standard'}
+                onChange={() => setSlotMode('standard')}
+              />
+              <span>3 slots (13:00–14:40, 14:40–16:20, 16:20–18:00)</span>
+            </label>
+            <label className="flex items-center gap-2 text-xs cursor-pointer">
+              <input
+                type="radio"
+                name="slotmode"
+                value="two"
+                checked={slotMode === 'two'}
+                onChange={() => setSlotMode('two')}
+              />
+              <span>2 slots (15:00–16:30, 16:30–18:00)</span>
+            </label>
+            <label className="flex items-center gap-2 text-xs cursor-pointer">
+              <input
+                type="radio"
+                name="slotmode"
+                value="manual"
+                checked={slotMode === 'manual'}
+                onChange={() => setSlotMode('manual')}
+              />
+              <span>Manuel indtastning</span>
+            </label>
+          </div>
+
+          {slotMode !== 'manual' && (
+            <div className="mt-2">
+              <span className="font-medium mr-1">Aktive slots:</span>
+              {getSlotsByMode(slotMode).map((s) => (
+                <span key={s.id} className="mr-2">
+                  {s.id}: {s.label}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Overblik over tilmeldinger pr. slot */}
-        <div className="mb-3 p-2 rounded bg-zinc-50 dark:bg-zinc-700">
-          <h3 className="font-semibold text-sm mb-1">🕒 Tilmeldinger pr. slot</h3>
-          {slots.map((s) => (
-            <div key={s.id} className="flex justify-between text-xs">
-              <span>{`Slot ${s.id} (${s.label})`}</span>
-              <span>{slotCounts[s.id] ?? 0}</span>
-            </div>
-          ))}
-        </div>
+        {slotMode !== 'manual' && (
+          <div className="mb-3 p-2 rounded bg-zinc-50 dark:bg-zinc-700">
+            <h3 className="font-semibold text-sm mb-1">🕒 Tilmeldinger pr. slot</h3>
+            {slots.map((s) => (
+              <div key={s.id} className="flex justify-between text-xs">
+                <span>{`Slot ${s.id} (${s.label})`}</span>
+                <span>{slotCounts[s.id] ?? 0}</span>
+              </div>
+            ))}
+          </div>
+        )}
 
         <h2 className="font-semibold mb-2">👥 Spillere ({valgteSpillere.length})</h2>
 
@@ -732,26 +835,28 @@ export default function SundaysPage() {
                   </div>
                 </div>
 
-                {/* Slot toggles */}
-                <div className="mt-1 flex gap-1">
-                  {slots.map((s) => {
-                    const selected = (spiller.slots ?? slots.map((x) => x.id)).includes(s.id);
-                    return (
-                      <button
-                        key={s.id}
-                        onClick={() => toggleSlotForSpiller(spiller.visningsnavn, s.id)}
-                        title={`Slot ${s.id}: ${s.label}`}
-                        className={`px-2 py-0.5 rounded text-[11px] border ${
-                          selected
-                            ? 'bg-green-600 text-white border-green-700'
-                            : 'bg-zinc-300 dark:bg-zinc-600 text-zinc-900 dark:text-zinc-100 border-transparent'
-                        }`}
-                      >
-                        {s.id}
-                      </button>
-                    );
-                  })}
-                </div>
+                {/* Slot toggles (kun i non-manual) */}
+                {slotMode !== 'manual' && (
+                  <div className="mt-1 flex gap-1 flex-wrap">
+                    {getSlotsByMode(slotMode).map((s) => {
+                      const selected = (spiller.slots ?? getSlotsByMode(slotMode).map((x) => x.id)).includes(s.id);
+                      return (
+                        <button
+                          key={s.id}
+                          onClick={() => toggleSlotForSpiller(spiller.visningsnavn, s.id)}
+                          title={`Slot ${s.id}: ${s.label}`}
+                          className={`px-2 py-0.5 rounded text-[11px] border ${
+                            selected
+                              ? 'bg-green-600 text-white border-green-700'
+                              : 'bg-zinc-300 dark:bg-zinc-600 text-zinc-900 dark:text-zinc-100 border-transparent'
+                          }`}
+                        >
+                          {s.id}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {((idx + 1) % 4 === 0) && idx !== valgteSpillere.length - 1 && (
@@ -779,11 +884,12 @@ export default function SundaysPage() {
         {kampe.map((kamp, kampIndex) => {
           const base = kamp.sæt[0];
           const kampSpillere = [base.holdA1, base.holdA2, base.holdB1, base.holdB2];
-          const slotCfg = slots.find((s) => s.id === kamp.slot)!;
+          const slotCfg = slotCfgById(kamp.slot);
 
           const utilgængelige = kampSpillere.filter((navn) => {
+            if (slotMode === 'manual') return false;
             const sp = valgteSpillere.find((v) => v.visningsnavn === navn);
-            const allowed = sp ? (sp.slots ?? slots.map((x) => x.id)) : slots.map((x) => x.id);
+            const allowed = sp ? (sp.slots ?? getSlotsByMode(slotMode).map((x) => x.id)) : getSlotsByMode(slotMode).map((x) => x.id);
             return !allowed.includes(kamp.slot);
           });
 
@@ -809,28 +915,56 @@ export default function SundaysPage() {
                       ))}
                     </select>
 
-                    {/* Slot */}
-                    <select
-                      value={kamp.slot}
-                      onChange={(e) => {
-                        const newSlot = Number(e.target.value);
-                        const cfg = slots.find((s) => s.id === newSlot)!;
-                        const updated = [...kampe];
-                        updated[kampIndex].slot = newSlot;
-                        updated[kampIndex].starttid = cfg.start;
-                        updated[kampIndex].sluttid = cfg.end;
-                        setKampe(updated);
-                      }}
-                      className="text-sm border px-1 bg-white dark:bg-zinc-700 dark:text-white rounded"
-                    >
-                      {slots.map((s) => (
-                        <option key={s.id} value={s.id}>{`Slot ${s.id}: ${s.label}`}</option>
-                      ))}
-                    </select>
+                    {/* Slot eller frie tider */}
+                    {slotMode === 'manual' ? (
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="time"
+                          value={kamp.starttid}
+                          onChange={(e) => {
+                            const updated = [...kampe];
+                            updated[kampIndex].starttid = e.target.value;
+                            setKampe(updated);
+                          }}
+                          className="text-sm border px-1 bg-white dark:bg-zinc-700 dark:text-white rounded"
+                        />
+                        <span>–</span>
+                        <input
+                          type="time"
+                          value={kamp.sluttid}
+                          onChange={(e) => {
+                            const updated = [...kampe];
+                            updated[kampIndex].sluttid = e.target.value;
+                            setKampe(updated);
+                          }}
+                          className="text-sm border px-1 bg-white dark:bg-zinc-700 dark:text-white rounded"
+                        />
+                      </div>
+                    ) : (
+                      <>
+                        <select
+                          value={kamp.slot}
+                          onChange={(e) => {
+                            const newSlot = Number(e.target.value);
+                            const cfg = slotCfgById(newSlot);
+                            const updated = [...kampe];
+                            updated[kampIndex].slot = newSlot;
+                            updated[kampIndex].starttid = cfg.start;
+                            updated[kampIndex].sluttid = cfg.end;
+                            setKampe(updated);
+                          }}
+                          className="text-sm border px-1 bg-white dark:bg-zinc-700 dark:text-white rounded"
+                        >
+                          {getSlotsByMode(slotMode).map((s) => (
+                            <option key={s.id} value={s.id}>{`Slot ${s.id}: ${s.label}`}</option>
+                          ))}
+                        </select>
 
-                    <span className="text-[11px] text-zinc-500">
-                      {slotCfg.start}–{slotCfg.end}
-                    </span>
+                        <span className="text-[11px] text-zinc-500">
+                          {slotCfg.start}–{slotCfg.end}
+                        </span>
+                      </>
+                    )}
                   </div>
 
                   <button
@@ -843,7 +977,7 @@ export default function SundaysPage() {
                   </button>
                 </div>
 
-                {utilgængelige.length > 0 && (
+                {slotMode !== 'manual' && utilgængelige.length > 0 && (
                   <div className="mt-1 text-[11px] text-red-600">
                     ⚠️ Ikke tilmeldt i valgt slot: {utilgængelige.join(', ')}
                   </div>
