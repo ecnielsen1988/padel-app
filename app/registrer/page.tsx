@@ -10,6 +10,7 @@ export default function Registrer() {
 
   // Auth gate
   const [authLoading, setAuthLoading] = useState(true);
+  const [redirecting, setRedirecting] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
 
   // Form state
@@ -26,17 +27,44 @@ export default function Registrer() {
   const [succes, setSucces] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // Hent session + forudfyld email
+  // Hent session + forudfyld email + auto-redirect hvis allerede registreret
   useEffect(() => {
     const init = async () => {
       const { data } = await supabase.auth.getUser();
       const user = data?.user ?? null;
-      setUserId(user?.id || null);
-      if (user?.email) setEmail(user.email);
+
+      if (!user) {
+        setUserId(null);
+        setAuthLoading(false);
+        return;
+      }
+
+      setUserId(user.id);
+      if (user.email) setEmail(user.email);
+
+      // Hvis user_metadata allerede siger registered → videre
+      if (user.user_metadata?.registered) {
+        setRedirecting(true);
+        router.replace("/startside");
+        return;
+      }
+
+      // Ellers: tjek om der allerede findes en profil-række (så er de reelt registreret)
+      const { count: profileCount } = await supabase
+        .from("profiles")
+        .select("*", { count: "exact", head: true })
+        .eq("id", user.id);
+
+      if ((profileCount ?? 0) > 0) {
+        setRedirecting(true);
+        router.replace("/startside");
+        return;
+      }
+
       setAuthLoading(false);
     };
     init();
-  }, []);
+  }, [router]);
 
   // Auto-udfyld visningsnavn
   useEffect(() => {
@@ -47,20 +75,29 @@ export default function Registrer() {
 
   const niveauTilElo = (n: string) => {
     switch (n) {
-      case "1": return 500;
-      case "2": return 750;
-      case "3": return 1000;
-      case "4": return 1250;
-      case "5": return 1500;
-      case "6": return 1750;
-      case "7": return 2000;
-      default: return 0;
+      case "1":
+        return 500;
+      case "2":
+        return 750;
+      case "3":
+        return 1000;
+      case "4":
+        return 1250;
+      case "5":
+        return 1500;
+      case "6":
+        return 1750;
+      case "7":
+        return 2000;
+      default:
+        return 0;
     }
   };
 
   const handleNiveauChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setNiveau(e.target.value);
-    setStartElo(niveauTilElo(e.target.value));
+    const v = e.target.value;
+    setNiveau(v);
+    setStartElo(niveauTilElo(v));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -71,91 +108,96 @@ export default function Registrer() {
     setSucces("");
     setSaving(true);
 
-    // Gate igen
-    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-    const user = sessionData?.session?.user;
-    if (!user || sessionError) {
+    try {
+      // Gate igen
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      const user = sessionData?.session?.user;
+      if (!user || sessionError) {
+        setFejl("Du er ikke logget ind i denne browser. Log ind først.");
+        setSaving(false);
+        return;
+      }
+
+      if (!fornavn.trim() || !efternavn.trim() || !email.trim() || !niveau || !visningsnavn.trim()) {
+        setFejl("Udfyld venligst alle nødvendige felter.");
+        setSaving(false);
+        return;
+      }
+
+      // Unikhedscheck (ekskludér mig selv)
+      const { data: nameRow, error: nameErr } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("visningsnavn", visningsnavn.trim())
+        .neq("id", user.id)
+        .limit(1)
+        .maybeSingle();
+
+      // maybeSingle kan returnere error ved flere matches -> betragt som "navn i brug"
+      if (nameErr || nameRow) {
+        setFejl("Visningsnavnet er allerede i brug. Vælg et andet.");
+        setSaving(false);
+        return;
+      }
+
+      // Opret/Opdater profil
+      const row: any = {
+        id: user.id,
+        fornavn,
+        efternavn,
+        visningsnavn: visningsnavn.trim(),
+        email,
+        koen,
+        telefon,
+        rolle: "bruger",
+        niveau,
+        startElo,
+      };
+      if (fødselsdato) row["fødselsdato"] = fødselsdato;
+
+      const { error: profilFejl } = await supabase.from("profiles").upsert(row, { onConflict: "id" });
+
+      if (profilFejl) {
+        console.error("Profilfejl:", profilFejl);
+        setFejl("❌ Fejl ved oprettelse: " + profilFejl.message);
+        setSaving(false);
+        return;
+      }
+
+      // Marker som registreret + gem visningsnavn i user_metadata
+      const { error: metaFejl } = await supabase.auth.updateUser({
+        data: { registered: true, visningsnavn: visningsnavn.trim() },
+      });
+
+      if (metaFejl) {
+        setFejl("Profil gemt, men kunne ikke opdatere brugerdata: " + metaFejl.message);
+        setSaving(false);
+        return;
+      }
+
+      // 🔑 Force ny access token, så /startside ser registered=true
+      await supabase.auth.refreshSession();
+
+      setSucces("Profil oprettet! Sender dig videre…");
+      setRedirecting(true);
+
+      // Lille micro-wait for at sikre hydration med ny session
+      await new Promise((r) => setTimeout(r, 50));
+
+      // Viderestil
+      router.replace("/startside");
+    } catch (err: any) {
+      console.error(err);
+      setFejl("Uventet fejl — prøv igen.");
       setSaving(false);
-      setFejl("Du er ikke logget ind i denne browser. Log ind først.");
-      return;
     }
-
-    if (!fornavn.trim() || !efternavn.trim() || !email.trim() || !niveau || !visningsnavn.trim()) {
-      setSaving(false);
-      setFejl("Udfyld venligst alle nødvendige felter.");
-      return;
-    }
-
-   // Tjek unikt visningsnavn (ekskludér mig selv)
-const { data: nameRow, error: nameErr } = await supabase
-  .from("profiles")
-  .select("id")
-  .eq("visningsnavn", visningsnavn.trim())
-  .neq("id", user.id)     // <-- ekskludér nuværende bruger
-  .limit(1)
-  .maybeSingle();         // returnerer enten et objekt eller null
-
-if (nameErr) {
-  // Hvis der er flere matches (sjældent), vil maybeSingle give error — betragt det som "navnet er brugt"
-  setSaving(false);
-  setFejl("Visningsnavnet er allerede i brug. Vælg et andet.");
-  return;
-}
-
-if (nameRow) {
-  // En anden profil har allerede navnet
-  setSaving(false);
-  setFejl("Visningsnavnet er allerede i brug. Vælg et andet.");
-  return;
-}
-
-    // Opret/Opdater profil
-    const row: any = {
-      id: user.id,
-      fornavn,
-      efternavn,
-      visningsnavn: visningsnavn.trim(),
-      email,
-      koen,
-      telefon,
-      rolle: "bruger",
-      niveau,
-      startElo,
-    };
-    if (fødselsdato) row["fødselsdato"] = fødselsdato;
-
-    const { error: profilFejl } = await supabase
-      .from("profiles")
-      .upsert(row, { onConflict: "id" });
-
-    if (profilFejl) {
-      console.error("Profilfejl:", profilFejl);
-      setSaving(false);
-      setFejl("❌ Fejl ved oprettelse: " + profilFejl.message);
-      return;
-    }
-
-    // Markér som registreret + gem visningsnavn i user_metadata (dit system bruger det andre steder)
-    const { error: metaFejl } = await supabase.auth.updateUser({
-      data: { registered: true, visningsnavn: visningsnavn.trim() },
-    });
-
-    if (metaFejl) {
-      setSaving(false);
-      setFejl("Profil gemt, men kunne ikke opdatere brugerdata: " + metaFejl.message);
-      return;
-    }
-
-    setSucces("Profil oprettet!");
-    setSaving(false);
-    router.replace("/startside");
   };
 
   // UI gates
-  if (authLoading) {
+  if (authLoading || redirecting) {
     return (
       <main style={styles.main}>
-        <p>⏳ Tjekker login…</p>
+        <p>{redirecting ? "Sender dig videre…" : "⏳ Tjekker login…"}</p>
       </main>
     );
   }
@@ -335,3 +377,4 @@ const styles: { [key: string]: React.CSSProperties } = {
     textAlign: "center",
   },
 };
+

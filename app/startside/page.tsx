@@ -28,20 +28,29 @@ export default function StartSide() {
       const { data: { session } } = await supabase.auth.getSession();
       const user = session?.user;
 
-      // 2) Regel: ikke logget ind → /registrer
+      // Ikke logget ind → /registrer
       if (!user) {
         router.replace("/registrer");
         return;
       }
 
-      // 3) Regel: ikke registered i user_metadata → /registrer
-      const isRegistered = !!user.user_metadata?.registered;
+      // 2) Tjek om der findes en profilrække (så er brugeren reelt registreret)
+      const { count: profileCount, error: profileErr } = await supabase
+        .from("profiles")
+        .select("*", { count: "exact", head: true })
+        .eq("id", user.id);
+
+      // Brug profil-eksistens som primær sandhed, fald tilbage til user_metadata.registered
+      const isRegistered =
+        (!profileErr && (profileCount ?? 0) > 0) ||
+        !!user.user_metadata?.registered;
+
       if (!isRegistered) {
         router.replace("/registrer");
         return;
       }
 
-      // 4) Hent profil
+      // 3) Hent profil-data til UI
       const { data: profile } = await supabase
         .from("profiles")
         .select("visningsnavn, rolle, torsdagspadel")
@@ -56,7 +65,7 @@ export default function StartSide() {
       };
       if (mounted) setBruger(initBruger);
 
-      // 5) Ulæste DM
+      // 4) Ulæste DM
       const { count: dmCount } = await supabase
         .from("beskeder")
         .select("*", { count: "exact", head: true })
@@ -64,7 +73,7 @@ export default function StartSide() {
         .is("read_at", null);
       if (mounted) setUlæsteDM(dmCount ?? 0);
 
-      // 6) Ulæste admin-beskeder (kun admin)
+      // 5) Ulæste admin-beskeder (kun admin)
       if (rolle === "admin") {
         const { count: adminCount } = await supabase
           .from("admin_messages")
@@ -83,10 +92,10 @@ export default function StartSide() {
     // Lyt til auth-ændringer (fx login/logout i andre faner)
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
       const user = session?.user;
-      if (!user || !user.user_metadata?.registered) {
-        // mister session eller mister registered-flag ⇒ følg reglen
+      if (!user) {
         router.replace("/registrer");
       } else {
+        // Hvis session er der, så hent igen (dækker også lige-opdateret registered-flag)
         håndhævRegelOgHent();
       }
     });
@@ -110,7 +119,7 @@ export default function StartSide() {
     );
   }
 
-  // Brugeren er garanteret logget ind + registered her (ellers var der redirect)
+  // Brugeren er garanteret logget ind + registreret her (ellers var der redirect)
   if (!bruger) return null;
 
   return (
@@ -121,11 +130,7 @@ export default function StartSide() {
           <h1 className="text-3xl font-bold">Velkommen, {bruger.visningsnavn} 👋</h1>
           <p className="text-sm text-gray-400 mt-1">
             Din rolle:{" "}
-            <span
-              className={
-                brukerRoleClass(bruger.rolle)
-              }
-            >
+            <span className={rolleClass(bruger.rolle)}>
               {bruger.rolle}
             </span>
           </p>
@@ -217,10 +222,9 @@ export default function StartSide() {
   );
 }
 
-/** lille helper til rolle-farve */
-function brukerRoleClass(rolle: string) {
+/** helper til rolle-farve */
+function rolleClass(rolle: string) {
   if (rolle === "admin") return "text-yellow-400 font-bold";
   if (rolle === "bruger") return "text-green-400 font-bold";
   return "text-red-400 font-bold";
 }
-
