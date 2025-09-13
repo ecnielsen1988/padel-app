@@ -47,6 +47,7 @@ type DraftPayload = {
   valgteSpillere: Spiller[];
   kampe: Kamp[];
   savedAt: string;
+  eventDato?: string; // 👈 vigtig for at skelne uger
 };
 
 // lille hjælpetype til maybeSingle
@@ -202,7 +203,6 @@ export default function SundaysPage() {
     const getSpillerSlots = (navn: string) => {
       const sp = valgteSpillere.find((v) => v.visningsnavn === navn);
       const raw = sp?.slots && sp.slots.length ? sp.slots : defaultSlotIds;
-      // klip til dagens slots
       return raw.filter((id) => defaultSlotIds.includes(id));
     };
 
@@ -214,12 +214,8 @@ export default function SundaysPage() {
     const chooseSlot = (names: string[]) => {
       const inter = commonSlots(names);
       if (inter.length) return inter[0];
-      // Ellers: vælg det slot flest af de 4 kan (tie -> laveste id)
       const scored = defaultSlotIds
-        .map((id) => ({
-          id,
-          c: names.filter((n) => getSpillerSlots(n).includes(id)).length,
-        }))
+        .map((id) => ({ id, c: names.filter((n) => getSpillerSlots(n).includes(id)).length }))
         .sort((a, b) => b.c - a.c || a.id - b.id);
       return scored[0]?.id ?? defaultSlotIds[0];
     };
@@ -234,7 +230,6 @@ export default function SundaysPage() {
       const slotId = chooseSlot([p1, p2, p3, p4]);
       const cfg = slotCfgById(slotId);
 
-      // Bane følger COURTS-listen (undgår fx “Bane 4”)
       const courtIndex = Math.floor(i / 4);
       const baneNavn = COURTS[courtIndex] ?? COURTS[COURTS.length - 1];
 
@@ -330,7 +325,7 @@ export default function SundaysPage() {
     return max > 0 ? `+${max.toFixed(1)}` : null;
   };
 
-  // ======== Draft: GEM / HENT ========
+  // ======== Draft: GEM / HENT (fixet) ========
   const saveDraft = async () => {
     setBusy('saving');
     try {
@@ -371,6 +366,7 @@ export default function SundaysPage() {
         valgteSpillere: normSpillere,
         kampe: normKampe,
         savedAt: new Date().toISOString(),
+        eventDato, // 👈 gem datoen i payload
       };
 
       // TS-stabil upsert (cast query builder)
@@ -398,20 +394,34 @@ export default function SundaysPage() {
     try {
       let loaded: DraftPayload | null = null;
 
-      // 1) Hent seneste kladde for 'sundays' på tværs af alle forfattere
-      const { data: latest } = await supabase
-        .from('event_drafts')
-        .select('payload, visningsnavn, updated_at')
-        .eq('draft_key', DRAFT_KEY)
-        .order('updated_at', { ascending: false }) // alternativ: gem i payload.savedAt og sorter på den
-        .limit(1)
-        .maybeSingle<{ payload: DraftPayload }>();
-
-      if (latest?.payload) {
-        loaded = latest.payload as DraftPayload;
+      // 0) Identificér mig (for at hente KUN min kladde)
+      const { data: auth } = await supabase.auth.getUser();
+      const me = auth?.user ?? null;
+      let myName: string | null = null;
+      if (me) {
+        const { data: prof } = await supabase
+          .from('profiles')
+          .select('visningsnavn')
+          .eq('id', me.id)
+          .maybeSingle<ProfileNameRow>();
+        myName = (prof?.visningsnavn || '').trim() || null;
       }
 
-      // 2) Fallback til localStorage hvis intet i DB
+      // 1) Hent MIN nyeste kladde for 'sundays'
+      if (myName) {
+        const { data: mine } = await supabase
+          .from('event_drafts')
+          .select('payload, updated_at')
+          .eq('draft_key', DRAFT_KEY)
+          .eq('visningsnavn', myName)
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle<{ payload: DraftPayload }>();
+
+        if (mine?.payload) loaded = mine.payload as DraftPayload;
+      }
+
+      // 2) Fallback til localStorage (ikke andres DB-kladder)
       if (!loaded) {
         const raw = localStorage.getItem('event_draft_sundays');
         if (raw) loaded = JSON.parse(raw) as DraftPayload;
@@ -422,7 +432,7 @@ export default function SundaysPage() {
         return;
       }
 
-      // Normalisér loaded til DAGENS slots
+      // Normalisér til dagens slots
       const ids = slots.map((s) => s.id);
       const cfgById = (id: number) => slots.find((s) => s.id === id) ?? slots[0];
 
@@ -431,15 +441,19 @@ export default function SundaysPage() {
         return { ...v, slots: filtered.length ? filtered : [ids[0]] };
       });
 
-      const normKampe = (loaded.kampe ?? []).map((k) => {
-        const validSlot = ids.includes(k.slot) ? k.slot : ids[0];
-        const cfg = cfgById(validSlot);
-        return { ...k, slot: validSlot, starttid: cfg.start, sluttid: cfg.end } as Kamp;
-      });
+      const sameDate = loaded.eventDato && loaded.eventDato === eventDato;
+      const normKampe = sameDate
+        ? (loaded.kampe ?? []).map((k) => {
+            const validSlot = ids.includes(k.slot) ? k.slot : ids[0];
+            const cfg = cfgById(validSlot);
+            return { ...k, slot: validSlot, starttid: cfg.start, sluttid: cfg.end } as Kamp;
+          })
+        : [];
 
       setValgteSpillere(normSpillere);
       setKampe(normKampe);
       setLastSavedAt(loaded.savedAt ?? null);
+
       alert('📥 Søndagskladde indlæst!');
     } catch (e) {
       console.error(e);
@@ -448,7 +462,17 @@ export default function SundaysPage() {
       setBusy(null);
     }
   };
-  // ======== /Draft ========
+
+  // Valgfri: Autosave (lokalt) når spillere/kampe/dato ændres
+  useEffect(() => {
+    const payload: DraftPayload = {
+      valgteSpillere,
+      kampe,
+      savedAt: new Date().toISOString(),
+      eventDato,
+    };
+    localStorage.setItem('event_draft_sundays', JSON.stringify(payload));
+  }, [valgteSpillere, kampe, eventDato]);
 
   const publicerEventPlan = async () => {
     const ok = window.confirm('Publicér søndagsplanen så spillerne kan se deres kampe?');
@@ -476,17 +500,14 @@ export default function SundaysPage() {
       })
     );
 
-    // Slet eksisterende plan for datoen (undgå konflikt)
     await (supabase.from('event_sets') as any).delete().eq('event_dato', eventDatoISO);
 
     const { error } = await (supabase.from('event_sets') as any).insert(rows);
     if (error) {
       alert('❌ Kunne ikke publicere planen: ' + error.message);
     } else {
-      // ✅ Publiceret
       alert('📢 Plan publiceret – spillerne kan nu se deres kampe!');
 
-      // Send push til den loggede bruger, hvis vedkommende deltager
       try {
         const { data: auth } = await supabase.auth.getUser();
         const me = auth?.user;
@@ -524,9 +545,7 @@ export default function SundaysPage() {
 
   const sendEventResultater = async () => {
     const ok = window.confirm(
-      `Er du sikker på, at du vil indsende alle resultater?
-
-Dette vil slette event-data og indsende alle sæt permanent til ranglisten.`
+      `Er du sikker på, at du vil indsende alle resultater?\n\nDette vil slette event-data og indsende alle sæt permanent til ranglisten.`
     );
     if (!ok) return;
 
@@ -943,3 +962,4 @@ Dette vil slette event-data og indsende alle sæt permanent til ranglisten.`
     </div>
   );
 }
+
