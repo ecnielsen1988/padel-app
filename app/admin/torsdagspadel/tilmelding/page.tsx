@@ -3,15 +3,14 @@
 export const revalidate = 0;
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
-export const runtime = 'nodejs'
+export const runtime = 'nodejs';
 
 import { cookies } from "next/headers";
 import { createServerComponentClient, createServerActionClient } from "@supabase/auth-helpers-nextjs";
 import { revalidatePath } from "next/cache";
 import React from "react";
 import { beregnNyRangliste } from "@/lib/beregnNyRangliste";
-import { redirect } from 'next/navigation'
-
+import { redirect } from "next/navigation";
 
 // --- Helpers ---
 function getCopenhagenNowAsUTCDate() {
@@ -95,15 +94,59 @@ async function togglePaidAction(formData: FormData) {
   revalidatePath('/admin/tilmelding');
 }
 
+// ✅ NY: Admin kan “svare for” en spiller (tilmeld/afbud + evt. tid)
+async function adminSetSignupAction(formData: FormData) {
+  'use server';
+  const supabase = createServerActionClient<any>({ cookies });
+
+  const visningsnavn = String(formData.get('visningsnavn') || '');
+  const event_dato  = String(formData.get('event_dato')  || '');
+  const action      = String(formData.get('action')       || ''); // 'tilmeld' | 'afbud'
+  const hhmmRaw     = (formData.get('tidligste_tid') || '') as string;
+
+  if (!visningsnavn || !event_dato) return;
+
+  // Normaliser HH:MM (tillad tom => null)
+  const hhmm = (() => {
+    const m = hhmmRaw.match(/^\d{2}:\d{2}$/);
+    return m ? m[0] : null;
+  })();
+
+  const patch: Record<string, any> = {
+    kan_spille: action === 'tilmeld' ? true : false,
+    tidligste_tid: action === 'tilmeld' ? (hhmm ?? null) : null,
+  };
+
+  // Forsøg update først (bevarer evt. paid)
+  const { data: updated, error: updErr } = await supabase
+    .from('event_signups')
+    .update(patch)
+    .eq('visningsnavn', visningsnavn)
+    .eq('event_dato', event_dato)
+    .select('visningsnavn');
+
+  if (updErr) console.error('adminSetSignupAction update error', updErr);
+
+  if (!updated || updated.length === 0) {
+    // Ingen række => insert (paid sættes ikke her, men kan toggles separat)
+    const { error: insErr } = await supabase
+      .from('event_signups')
+      .insert({ visningsnavn, event_dato, ...patch });
+    if (insErr) console.error('adminSetSignupAction insert error', insErr);
+  }
+
+  revalidatePath('/admin/tilmelding');
+}
+
 export default async function Page() {
   const supabase = createServerComponentClient<any>({ cookies });
 
- const ADMIN_PATH = '/admin/tilmelding' // <- vigtig! brug samme overalt
+  const ADMIN_PATH = '/admin/tilmelding'; // <- vigtig! brug samme overalt
 
-const { data: { session } } = await supabase.auth.getSession()
-if (!session) {
-  redirect(`/login?next=${ADMIN_PATH}`)
-}
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) {
+    redirect(`/login?next=${ADMIN_PATH}`);
+  }
 
   // Vi blokerer ikke længere på session, men logger for at kunne debugge.
   let sessionUserId: string | undefined;
@@ -177,6 +220,17 @@ if (!session) {
   tilmeldte.sort(byEloDesc);
   afbud.sort(byName);
   ingenSvar.sort(byName);
+
+  // Fælles tidsværdier 17:00–20:30 pr. 30 min
+  const timeOptions: string[] = [];
+  for (let h = 17; h <= 20; h++) {
+    for (let m = 0; m < 60; m += 30) {
+      const hh = String(h).padStart(2, '0');
+      const mm = String(m).padStart(2, '0');
+      timeOptions.push(`${hh}:${mm}`);
+    }
+  }
+  timeOptions.push('20:30');
 
   return (
     <main className="p-6 space-y-6 text-neutral-900 dark:text-neutral-100">
@@ -268,18 +322,63 @@ if (!session) {
             {ingenSvar.map((p) => {
               const isPaid = paidMap.get(p.visningsnavn) ?? false;
               return (
-                <li key={p.visningsnavn} className="px-4 py-3 flex items-center justify-between gap-3">
-                  <span className="font-medium">{p.visningsnavn}</span>
-                  <form action={togglePaidAction}>
+                <li key={p.visningsnavn} className="px-4 py-3 space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-medium">{p.visningsnavn}</span>
+
+                    {/* Betalt toggle (som før) */}
+                    <form action={togglePaidAction} className="shrink-0">
+                      <input type="hidden" name="visningsnavn" value={p.visningsnavn} />
+                      <input type="hidden" name="event_dato" value={thursday} />
+                      <input type="hidden" name="next_paid" value={(isPaid ? false : true).toString()} />
+                      <button type="submit" className="inline-flex items-center gap-2 text-sm">
+                        <span className="inline-block w-4 h-4 rounded border border-neutral-300 dark:border-neutral-600 text-center align-middle">
+                          {isPaid ? "✓" : ""}
+                        </span>
+                        Betalt
+                      </button>
+                    </form>
+                  </div>
+
+                  {/* ✅ Admin-svar: tilmeld/afbud */}
+                  <form action={adminSetSignupAction} className="flex items-center gap-2">
                     <input type="hidden" name="visningsnavn" value={p.visningsnavn} />
                     <input type="hidden" name="event_dato" value={thursday} />
-                    <input type="hidden" name="next_paid" value={(isPaid ? false : true).toString()} />
-                    <button type="submit" className="inline-flex items-center gap-2 text-sm">
-                      <span className="inline-block w-4 h-4 rounded border border-neutral-300 dark:border-neutral-600 text-center align-middle">
-                        {isPaid ? "✓" : ""}
-                      </span>
-                      Betalt
-                    </button>
+
+                    <label className="text-xs text-neutral-500 dark:text-neutral-400">
+                      Tidligste start:
+                      <select
+                        name="tidligste_tid"
+                        className="ml-2 rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-sm"
+                        defaultValue=""
+                      >
+                        <option value="">— vælg tid —</option>
+                        {timeOptions.map((t) => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <div className="ml-auto flex items-center gap-2">
+                      <button
+                        type="submit"
+                        name="action"
+                        value="tilmeld"
+                        className="rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-sm px-3 py-1"
+                        title="Tilmeld spilleren med valgt tid"
+                      >
+                        Tilmeld
+                      </button>
+                      <button
+                        type="submit"
+                        name="action"
+                        value="afbud"
+                        className="rounded-md bg-rose-600 hover:bg-rose-700 text-white text-sm px-3 py-1"
+                        title="Marker spilleren som afbud"
+                      >
+                        Afbud
+                      </button>
+                    </div>
                   </form>
                 </li>
               );
