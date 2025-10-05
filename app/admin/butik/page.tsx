@@ -4,12 +4,31 @@ import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
 // ---------------------------------------
-// Utils
+// Utils (CPH-dato i YYYY-MM-DD)
 // ---------------------------------------
+const todayCphISO = () => {
+  const fmt = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Europe/Copenhagen",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  return fmt.format(new Date()); // "YYYY-MM-DD"
+};
+
 const toOre = (kr: number) => Math.round(kr * 100);
 const fmt = (ore: number) =>
   new Intl.NumberFormat("da-DK", { style: "currency", currency: "DKK" }).format(ore / 100);
-const todayISO = () => new Date().toISOString().slice(0, 10);
+
+const addDaysISO = (yyyyMMdd: string, delta: number) => {
+  const [y, m, d] = yyyyMMdd.split("-").map((n) => parseInt(n, 10));
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + delta);
+  const y2 = dt.getUTCFullYear();
+  const m2 = String(dt.getUTCMonth() + 1).padStart(2, "0");
+  const d2 = String(dt.getUTCDate()).padStart(2, "0");
+  return `${y2}-${m2}-${d2}`;
+};
 
 // ---------------------------------------
 // Produkter (NØGLERNE skal matche CHECK-constraint i DB)
@@ -28,7 +47,7 @@ const PRODUCTS = {
 
   // Event/aktivitet
   lunarkamp: { label: "🏸 Lunarkamp", priceKr: 50, sign: -1 },
-  torsdagsspil:{ label: "🎾 Torsdagsspil", priceKr: 140, sign: -1 },
+  torsdagsspil: { label: "🎾 Torsdagsspil", priceKr: 140, sign: -1 },
 
   // Merchandise
   tshirt: { label: "👕 T-shirt", priceKr: 300, sign: -1 },
@@ -147,6 +166,9 @@ function Modal({
 // Layout (Butik med 4 faner + stor spillerliste)
 // ---------------------------------------
 export default function AdminButikPage() {
+  // Dato (redigerbar)
+  const [eventDate, setEventDate] = useState<string>(todayCphISO());
+
   const [players, setPlayers] = useState<Player[]>([]);
   const [playerFilter, setPlayerFilter] = useState("");
   const [loadingPlayers, setLoadingPlayers] = useState(true);
@@ -178,14 +200,12 @@ export default function AdminButikPage() {
 
   const [activeGroup, setActiveGroup] = useState<GroupKey>("🍽️ Mad & Drikke");
 
-  const today = useMemo(() => todayISO(), []);
-
-  // Load spillere til i dag
+  // Load spillere for valgt dato
   useEffect(() => {
     (async () => {
       setLoadingPlayers(true);
       setError(null);
-      const d = today;
+      const d = eventDate;
 
       let { data: signups } = await supabase
         .from("event_signups")
@@ -207,20 +227,21 @@ export default function AdminButikPage() {
       }
 
       setPlayers(list);
+      // Hvis ny dato og ingen valgt endnu, vælg første i listen
       if (list.length && !selected) setSelected(list[0].visningsnavn);
       setLoadingPlayers(false);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [today]);
+  }, [eventDate]);
 
-  // Load dagens poster for valgt spiller
+  // Load poster for valgt spiller & dato
   async function refreshPlayerEntries(name: string) {
     setEntriesLoading(true);
     const { data } = await supabase
       .from("bar_entries")
       .select("id, event_date, visningsnavn, product, qty, amount_ore, note, created_at")
       .eq("visningsnavn", name)
-      .eq("event_date", today)
+      .eq("event_date", eventDate)
       .order("created_at", { ascending: false });
     if (data) setEntries(data as Entry[]);
     setEntriesLoading(false);
@@ -229,11 +250,11 @@ export default function AdminButikPage() {
   useEffect(() => {
     if (selected) refreshPlayerEntries(selected);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected, today]);
+  }, [selected, eventDate]);
 
-  // Aftentotaler
+  // Aftentotaler for dato
   async function refreshTotals() {
-    const { data } = await supabase.from("bar_entries").select("product, amount_ore").eq("event_date", today);
+    const { data } = await supabase.from("bar_entries").select("product, amount_ore").eq("event_date", eventDate);
     if (!data) return;
     let sales = 0,
       payments = 0,
@@ -264,7 +285,8 @@ export default function AdminButikPage() {
 
   useEffect(() => {
     refreshTotals();
-  }, [today, selected, entries.length]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventDate, selected, entries.length]);
 
   const saldoOre = useMemo(() => entries.reduce((acc, e) => acc + e.amount_ore, 0), [entries]);
 
@@ -284,14 +306,13 @@ export default function AdminButikPage() {
     setInserting(true);
     setError(null);
     const payload: BarEntryInsert[] = rows.map((r) => ({
-      event_date: today,
+      event_date: eventDate,
       visningsnavn: r.visningsnavn,
       product: r.product,
       qty: r.qty ?? 1,
       amount_ore: r.amount_ore,
       note: r.note ?? null,
     }));
-    // 👇 TS-stabilt: cast kun builder til any for at undgå never-typer
     const qb = supabase.from("bar_entries") as any;
     const { error } = await qb.insert(payload);
     setInserting(false);
@@ -308,7 +329,7 @@ export default function AdminButikPage() {
       .from("bar_entries")
       .select("id", { count: "exact", head: true })
       .eq("visningsnavn", visningsnavn)
-      .eq("event_date", today)
+      .eq("event_date", eventDate)
       .in("product", BEVERAGE_KEYS as unknown as string[]);
     return (count ?? 0) === 0;
   }
@@ -375,7 +396,7 @@ export default function AdminButikPage() {
       .from("bar_entries")
       .select("id")
       .eq("visningsnavn", selected)
-      .eq("event_date", today)
+      .eq("event_date", eventDate)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -385,25 +406,27 @@ export default function AdminButikPage() {
     await refreshTotals();
   }
 
-  // Hent/opret session (freeFirstDrink flag)
+  // Hent/opret session (freeFirstDrink flag) pr. dato
   useEffect(() => {
     (async () => {
       const { data } = await supabase
         .from("bar_sessions")
         .select("event_date, free_first_drink")
-        .eq("event_date", today)
+        .eq("event_date", eventDate)
         .maybeSingle();
       if (data) setFreeFirstDrink((data as BarSession).free_first_drink);
-      else setAskSessionOpen(true);
+      else {
+        setFreeFirstDrink(null);
+        setAskSessionOpen(true);
+      }
     })();
-  }, [today]);
+  }, [eventDate]);
 
   async function chooseFirstDrinkPolicy(flag: boolean) {
     setFreeFirstDrink(flag);
     setAskSessionOpen(false);
-    // 👇 TS-stabilt upsert
     const qb = supabase.from("bar_sessions") as any;
-    await qb.upsert({ event_date: today, free_first_drink: flag });
+    await qb.upsert({ event_date: eventDate, free_first_drink: flag });
   }
 
   // Afledte
@@ -419,7 +442,27 @@ export default function AdminButikPage() {
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-gradient-to-r from-pink-500 via-rose-500 to-fuchsia-600 p-4 text-white shadow-md">
         <div className="text-xl font-semibold">Baradministration</div>
         <div className="flex items-center gap-3 text-sm">
-          <span className="rounded-full bg-white/15 px-3 py-1">{today}</span>
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              value={eventDate}
+              onChange={(e) => setEventDate(e.target.value)}
+              className="rounded-md border border-white/30 bg-white/10 px-3 py-1 text-white placeholder-white/70 focus:outline-none"
+            />
+            <button
+              onClick={() => setEventDate(addDaysISO(eventDate, -1))}
+              className="rounded-full bg-white/20 px-2 py-1"
+            >
+              ‹ I går
+            </button>
+            <button
+              onClick={() => setEventDate(addDaysISO(eventDate, +1))}
+              className="rounded-full bg-white/20 px-2 py-1"
+            >
+              I morgen ›
+            </button>
+          </div>
+
           <div className="flex items-center gap-2">
             <span className="text-white/90">Første drik gratis:</span>
             <button
@@ -455,7 +498,7 @@ export default function AdminButikPage() {
             </div>
           </div>
 
-          {/* Saldo for valgt spiller (flyttet hertil) */}
+          {/* Saldo for valgt spiller */}
           <div className="flex items-center justify-between rounded-2xl border bg-white p-3 shadow-sm">
             <div className="text-base">
               {selected ? (
@@ -478,6 +521,7 @@ export default function AdminButikPage() {
               Fortryd sidste
             </button>
           </div>
+
           <RecentEntries entries={entries} entriesLoading={entriesLoading} />
         </aside>
 
@@ -645,7 +689,7 @@ export default function AdminButikPage() {
         onClose={() => setAskSessionOpen(false)}
       >
         <div className="space-y-3 text-sm">
-          <p>Skal den første drikkevare pr. person være gratis i aften?</p>
+          <p>Skal den første drikkevare pr. person være gratis?</p>
           <div className="flex gap-2">
             <button
               onClick={() => chooseFirstDrinkPolicy(true)}
@@ -683,7 +727,11 @@ function Kpi({
   return (
     <div className={`rounded-xl border bg-white p-3 shadow-sm ${className}`}>
       <div className="text-[11px] uppercase text-gray-500">{label}</div>
-      <div className={`text-lg font-semibold ${emphasis === "pos" ? "text-emerald-700" : emphasis === "neg" ? "text-rose-600" : ""}`}>
+      <div
+        className={`text-lg font-semibold ${
+          emphasis === "pos" ? "text-emerald-700" : emphasis === "neg" ? "text-rose-600" : ""
+        }`}
+      >
         {value}
       </div>
       {sub && <div className="text-[11px] text-gray-400">{sub}</div>}
@@ -744,7 +792,7 @@ function RecentEntries({ entries, entriesLoading }: { entries: Entry[]; entriesL
   return (
     <div className="rounded-2xl border bg-white shadow-sm">
       <div className="flex items-center justify-between border-b p-3">
-        <div className="text-sm font-semibold">🧾 Seneste poster i dag</div>
+        <div className="text-sm font-semibold">🧾 Seneste poster</div>
         <div className="text-xs text-gray-500">{entries.length}</div>
       </div>
       {entriesLoading ? (
@@ -796,8 +844,7 @@ function labelForProduct(key: string) {
     // Event/aktivitet
     case "lunarkamp":
       return "🏸 Lunarkamp";
-
-      case "torsdagsspil":
+    case "torsdagsspil":
       return "🎾 Torsdagsspil";
 
     // Merchandise
