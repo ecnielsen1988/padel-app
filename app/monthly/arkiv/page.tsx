@@ -42,9 +42,7 @@ function MonthBlock({ title, data }: { title: string; data: Item[] }) {
                 <span className="font-medium truncate">{x.visningsnavn}</span>
               </div>
               <span
-                className={`tabular-nums font-semibold ${
-                  x.pluspoint >= 0 ? "text-green-600" : "text-red-500"
-                }`}
+                className={`tabular-nums font-semibold ${x.pluspoint >= 0 ? "text-green-600" : "text-red-500"}`}
                 title={`${x.pluspoint >= 0 ? "+" : ""}${x.pluspoint.toFixed(1)}`}
               >
                 {x.pluspoint >= 0 ? "+" : ""}
@@ -74,26 +72,26 @@ function getBaseUrl() {
   return "http://localhost:3000";
 }
 
-// ✅ VIGTIGT: Pak API-svaret ud så vi altid returnerer et array
+// Pak API-svaret ud så vi altid returnerer et array
 async function fetchMonthly(year: number, month1to12: number): Promise<Item[]> {
   const base = getBaseUrl();
   const url = `${base}/api/monthly?year=${year}&month=${month1to12}`;
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) return [];
   const raw = await res.json();
-  // Ny API: { year, month, mode, data: [...] }
-  if (raw && Array.isArray(raw.data)) return raw.data as Item[];
-  // Gammel API: bare en liste
-  if (Array.isArray(raw)) return raw as Item[];
-  // Fallback: tomt array
+  if (raw && Array.isArray(raw.data)) return raw.data as Item[]; // ny API
+  if (Array.isArray(raw)) return raw as Item[];                  // gammel API fallback
   return [];
 }
 
+// ✅ Next.js 15: searchParams kan være en Promise — await dem
 export default async function ArkivSide({
   searchParams,
 }: {
-  searchParams?: { year?: string };
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const sp = (await searchParams) ?? {};
+
   // Default til indeværende år i Europe/Copenhagen
   const now = new Date();
   const fmt = new Intl.DateTimeFormat("en-CA", {
@@ -101,7 +99,9 @@ export default async function ArkivSide({
     year: "numeric",
   });
   const currentYear = Number(fmt.format(now));
-  const year = Number(searchParams?.year ?? currentYear);
+
+  const yearParam = Array.isArray(sp.year) ? sp.year[0] : sp.year;
+  const year = Number(yearParam ?? currentYear);
 
   // Hent alle 12 måneder parallelt via API'en
   const dataPerMonth = await Promise.all(
