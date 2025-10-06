@@ -1,5 +1,7 @@
 // app/monthly/arkiv/page.tsx
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 import Link from "next/link";
 
@@ -28,7 +30,7 @@ function MonthBlock({ title, data }: { title: string; data: Item[] }) {
   return (
     <section className="max-w-xl mx-auto mb-10">
       <h2 className="text-xl font-bold text-pink-600 mb-3">{title}</h2>
-      {(!data || data.length === 0) ? (
+      {!data || data.length === 0 ? (
         <p className="text-gray-500 dark:text-gray-400">Ingen data.</p>
       ) : (
         <ol className="space-y-2">
@@ -42,7 +44,9 @@ function MonthBlock({ title, data }: { title: string; data: Item[] }) {
                 <span className="font-medium truncate">{x.visningsnavn}</span>
               </div>
               <span
-                className={`tabular-nums font-semibold ${x.pluspoint >= 0 ? "text-green-600" : "text-red-500"}`}
+                className={`tabular-nums font-semibold ${
+                  x.pluspoint >= 0 ? "text-green-600" : "text-red-500"
+                }`}
                 title={`${x.pluspoint >= 0 ? "+" : ""}${x.pluspoint.toFixed(1)}`}
               >
                 {x.pluspoint >= 0 ? "+" : ""}
@@ -64,24 +68,44 @@ function monthNameDa(i1to12: number) {
   return names[i1to12 - 1] ?? String(i1to12);
 }
 
-/** Stabil base-URL uden headers() */
+/** Robust base-URL i SSR (Netlify/Vercel/local) */
 function getBaseUrl() {
-  const fromEnv = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "");
-  if (fromEnv) return fromEnv.startsWith("http") ? fromEnv : `https://${fromEnv}`;
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
-  return "http://localhost:3000";
+  // 1) Eksplicit domæne (anbefalet)
+  const fromPublic = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "");
+  if (fromPublic) return fromPublic.startsWith("http") ? fromPublic : `https://${fromPublic}`;
+
+  // 2) Netlify miljø-variabler
+  const netlifyUrl =
+    process.env.URL ??
+    process.env.DEPLOY_URL ??
+    process.env.DEPLOY_PRIME_URL ??
+    process.env.SITE_URL;
+  if (netlifyUrl) return netlifyUrl.replace(/\/$/, "");
+
+  // 3) Vercel
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`.replace(/\/$/, "");
+
+  // 4) Lokal dev
+  if (process.env.NODE_ENV === "development") return "http://localhost:3000";
+
+  // 5) Fallback til produktionsdomænet (undgå localhost i prod)
+  return "https://padelhuset-app.netlify.app";
 }
 
 // Pak API-svaret ud så vi altid returnerer et array
 async function fetchMonthly(year: number, month1to12: number): Promise<Item[]> {
   const base = getBaseUrl();
   const url = `${base}/api/monthly?year=${year}&month=${month1to12}`;
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) return [];
-  const raw = await res.json();
-  if (raw && Array.isArray(raw.data)) return raw.data as Item[]; // ny API
-  if (Array.isArray(raw)) return raw as Item[];                  // gammel API fallback
-  return [];
+  try {
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) return [];
+    const raw = await res.json();
+    if (raw && Array.isArray(raw.data)) return raw.data as Item[]; // ny API
+    if (Array.isArray(raw)) return raw as Item[];                  // gammel API fallback
+    return [];
+  } catch {
+    return [];
+  }
 }
 
 // ✅ Next.js 15: searchParams kan være en Promise — await dem

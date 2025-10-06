@@ -1,5 +1,7 @@
 // app/active/arkiv/page.tsx
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 import Link from "next/link";
 
@@ -20,33 +22,53 @@ function monthNameDa(i1to12: number) {
   return names[i1to12 - 1] ?? String(i1to12);
 }
 
-/** Stabil base-URL uden headers() */
+/** Robust base-URL i SSR (Netlify/Vercel/local) */
 function getBaseUrl() {
-  const fromEnv = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "");
-  if (fromEnv) return fromEnv.startsWith("http") ? fromEnv : `https://${fromEnv}`;
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
-  return "http://localhost:3000";
+  // 1) Eksplicit domæne (anbefalet)
+  const fromPublic = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "");
+  if (fromPublic) return fromPublic.startsWith("http") ? fromPublic : `https://${fromPublic}`;
+
+  // 2) Netlify miljø-variabler
+  const netlifyUrl =
+    process.env.URL ??
+    process.env.DEPLOY_URL ??
+    process.env.DEPLOY_PRIME_URL ??
+    process.env.SITE_URL;
+  if (netlifyUrl) return netlifyUrl.replace(/\/$/, "");
+
+  // 3) Vercel
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`.replace(/\/$/, "");
+
+  // 4) Lokal dev
+  if (process.env.NODE_ENV === "development") return "http://localhost:3000";
+
+  // 5) Fallback til produktionsdomænet
+  return "https://padelhuset-app.netlify.app";
 }
 
-// Henter /api/active?year=&month= og returnerer altid et array
+// Hent /api/active?year=&month= og returnér altid et array
 async function fetchActiveMonth(year: number, month1to12: number): Promise<AktivItem[]> {
   const base = getBaseUrl();
   const url = `${base}/api/active?year=${year}&month=${month1to12}`;
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) return [];
-  const raw = await res.json();
-  // Ny API: { year, month, mode, data: [...] }
-  if (raw && Array.isArray(raw.data)) return raw.data as AktivItem[];
-  // Back-compat hvis du på et tidspunkt returnerer rå liste
-  if (Array.isArray(raw)) return raw as AktivItem[];
-  return [];
+  try {
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) return [];
+    const raw = await res.json();
+    // Ny API: { year, month, mode, data: [...] }
+    if (raw && Array.isArray(raw.data)) return raw.data as AktivItem[];
+    // Back-compat: hvis der returneres en rå liste
+    if (Array.isArray(raw)) return raw as AktivItem[];
+    return [];
+  } catch {
+    return [];
+  }
 }
 
 function MonthBlock({ title, data }: { title: string; data: AktivItem[] }) {
   return (
     <section className="max-w-xl mx-auto mb-10">
       <h2 className="text-xl font-bold text-pink-600 mb-3">{title}</h2>
-      {(!data || data.length === 0) ? (
+      {!data || data.length === 0 ? (
         <p className="text-gray-500 dark:text-gray-400">Ingen data.</p>
       ) : (
         <ol className="space-y-2">
@@ -62,7 +84,9 @@ function MonthBlock({ title, data }: { title: string; data: AktivItem[] }) {
               <span className="tabular-nums font-semibold whitespace-nowrap">
                 {x.sæt} sæt {medalje(i)}
                 {typeof x.pluspoint === "number" && (
-                  <span className="opacity-70 ml-2">({x.pluspoint >= 0 ? "+" : ""}{x.pluspoint.toFixed(1)})</span>
+                  <span className="opacity-70 ml-2">
+                    ({x.pluspoint >= 0 ? "+" : ""}{x.pluspoint.toFixed(1)})
+                  </span>
                 )}
               </span>
             </li>
@@ -127,3 +151,4 @@ export default async function ArkivActive({
     </main>
   );
 }
+
