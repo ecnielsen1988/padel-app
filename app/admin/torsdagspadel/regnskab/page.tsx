@@ -4,76 +4,95 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 
-type EntryRow = { visningsnavn: string; amount_ore: number | null }
-type SaldoRow = { visningsnavn: string; dkk: number }
+type EntryRow = { visningsnavn: string | null; amount_ore: number | null }
+type SaldoRow = { visningsnavn: string; ore: number } // gem i ØRE hele vejen
 
-function oreToDKK(ore: unknown): number {
-  const n = Number(ore ?? 0)
-  return Number.isFinite(n) ? n / 100 : 0
-}
+const fmtDKK = (ore: number) =>
+  (ore / 100).toLocaleString('da-DK', { style: 'currency', currency: 'DKK' })
 
 export default function AdminRegnskabPage() {
   const [loading, setLoading] = useState(true)
   const [isAdmin, setIsAdmin] = useState(false)
-  const [saldi, setSaldi] = useState<SaldoRow[]>([])
+  const [rows, setRows] = useState<SaldoRow[]>([])
 
   useEffect(() => {
     const run = async () => {
       try {
-        // Auth
+        // --- Auth + admin ---
         const { data: auth } = await supabase.auth.getUser()
         const user = auth?.user
         if (!user) { setLoading(false); return }
 
-        // Admin-check (JWT app_metadata.rolle eller profiles.rolle)
-        const jwtRole = (user as any)?.app_metadata?.rolle
-        let admin = jwtRole === 'admin'
+        let admin = (user as any)?.app_metadata?.rolle === 'admin'
         if (!admin) {
           const { data: me } = await (supabase.from('profiles') as any)
-            .select('id, rolle')
+            .select('rolle')
             .eq('id', user.id)
             .maybeSingle()
-          if ((me as any)?.rolle === 'admin') admin = true
+          admin = (me as any)?.rolle === 'admin'
         }
         setIsAdmin(admin)
         if (!admin) { setLoading(false); return }
 
-        // Hent torsdagsspillere (navne)
+        // --- Hent torsdags-spillere (navne) ---
         const { data: players, error: playersErr } = await (supabase.from('profiles') as any)
           .select('visningsnavn')
           .eq('torsdagspadel', true)
 
-        if (playersErr) { console.error('Fejl ved hentning af spillere:', playersErr); setLoading(false); return }
+        if (playersErr) { console.error(playersErr); setRows([]); setLoading(false); return }
 
-        const names: string[] = (players ?? [])
-          .map((p: any) => (p?.visningsnavn ?? '').toString().trim())
-          .filter((v: string) => v.length > 0)
+        const namesArr: string[] = ((players ?? []) as Array<{ visningsnavn: string | null }>)
+          .map(p => (p.visningsnavn ?? '').trim())
+          .filter(Boolean)
 
-        if (names.length === 0) { setSaldi([]); setLoading(false); return }
+        // dedup navne (hvis der er dubletter i profiles)
+        const names = Array.from(new Set(namesArr))
 
-        // Hent alle bar_entries for disse navne (kun nødvendige kolonner)
-        const { data: entries, error: entErr } = await (supabase.from('bar_entries') as any)
-          .select('visningsnavn, amount_ore')
-          .in('visningsnavn', names)
+        if (names.length === 0) { setRows([]); setLoading(false); return }
 
-        if (entErr) { console.error('Fejl ved hentning af bar_entries:', entErr); setLoading(false); return }
+        // --- Hent bar-entries for KUN disse navne (ALLE sider) ---
+        const PAGE = 1000
+        let from = 0
+        let all: EntryRow[] = []
 
-        // Summér pr. navn
+        for (;;) {
+          const to = from + PAGE - 1
+          const { data: page, error } = await (supabase.from('bar_entries') as any)
+            .select('visningsnavn, amount_ore')
+            .in('visningsnavn', names)
+            .range(from, to)
+
+          if (error) {
+            console.error('Fejl ved hentning af bar_entries:', error)
+            break
+          }
+
+          all.push(...(((page ?? []) as EntryRow[])))
+
+          if (!page || page.length < PAGE) break // sidste side
+          from += PAGE
+        }
+
+        // --- Summér i JS (helt simpelt) ---
         const sumMap = new Map<string, number>()
-        names.forEach(n => sumMap.set(n, 0))
-        ;((entries as EntryRow[]) ?? []).forEach((r) => {
-          const prev = sumMap.get(r.visningsnavn) ?? 0
-          sumMap.set(r.visningsnavn, prev + Number(r.amount_ore ?? 0))
-        })
+        // Sørg for at alle navne findes i mappet (også dem uden rækker)
+        for (const n of names) sumMap.set(n, 0)
 
-        // Byg rækker + sorter A–Å
-        const rows: SaldoRow[] = names.map((n) => ({
-          visningsnavn: n,
-          dkk: oreToDKK(sumMap.get(n) ?? 0),
-        }))
-        rows.sort((a, b) => a.visningsnavn.localeCompare(b.visningsnavn, 'da'))
+        for (const r of all) {
+          const n = (r.visningsnavn ?? '').trim()
+          if (!n) continue
+          if (!sumMap.has(n)) continue // skulle ikke ske, men safe
+          const ore = Number(r.amount_ore ?? 0)
+          if (!Number.isFinite(ore)) continue
+          sumMap.set(n, (sumMap.get(n) ?? 0) + ore)
+        }
 
-        setSaldi(rows)
+        // --- Byg rækker + sorter A-Å ---
+        const list: SaldoRow[] = names
+          .map(n => ({ visningsnavn: n, ore: sumMap.get(n) ?? 0 }))
+          .sort((a, b) => a.visningsnavn.localeCompare(b.visningsnavn, 'da'))
+
+        setRows(list)
       } finally {
         setLoading(false)
       }
@@ -83,16 +102,16 @@ export default function AdminRegnskabPage() {
 
   if (loading) {
     return (
-      <main className="max-w-2xl mx-auto p-8 text-gray-900 dark:text-white">
+      <main className="max-w-2xl mx-auto p-8">
         <h1 className="text-3xl font-bold mb-6">Admin · Regnskab</h1>
-        <p>Indlæser...</p>
+        <p>Indlæser…</p>
       </main>
     )
   }
 
   if (!isAdmin) {
     return (
-      <main className="max-w-2xl mx-auto p-8 text-gray-900 dark:text-white">
+      <main className="max-w-2xl mx-auto p-8">
         <h1 className="text-3xl font-bold mb-6">Admin · Regnskab</h1>
         <p>Du har ikke adgang til denne side.</p>
         <div className="mt-4">
@@ -104,53 +123,49 @@ export default function AdminRegnskabPage() {
     )
   }
 
-  const totalAll = saldi.reduce((acc, r) => acc + r.dkk, 0)
+  const totalAllOre = rows.reduce((acc, r) => acc + r.ore, 0)
 
   return (
-    <main className="max-w-2xl mx-auto p-8 text-gray-900 dark:text-white">
+    <main className="max-w-2xl mx-auto p-8">
       <h1 className="text-3xl font-bold mb-6">Admin · Regnskab</h1>
 
-      {/* Samlet status for alle */}
-      <div className="mb-6 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4">
+      {/* Samlet sum */}
+      <div className="mb-6 rounded-xl border p-4">
         <div className="flex items-center justify-between">
-          <div className="text-sm opacity-70">Samlet status (alle torsdagsspillere)</div>
-          <div className={`text-lg font-semibold ${totalAll > 0 ? 'text-green-700' : totalAll < 0 ? 'text-red-600' : 'text-zinc-700 dark:text-zinc-300'}`}>
-            {totalAll > 0 ? 'Til gode' : totalAll < 0 ? 'Skyld' : 'Alt i nul'}:{' '}
-            {totalAll.toLocaleString('da-DK', { style: 'currency', currency: 'DKK' })}
+          <div className="text-sm opacity-70">Samlet status (torsdagsspillere)</div>
+          <div className={`text-lg font-semibold ${totalAllOre > 0 ? 'text-green-700' : totalAllOre < 0 ? 'text-red-600' : ''}`}>
+            {totalAllOre > 0 ? 'Til gode' : totalAllOre < 0 ? 'Skyld' : 'Alt i nul'}:{' '}
+            {fmtDKK(totalAllOre)}
           </div>
         </div>
       </div>
 
-      {/* Liste efter navn */}
-      {saldi.length === 0 ? (
-        <div className="text-sm text-gray-700 dark:text-gray-300">Ingen torsdagsspillere fundet.</div>
+      {/* Liste */}
+      {rows.length === 0 ? (
+        <div className="text-sm opacity-75">Ingen data.</div>
       ) : (
-        <ul className="divide-y divide-zinc-200 dark:divide-zinc-700 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900">
-          {saldi.map((row) => (
-            <li key={row.visningsnavn} className="p-3 flex items-center justify-between gap-4">
+        <ul className="divide-y rounded-xl border">
+          {rows.map(r => (
+            <li key={r.visningsnavn} className="p-3 flex items-center justify-between gap-4">
               <div className="font-medium truncate">
                 <Link
-                  href={`/torsdagspadel/regnskab?user=${encodeURIComponent(row.visningsnavn)}`}
+                  href={`/torsdagspadel/regnskab?user=${encodeURIComponent(r.visningsnavn)}`}
                   className="underline hover:no-underline"
-                  title="Se detaljer"
                 >
-                  {row.visningsnavn}
+                  {r.visningsnavn}
                 </Link>
               </div>
-              <div className={`shrink-0 font-semibold ${row.dkk < 0 ? 'text-red-600' : row.dkk > 0 ? 'text-green-700' : ''}`}>
-                {row.dkk.toLocaleString('da-DK', { style: 'currency', currency: 'DKK' })}
+              <div className={`shrink-0 font-semibold ${r.ore < 0 ? 'text-red-600' : r.ore > 0 ? 'text-green-700' : ''}`}>
+                {fmtDKK(r.ore)}
               </div>
             </li>
           ))}
         </ul>
       )}
 
-      <div className="mt-6 flex gap-3">
+      <div className="mt-6">
         <Link href="/admin/torsdagspadel" className="inline-block bg-green-700 hover:bg-green-800 text-white font-semibold py-2 px-4 rounded-lg">
           ⬅ Tilbage til Torsdagspadel
-        </Link>
-        <Link href="/admin" className="inline-block bg-zinc-800 hover:bg-zinc-900 text-white font-semibold py-2 px-4 rounded-lg">
-          ⛳ Admin
         </Link>
       </div>
     </main>
