@@ -84,7 +84,19 @@ export default function ReglementPage() {
       </div>
 
       {/* Indhold */}
-      <article className="prose prose-sm sm:prose-base max-w-none prose-headings:mt-6 prose-headings:mb-2 prose-p:my-3 prose-li:my-1 prose-strong:text-gray-900">
+      <article
+  className="
+    prose prose-sm sm:prose-base max-w-none
+    leading-7 sm:leading-8
+    prose-p:my-5
+    prose-li:my-2
+    prose-ul:my-5 prose-ol:my-5
+    prose-h2:mt-12 prose-h2:mb-4
+    prose-h3:mt-8  prose-h3:mb-3
+    prose-table:my-6
+    prose-strong:text-gray-900
+  "
+>
         {/* Kapitel 1 */}
         <h2 id="kapitel-1" className="scroll-mt-24 text-xl font-bold text-gray-900">
           Kapitel 1 – Formål og Rammer
