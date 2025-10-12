@@ -1,7 +1,7 @@
 // app/beskeder/page.tsx
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
 import { notifyUser } from '@/lib/notify';
@@ -24,7 +24,6 @@ type Thread = {
   unread: number;
 };
 
-// Kun til typing af maybeSingle/select på profiles
 type ProfileNameRow = { visningsnavn: string | null };
 
 export default function BeskederThreadView() {
@@ -50,7 +49,9 @@ export default function BeskederThreadView() {
     let cancelled = false;
 
     (async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       const user = session?.user;
 
       if (!user) {
@@ -87,12 +88,12 @@ export default function BeskederThreadView() {
       if (!cancelled) {
         setAllNames(
           ((names as ProfileNameRow[] | null) ?? [])
-            .map(n => n?.visningsnavn ?? '')
+            .map((n) => n?.visningsnavn ?? '')
             .filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
         );
       }
 
-      // Hent alle mine beskeder (ind/ud)
+      // Hent alle mine beskeder (ind/ud) nyeste først
       const { data: msgs } = await supabase
         .from('beskeder')
         .select('*')
@@ -114,36 +115,39 @@ export default function BeskederThreadView() {
       }
     })();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Realtime (kun mine rækker) + deduplikering
   useEffect(() => {
     if (!meId) return;
 
-    const addIfNew = (m: Message) =>
-      setMessages(prev => (prev.some(x => x.id === m.id) ? prev : [m, ...prev]));
+    const addIfNewAtTop = (m: Message) =>
+      setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev : [m, ...prev]));
 
     const channel = supabase
       .channel('beskeder-threads')
-      // Kun inserts hvor jeg er afsender/modtager
+      // Kun inserts hvor jeg er modtager
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'beskeder', filter: `recipient_id=eq.${meId}` },
-        (payload) => addIfNew(payload.new as Message)
+        (payload) => addIfNewAtTop(payload.new as Message)
       )
+      // Kun inserts hvor jeg er afsender
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'beskeder', filter: `sender_id=eq.${meId}` },
-        (payload) => addIfNew(payload.new as Message)
+        (payload) => addIfNewAtTop(payload.new as Message)
       )
-      // Slet kun hvis jeg er afsender (det er den eneste vi tilbyder i UI)
+      // Slet (kun hvis jeg er afsender)
       .on(
         'postgres_changes',
         { event: 'DELETE', schema: 'public', table: 'beskeder', filter: `sender_id=eq.${meId}` },
         (payload) => {
           const deletedId = (payload.old as any)?.id;
-          if (deletedId) setMessages(prev => prev.filter(x => x.id !== deletedId));
+          if (deletedId) setMessages((prev) => prev.filter((x) => x.id !== deletedId));
         }
       )
       // Markering som læst (kun indgående)
@@ -152,12 +156,14 @@ export default function BeskederThreadView() {
         { event: 'UPDATE', schema: 'public', table: 'beskeder', filter: `recipient_id=eq.${meId}` },
         (payload) => {
           const updated = payload.new as Message;
-          setMessages(prev => prev.map(m => (m.id === updated.id ? updated : m)));
+          setMessages((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
         }
       )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [meId]);
 
   // Afledte: tråde
@@ -191,7 +197,7 @@ export default function BeskederThreadView() {
       }
     }
 
-    // Sortér tråde efter seneste aktivitet
+    // Sortér tråde efter seneste aktivitet (nyeste først)
     return Array.from(map.values()).sort(
       (a, b) =>
         new Date(b.lastMessage.created_at).getTime() -
@@ -201,7 +207,7 @@ export default function BeskederThreadView() {
 
   const selectedThread = threads.find((t) => t.counterpartId === selectedThreadId) || null;
 
-  // Beskeder for valgt tråd (stigende tid for chat)
+  // Beskeder for valgt tråd — NYESTE FØRST (descending)
   const selectedMessages = useMemo(() => {
     if (!selectedThreadId) return [];
     return messages
@@ -212,7 +218,7 @@ export default function BeskederThreadView() {
       )
       .sort(
         (a, b) =>
-          new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       );
   }, [messages, meId, selectedThreadId]);
 
@@ -226,19 +232,17 @@ export default function BeskederThreadView() {
 
     (async () => {
       const now = new Date().toISOString();
-      const { error } = await (supabase.from('beskeder') as any) // 👈 TS: cast til any
-        .update({ read_at: now } as any)                         // 👈 TS: cast til any
-        .in('id', idsToMark as any);                              // 👈 TS: cast til any
+      const { error } = await (supabase.from('beskeder') as any)
+        .update({ read_at: now } as any)
+        .in('id', idsToMark as any);
       if (!error) {
-        setMessages((prev) =>
-          prev.map((m) => (idsToMark.includes(m.id) ? { ...m, read_at: now } : m))
-        );
+        setMessages((prev) => prev.map((m) => (idsToMark.includes(m.id) ? { ...m, read_at: now } : m)));
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedThreadId, meId, selectedMessages.length]);
 
-  // Skriv ny besked (via navn → lookup)
+  // === Composer helpers ===
   async function sendMessageByName(name: string, body: string) {
     if (!meId || !meName) {
       alert('Du skal være logget ind.');
@@ -261,7 +265,6 @@ export default function BeskederThreadView() {
     await sendMessageTo(recipient.id, recipient.visningsnavn ?? cleanName, cleanBody);
   }
 
-  // Svar i tråd (vi kender id + navn)
   async function sendMessageTo(recipientId: string, recipientName: string, body: string) {
     if (!meId || !meName) return;
     const row = {
@@ -271,8 +274,8 @@ export default function BeskederThreadView() {
       recipient_visningsnavn: recipientName,
       body: body.trim(),
     };
-    const { data, error } = await (supabase.from('beskeder') as any) // 👈 TS: cast til any
-      .insert(row as any)                                            // 👈 TS: cast til any
+    const { data, error } = await (supabase.from('beskeder') as any)
+      .insert(row as any)
       .select('*')
       .single();
     if (error) {
@@ -281,21 +284,29 @@ export default function BeskederThreadView() {
       return;
     }
 
-    // Dedupe i tilfælde af at realtime INSERT lander samtidigt
-    setMessages(prev => (prev.some(m => m.id === (data as Message).id) ? prev : [...prev, data as Message]));
+    const inserted = data as Message;
 
-    // Push til modtageren (ignorer fejl)
+    // Dedupe og læg ny besked ØVERST
+    setMessages((prev) => (prev.some((m) => m.id === inserted.id) ? prev : [inserted, ...prev]));
+
+    // Push til modtageren (ignorer evt. fejl)
     try {
       await notifyUser({
         user_id: recipientId,
         title: 'Ny besked',
         body: `${meName}: ${row.body}`,
-        url: '/beskeder'
+        url: '/beskeder',
       });
     } catch (e) {
       console.warn('Kunne ikke sende push (beskeder):', e);
     }
   }
+
+  // Scroll til top af tråden ved nye beskeder (fordi nyeste ligger øverst)
+  const threadScrollRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    threadScrollRef.current?.scrollTo({ top: 0 });
+  }, [selectedThreadId, selectedMessages.length]);
 
   // Hard delete (afsender altid)
   function canHardDelete(m: Message) {
@@ -305,9 +316,7 @@ export default function BeskederThreadView() {
     if (!canHardDelete(m)) return;
     const ok = confirm('Slet denne besked for begge parter? Dette kan ikke fortrydes.');
     if (!ok) return;
-    const { error } = await (supabase.from('beskeder') as any) // 👈 TS: cast til any
-      .delete()
-      .eq('id', m.id);
+    const { error } = await (supabase.from('beskeder') as any).delete().eq('id', m.id);
     if (error) {
       console.error(error);
       alert('Kunne ikke slette beskeden.');
@@ -374,11 +383,46 @@ export default function BeskederThreadView() {
                 </div>
                 <div>
                   <label className="block text-sm mb-1">Besked</label>
-                  <input
+                  <textarea
                     value={composerBody}
                     onChange={(e) => setComposerBody(e.target.value)}
-                    className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white/80 dark:bg-[#1e1e1e] p-2.5 outline-none focus:ring-2 focus:ring-pink-500"
-                    placeholder="Hej! Skal vi tage en kamp? 😊"
+                    placeholder="Hej! Skal vi tage en kamp? 😊  (Shift+Enter = linjeskift, Enter = send)"
+                    rows={3}
+                    className="w-full resize-y rounded-xl border border-gray-300 dark:border-gray-700 bg-white/80 dark:bg-[#1e1e1e] p-2.5 outline-none focus:ring-2 focus:ring-pink-500"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        if (!sending && composerBody.trim()) {
+                          (async () => {
+                            setSending(true);
+                            try {
+                              await sendMessageByName(recipientName, composerBody);
+                              setComposerBody('');
+                              setRecipientName('');
+                              setComposerOpen(false);
+                            } finally {
+                              setSending(false);
+                            }
+                          })();
+                        }
+                      }
+                      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                        e.preventDefault();
+                        if (!sending && composerBody.trim()) {
+                          (async () => {
+                            setSending(true);
+                            try {
+                              await sendMessageByName(recipientName, composerBody);
+                              setComposerBody('');
+                              setRecipientName('');
+                              setComposerOpen(false);
+                            } finally {
+                              setSending(false);
+                            }
+                          })();
+                        }
+                      }
+                    }}
                   />
                 </div>
                 <div className="flex justify-end gap-2">
@@ -479,8 +523,11 @@ export default function BeskederThreadView() {
                 </div>
               </div>
 
-              {/* Messages */}
-              <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-2">
+              {/* Messages (NYESTE ØVERST) */}
+              <div
+                ref={threadScrollRef}
+                className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-2"
+              >
                 {selectedMessages.map((m) => {
                   const mine = m.sender_id === meId;
                   return (
@@ -493,7 +540,11 @@ export default function BeskederThreadView() {
                         }`}
                       >
                         <div className="text-sm whitespace-pre-wrap">{m.body}</div>
-                        <div className={`mt-1 text-[11px] opacity-80 ${mine ? 'text-white' : 'text-gray-600 dark:text-gray-300'}`}>
+                        <div
+                          className={`mt-1 text-[11px] opacity-80 ${
+                            mine ? 'text-white' : 'text-gray-600 dark:text-gray-300'
+                          }`}
+                        >
                           {new Date(m.created_at).toLocaleString('da-DK')}
                           {m.sender_id !== meId && !m.read_at ? ' · Ulæst' : ''}
                         </div>
@@ -513,7 +564,7 @@ export default function BeskederThreadView() {
                 })}
               </div>
 
-              {/* Composer */}
+              {/* Composer (multilinje) */}
               <div className="p-3 border-t border-gray-200 dark:border-gray-700">
                 <ThreadComposer
                   onSend={async (text) =>
@@ -538,10 +589,11 @@ function ThreadComposer({ onSend }: { onSend: (text: string) => Promise<void> })
   const [busy, setBusy] = useState(false);
 
   async function handleSend() {
-    if (!text.trim()) return;
+    const msg = text.trim();
+    if (!msg) return;
     setBusy(true);
     try {
-      await onSend(text);
+      await onSend(msg);
       setText('');
     } finally {
       setBusy(false);
@@ -549,19 +601,29 @@ function ThreadComposer({ onSend }: { onSend: (text: string) => Promise<void> })
   }
 
   return (
-    <div className="flex items-center gap-2">
-      <input
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        placeholder="Skriv en besked…"
-        className="flex-1 rounded-xl border border-gray-300 dark:border-gray-700 bg-white/80 dark:bg-[#1e1e1e] p-2.5 outline-none focus:ring-2 focus:ring-pink-500"
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            handleSend();
-          }
-        }}
-      />
+    <div className="flex items-end gap-2">
+      <div className="flex-1">
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Skriv en besked…  (Shift+Enter = linjeskift, Enter = send)"
+          rows={1}
+          className="w-full resize-y rounded-xl border border-gray-300 dark:border-gray-700 bg-white/80 dark:bg-[#1e1e1e] p-2.5 outline-none focus:ring-2 focus:ring-pink-500"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              handleSend();
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+              e.preventDefault();
+              handleSend();
+            }
+          }}
+        />
+        <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+          Enter: send &nbsp;•&nbsp; Shift+Enter: linjeskift
+        </p>
+      </div>
       <button
         onClick={handleSend}
         disabled={busy || !text.trim()}
