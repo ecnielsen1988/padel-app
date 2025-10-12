@@ -382,11 +382,11 @@ export default function TorsdagStartside() {
           💸 Regnskab
         </Link>
         <Link
-          href="/torsdagspadel/events"
-          className="bg-green-700 hover:bg-green-800 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
-        >
-          📅 Kommende Events
-        </Link>
+  href="/torsdagspadel/reglement"
+  className="bg-green-700 hover:bg-green-800 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
+>
+  § Reglement
+</Link>
       </div>
     </main>
   )
