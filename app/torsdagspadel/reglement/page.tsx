@@ -136,7 +136,7 @@ export default function ReglementPage() {
       </Section>
 
       {/* KAPITEL 2 */}
-      <h2 id="kapitel-2" className="scroll-mt-24 text-xl sm:text-2xl font-bold text-zinc-900 dark:text-zinc-100">
+      <h2 id="kapitel-2" className="mt-16 sm:mt-24 scroll-mt-24 text-xl sm:text-2xl font-bold text-zinc-900 dark:text-zinc-100">
         Kapitel 2 – Tilmelding og Fremmøde
       </h2>
 
@@ -172,7 +172,7 @@ export default function ReglementPage() {
       </Section>
 
       {/* KAPITEL 3 */}
-      <h2 id="kapitel-3" className="scroll-mt-24 text-xl sm:text-2xl font-bold text-zinc-900 dark:text-zinc-100">
+      <h2 id="kapitel-3" className="mt-16 sm:mt-24 scroll-mt-24 text-xl sm:text-2xl font-bold text-zinc-900 dark:text-zinc-100">
         Kapitel 3 – Spillets Afvikling
       </h2>
 
@@ -230,7 +230,7 @@ E = 1 / (1 + 10^((Elo_modstandere − Elo_egne) / 400))`}
       </Section>
 
       {/* KAPITEL 4 */}
-      <h2 id="kapitel-4" className="scroll-mt-24 text-xl sm:text-2xl font-bold text-zinc-900 dark:text-zinc-100">
+      <h2 id="kapitel-4" className="mt-16 sm:mt-24 scroll-mt-24 text-xl sm:text-2xl font-bold text-zinc-900 dark:text-zinc-100">
         Kapitel 4 – Sociale Regler og Økonomi
       </h2>
 
@@ -305,7 +305,7 @@ E = 1 / (1 + 10^((Elo_modstandere − Elo_egne) / 400))`}
       </Section>
 
       {/* KAPITEL 5 */}
-      <h2 id="kapitel-5" className="scroll-mt-24 text-xl sm:text-2xl font-bold text-zinc-900 dark:text-zinc-100">
+      <h2 id="kapitel-5" className="mt-16 sm:mt-24 scroll-mt-24 text-xl sm:text-2xl font-bold text-zinc-900 dark:text-zinc-100">
         Kapitel 5 – Administration
       </h2>
 
@@ -325,7 +325,7 @@ E = 1 / (1 + 10^((Elo_modstandere − Elo_egne) / 400))`}
       </Section>
 
       {/* KAPITEL 6 */}
-      <h2 id="kapitel-6" className="scroll-mt-24 text-xl sm:text-2xl font-bold text-zinc-900 dark:text-zinc-100">
+      <h2 id="kapitel-6" className="mt-16 sm:mt-24 scroll-mt-24 text-xl sm:text-2xl font-bold text-zinc-900 dark:text-zinc-100">
         Kapitel 6 – Ikrafttrædelse, ændringer og tolkning
       </h2>
 
