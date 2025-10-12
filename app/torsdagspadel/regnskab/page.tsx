@@ -223,7 +223,7 @@ setMe(profile)
           </div>
         </div>
         <div className="mt-2 text-md text-zinc-600 dark:text-zinc-400 italic">
-          Indbetalinger kan ske til MobilePay Box 2033WT
+          Indbetalinger kan ske til MobilePay Box 1637CJ
         </div>
       </div>
 
