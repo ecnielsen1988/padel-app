@@ -181,6 +181,73 @@ async function loadEventResultsToState(
   });
 }
 
+// Bygger alle sæt fra det nuværende UI-state, score=0–0 (forudfyld program)
+function buildPlannedEventResultRows(params: {
+  eventId: string;
+  plan: Array<{ gi:number; court:string|number; players: { visningsnavn?: string|null }[] }>;
+  roundsPerCourt: Record<number, number>;
+  courtsOrder: (string|number)[];
+  matchTimes: Record<number, { start:string; end:string }>;
+}) {
+  const { eventId, plan, roundsPerCourt, courtsOrder, matchTimes } = params;
+  const rows: EventResultInsert[] = [];
+
+  for (let gi = 0; gi < plan.length; gi++) {
+    const g = plan[gi];
+    const sets = Math.max(1, roundsPerCourt[gi] ?? 3);
+    const court = courtsOrder[gi] != null ? String(courtsOrder[gi]) : String(g.court ?? gi + 1);
+    const times = matchTimes[gi] ?? { start: "17:00", end: "18:30" };
+
+    for (let si = 0; si < sets; si++) {
+      const rot = ROTATIONS[si % ROTATIONS.length];
+      const a1 = (g.players[rot[0][0]]?.visningsnavn || "").trim();
+      const a2 = (g.players[rot[0][1]]?.visningsnavn || "").trim();
+      const b1 = (g.players[rot[1][0]]?.visningsnavn || "").trim();
+      const b2 = (g.players[rot[1][1]]?.visningsnavn || "").trim();
+
+      rows.push({
+        event_id: eventId,
+        group_index: gi,
+        set_index: si,
+        court_label: court || null,
+        start_time: hhmmToDb(times.start),
+        end_time: hhmmToDb(times.end),
+        holdA1: a1 || null,
+        holdA2: a2 || null,
+        holdB1: b1 || null,
+        holdB2: b2 || null,
+        scoreA: 0,
+        scoreB: 0,
+        tiebreak: false,
+      });
+    }
+  }
+  return rows;
+}
+
+// Upserter hele programmet til event_result inden publicering (idempotent)
+async function ensureProgramPersistedToEventResult(params: {
+  eventId: string;
+  plan: Array<{ gi:number; court:string|number; players: { visningsnavn?: string|null }[] }>;
+  roundsPerCourt: Record<number, number>;
+  courtsOrder: (string|number)[];
+  matchTimes: Record<number, { start:string; end:string }>;
+}) {
+  const rows = buildPlannedEventResultRows(params);
+  if (!rows.length) return;
+
+  const CHUNK = 500; // beskyt mod for store payloads
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const slice = rows.slice(i, i + CHUNK);
+    const { error } = await (supabase.from("event_result") as any).upsert(slice, {
+      onConflict: "event_id,group_index,set_index",
+    });
+    if (error) throw error;
+  }
+}
+
+
+
 async function upsertEventResultRow(p: {
   eventId: string;
   gi: number;
@@ -857,19 +924,49 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
   }, [event]);
 
   /* --- Toggle “Programmet offentliggøres” -> status planned/programed --- */
-  async function setProgramPublished(next: boolean) {
+  /* --- Toggle “Programmet offentliggøres” -> forudfyld program -> sæt status --- */
+async function setProgramPublished(next: boolean) {
   if (!event) return;
-  const { data, error } = await (supabase.from("events") as any)
-    .update({ status: next ? "published" : "planned" })
-    .eq("id", event.id)
-    .select("*")
-    .maybeSingle();
-  if (error) {
-    alert("Kunne ikke opdatere status: " + error.message);
-    return;
+
+  try {
+    if (next) {
+      // Publicering kræver at der faktisk er et program
+      if (!plan.length) {
+        alert("Ingen kampe at publicere. Tilføj spillere først.");
+        return;
+      }
+
+      // 1) Læg hele programmet i event_result (score=0–0) inden status flips
+      await ensureProgramPersistedToEventResult({
+        eventId: event.id,
+        plan,
+        roundsPerCourt,
+        courtsOrder,
+        matchTimes,
+      });
+    }
+
+    // 2) Flip status (published/planned)
+    const { data, error } = await (supabase.from("events") as any)
+      .update({ status: next ? "published" : "planned" })
+      .eq("id", event.id)
+      .select("*")
+      .maybeSingle();
+
+    if (error) throw error;
+    if (data) setEvent(data);
+
+    if (next) {
+      alert("Program publiceret og gemt i event_result ✔️");
+    } else {
+      alert("Event sat tilbage til planned.");
+    }
+  } catch (e:any) {
+    console.error(e);
+    alert("Kunne ikke publicere programmet: " + (e?.message ?? e));
   }
-  if (data) setEvent(data);
 }
+
 
 
   /* --- Submit til newresults --- */

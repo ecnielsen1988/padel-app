@@ -4,28 +4,11 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 
-/** Offentligt view (fallback til event_sets) */
-const PUBLIC_VIEW = 'publicerede_kampe'
-
 /** Matchi-links */
 const MATCHI_HELSINGE = 'https://www.matchi.se/facilities/PadelhusetHelsinge'
 const MATCHI_GILLELEJE = 'https://www.matchi.se/facilities/padelhuset.dk'
 
-/** Datatyper */
-type EventSet = {
-  id: number
-  event_dato: string
-  kamp_nr: number
-  saet_nr: number
-  bane: string
-  starttid: string
-  sluttid: string
-  holda1: string
-  holda2: string
-  holdb1: string
-  holdb2: string
-}
-
+/* ======================== Typer ======================== */
 type EventRow = {
   id: string | number
   name: string | null
@@ -38,6 +21,39 @@ type EventRow = {
   only_women: boolean | null
   closed_group: boolean | null
   signup_url?: string | null
+  status?: string | null
+}
+
+type EventResultRow = {
+  event_id: string | number
+  group_index: number
+  set_index: number
+  court_label: string | null
+  start_time: string | null
+  end_time: string | null
+  holdA1: string | null
+  holdA2: string | null
+  holdB1: string | null
+  holdB2: string | null
+  scoreA: number | null
+  scoreB: number | null
+  tiebreak: boolean | null
+}
+
+/** Render-type (for både "Mine" og "Program") */
+type EventSet = {
+  id: string
+  event_id: string | number
+  event_dato: string
+  kamp_nr: number
+  saet_nr: number
+  bane: string
+  starttid: string
+  sluttid: string
+  holda1: string
+  holda2: string
+  holdb1: string
+  holdb2: string
 }
 
 export default function KommendeKampePage() {
@@ -48,7 +64,7 @@ export default function KommendeKampePage() {
   const [elo, setElo] = useState<number | null>(null)
 
   const [mineSets, setMineSets] = useState<EventSet[]>([])
-  const [alleUpcoming, setAlleUpcoming] = useState<EventSet[]>([])
+  const [alleUpcoming, setAlleUpcoming] = useState<EventSet[]>([])   // alle sæt fra event_result for publicerede events
   const [kommendeEvents, setKommendeEvents] = useState<EventRow[]>([])
 
   const [programOpen, setProgramOpen] = useState(false)
@@ -76,7 +92,7 @@ export default function KommendeKampePage() {
       setLoading(true)
       setError(null)
       try {
-        // ===== 1) Auth + PROFIL (visningsnavn, torsdagspadel, koen) =====
+        // ===== 1) Auth + PROFIL =====
         const { data: auth } = await supabase.auth.getUser()
         const user = auth?.user ?? null
 
@@ -85,14 +101,11 @@ export default function KommendeKampePage() {
         let tors = false
 
         if (user) {
-          // Cast .from(...) til any som i din rangliste for at undgå TS-issues
           const { data: prof, error: profErr } = await (supabase.from('profiles') as any)
             .select('visningsnavn, torsdagspadel, koen')
             .eq('id', user.id)
             .maybeSingle()
-
           if (profErr) throw profErr
-
           navn = toStr(prof?.visningsnavn)
           tors = !!prof?.torsdagspadel
           female = normKoen(prof?.koen) === 'kvinde'
@@ -102,80 +115,87 @@ export default function KommendeKampePage() {
         setIsTorsdagspadel(tors)
         setIsFemale(female)
 
-        // ===== 2) Elo: dynamisk fra /api/rangliste (samme model som din rangliste-side) =====
+        // ===== 2) Elo dynamisk =====
         let aktueltElo: number | null = null
         if (navn) {
           try {
             const res = await fetch('/api/rangliste', { cache: 'no-store' })
             const json = await res.json()
-
-            // Din rangliste bruger en "ren liste", men vi understøtter også {data:[...]} fallback
             const maybeList = Array.isArray(json) ? json : Array.isArray(json?.data) ? json.data : []
-            const list: Array<{ visningsnavn: string; elo: number; koen?: string | null }> =
+            const list: Array<{ visningsnavn: string; elo: number }> =
               maybeList
                 .map((r: any) => ({
                   visningsnavn: toStr(r?.visningsnavn) ?? '',
                   elo: Number(r?.elo ?? r?.Elo ?? 0),
-                  koen: r?.koen ?? null,
                 }))
                 .filter((r: any) => r.visningsnavn && Number.isFinite(r.elo))
-
-            const me = list.find(
-              (r) => r.visningsnavn.toLowerCase() === navn!.toLowerCase()
-            )
+            const me = list.find((r) => r.visningsnavn.toLowerCase() === navn!.toLowerCase())
             aktueltElo = me ? me.elo : null
-          } catch { /* ignorer netværksfejl */ }
+          } catch { /* ignorer */ }
         }
         setElo(aktueltElo)
 
-        // ===== 3) Programsatte sæt (public view → fallback event_sets) =====
-        let rows: EventSet[] = []
-        const { data: pubData, error: pubErr } = await supabase
-          .from(PUBLIC_VIEW)
-          .select('*')
-          .gte('event_dato', todayISO)
-          .order('event_dato', { ascending: true })
-          .order('kamp_nr', { ascending: true })
-          .order('saet_nr', { ascending: true })
-
-        if (!pubErr && pubData && pubData.length > 0) {
-          rows = pubData as EventSet[]
-        } else {
-          const { data: setsData, error: setsErr } = await supabase
-            .from('event_sets')
-            .select('*')
-            .gte('event_dato', todayISO)
-            .order('event_dato', { ascending: true })
-            .order('kamp_nr', { ascending: true })
-            .order('saet_nr', { ascending: true })
-          if (setsErr) throw setsErr
-          rows = (setsData as EventSet[]) ?? []
-        }
-        setAlleUpcoming(rows)
-
-        // ===== 4) Mine kampe (filtrér på visningsnavn) =====
-        if (navn) {
-          const mine = rows.filter((r) =>
-            [r.holda1, r.holda2, r.holdb1, r.holdb2]
-              .map((x) => (x || '').trim())
-              .includes(navn!)
-          )
-          setMineSets(mine)
-        } else {
-          setMineSets([])
-        }
-
-        // ===== 5) Events (i dag → +14 dage) =====
+        // ===== 3) Hent events (i dag → +14 dage) =====
         const toISO = plusDaysISO(todayISO, 14)
         const { data: eventsData, error: eventsErr } = await supabase
           .from('events')
-          .select('id,name,date,start_time,end_time,location,min_elo,max_elo,only_women,closed_group,signup_url')
+          .select('id,name,date,start_time,end_time,location,min_elo,max_elo,only_women,closed_group,signup_url,status')
           .gte('date', todayISO)
           .lte('date', toISO)
           .order('date', { ascending: true })
 
         if (eventsErr) throw eventsErr
-        setKommendeEvents((eventsData as EventRow[]) ?? [])
+        const events = (eventsData as EventRow[]) ?? []
+        setKommendeEvents(events)
+
+        // Map for hurtig opslag af dato pr. event
+        const dateByEvent: Record<string, string> = {}
+        events.forEach(e => { if (e.id && e.date) dateByEvent[String(e.id)] = e.date })
+
+        // Saml alle publicerede event_id'er
+        const publishedIds = events
+          .filter(e => (e.status ?? '').toLowerCase() === 'published')
+          .map(e => e.id)
+
+        // ===== 4) Hent alle sæt fra event_result for publicerede events =====
+        let allSets: EventSet[] = []
+        if (publishedIds.length > 0) {
+          const { data: erows, error: erErr } = await (supabase.from('event_result') as any)
+            .select('*')
+            .in('event_id', publishedIds)
+            .order('group_index', { ascending: true })
+            .order('set_index', { ascending: true })
+
+          if (erErr) throw erErr
+
+          allSets = (erows as EventResultRow[]).map(r => ({
+            id: `${r.event_id}-${r.group_index}-${r.set_index}`,
+            event_id: r.event_id,
+            event_dato: dateByEvent[String(r.event_id)] ?? todayISO,
+            kamp_nr: (r.group_index ?? 0) + 1,
+            saet_nr: (r.set_index ?? 0) + 1,
+            bane: (r.court_label ?? '') as string,
+            starttid: (r.start_time ?? '').slice(0, 5),
+            sluttid: (r.end_time ?? '').slice(0, 5),
+            holda1: r.holdA1 ?? '',
+            holda2: r.holdA2 ?? '',
+            holdb1: r.holdB1 ?? '',
+            holdb2: r.holdB2 ?? '',
+          }))
+        }
+        setAlleUpcoming(allSets)
+
+        // ===== 5) Mine kampe: kun publicerede events hvor mit navn indgår i sættene =====
+        if (navn && allSets.length > 0) {
+          const lower = navn.toLowerCase()
+          const mine = allSets.filter(r => {
+            const names = [r.holda1, r.holda2, r.holdb1, r.holdb2].map(x => (x || '').trim().toLowerCase())
+            return names.includes(lower)
+          })
+          setMineSets(mine)
+        } else {
+          setMineSets([])
+        }
       } catch (e) {
         console.error(e)
         setError('Noget gik galt under indlæsning.')
@@ -187,35 +207,55 @@ export default function KommendeKampePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [todayISO])
 
-  // Åbn modal med fuldt program for en given dato
-  async function visFuldtProgram(dato: string) {
+  /* ============ Modal: fuldt program for et event (fra event_result) ============ */
+  async function visFuldtProgramForEvent(eventId: string | number) {
     setProgramOpen(true)
-    setProgramDato(dato)
-    const cached = alleUpcoming.filter((r) => r.event_dato === dato)
-    if (cached.length > 0) { setProgramRows(cached); return }
-
     setProgramLoading(true)
     try {
-      let out: EventSet[] = []
-      const { data: pubData, error: pubErr } = await supabase
-        .from(PUBLIC_VIEW)
-        .select('*')
-        .eq('event_dato', dato)
-        .order('kamp_nr', { ascending: true })
-        .order('saet_nr', { ascending: true })
-      if (!pubErr && pubData && pubData.length) out = pubData as EventSet[]
-      else {
-        const { data: setsData, error: setsErr } = await supabase
-          .from('event_sets')
-          .select('*')
-          .eq('event_dato', dato)
-          .order('kamp_nr', { ascending: true })
-          .order('saet_nr', { ascending: true })
-        if (setsErr) throw setsErr
-        out = (setsData as EventSet[]) ?? []
+      // cache-hit først
+      const cached = alleUpcoming.filter(r => String(r.event_id) === String(eventId))
+      if (cached.length > 0) {
+        setProgramRows(cached)
+        setProgramDato(cached[0]?.event_dato ?? null)
+        return
       }
-      setProgramRows(out)
-    } catch {
+
+      // ellers hent fra DB
+      const { data: evRows, error } = await (supabase.from('event_result') as any)
+        .select('*')
+        .eq('event_id', eventId)
+        .order('group_index', { ascending: true })
+        .order('set_index', { ascending: true })
+
+      if (error) throw error
+
+      // Hent dato fra events (til header)
+      const { data: evMeta } = await (supabase.from('events') as any)
+        .select('date')
+        .eq('id', eventId)
+        .maybeSingle()
+
+      const dato = (evMeta?.date as string) ?? todayISO
+
+      const rows: EventSet[] = (evRows as EventResultRow[]).map(r => ({
+        id: `${r.event_id}-${r.group_index}-${r.set_index}`,
+        event_id: r.event_id,
+        event_dato: dato,
+        kamp_nr: (r.group_index ?? 0) + 1,
+        saet_nr: (r.set_index ?? 0) + 1,
+        bane: (r.court_label ?? '') as string,
+        starttid: (r.start_time ?? '').slice(0, 5),
+        sluttid: (r.end_time ?? '').slice(0, 5),
+        holda1: r.holdA1 ?? '',
+        holda2: r.holdA2 ?? '',
+        holdb1: r.holdB1 ?? '',
+        holdb2: r.holdB2 ?? '',
+      }))
+
+      setProgramRows(rows)
+      setProgramDato(dato)
+    } catch (e) {
+      console.error(e)
       setProgramRows([])
     } finally {
       setProgramLoading(false)
@@ -233,7 +273,6 @@ export default function KommendeKampePage() {
   // Hjælpere til render
   const groupedMine = groupByDateAndMatch(mineSets)
   const mineDatoer = Array.from(groupedMine.keys()).sort()
-  const hasProgramForDate = (isoDate: string) => alleUpcoming.some(r => r.event_dato === isoDate)
   const programGroups = useMemo(() => groupByMatch(programRows), [programRows])
 
   // =============== RENDER =============== //
@@ -263,7 +302,6 @@ export default function KommendeKampePage() {
 
       <h1 className="text-3xl font-bold mb-2 text-center">📅 Kommende</h1>
 
-      {/* Debug badge — valgfri (fjern hvis ikke ønsket) */}
       {visningsnavn && (
         <p className="text-center text-xs opacity-70 mb-4">
           {`Bruger: ${visningsnavn} · Køn: ${isFemale ? 'kvinde' : 'mand'} · Elo: ${elo ?? 'ikke fundet'}`}
@@ -272,7 +310,7 @@ export default function KommendeKampePage() {
 
       {error && <p className="text-center text-red-600 mb-4">{error}</p>}
 
-      {/* ===== Mine kampe ===== */}
+      {/* ===== Mine kampe (fra event_result for publicerede events) ===== */}
       <section className="mb-10">
         <h2 className="text-2xl font-semibold mb-4">Mine kampe</h2>
 
@@ -306,18 +344,20 @@ export default function KommendeKampePage() {
                             </div>
                           ))}
                         </div>
+                        <div className="mt-3">
+                          <button
+                            type="button"
+                            onClick={() => visFuldtProgramForEvent(meta.event_id)}
+                            className="inline-block px-3 py-1.5 rounded-full border-2 border-pink-500 text-pink-600 bg-white/90 dark:bg-[#2a2a2a]/90 shadow hover:bg-pink-50 dark:hover:bg-pink-900/20 transition"
+                            title="Se fuldt program"
+                          >
+                            📋 Fuldt program
+                          </button>
+                        </div>
                       </div>
                     )
                   })}
                 </div>
-                {hasProgramForDate(dato) && (
-                  <div className="mt-4">
-                    <button type="button" onClick={() => visFuldtProgram(dato)}
-                      className="inline-block px-3 py-1.5 rounded-full border-2 border-pink-500 text-pink-600 bg-white/90 dark:bg-[#2a2a2a]/90 shadow hover:bg-pink-50 dark:hover:bg-pink-900/20 transition">
-                      📋 Fuldt program
-                    </button>
-                  </div>
-                )}
               </div>
             )
           })
@@ -325,7 +365,7 @@ export default function KommendeKampePage() {
           <div className="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4">
             <p className="text-zinc-700 dark:text-zinc-300">Ingen kommende kampe.</p>
             <p className="text-sm mt-1 text-zinc-600 dark:text-zinc-400">
-              Tjek events nedenfor – “📋 Program” vises på de datoer, der har planlagte sæt.
+              Tjek events nedenfor – “📋 Program” vises på publicerede events.
             </p>
           </div>
         )}
@@ -341,17 +381,16 @@ export default function KommendeKampePage() {
           <div className="space-y-3">
             {kommendeEvents.map((ev) => {
               if (!ev.date) return null
-              const dato = ev.date
               const navn = (ev.name ?? '').toString().trim() || 'Event'
 
               const womenOnly = !!ev.only_women || /torsdagstøserne/i.test(navn)
               const closedGroup = !!ev.closed_group
+              const status = (ev.status ?? '').toLowerCase()
 
               const minElo = numOrNull(ev.min_elo)
               const maxElo = numOrNull(ev.max_elo)
               const hasEloReq = minElo != null || maxElo != null
 
-              // Elo-krav: hvis event har krav og Elo ukendt/udenfor range → ikke kvalificeret
               const eloOk = hasEloReq
                 ? (elo != null)
                   && (minElo == null || (elo as number) >= minElo)
@@ -362,16 +401,16 @@ export default function KommendeKampePage() {
               const womenOk = womenOnly ? isFemale : true
               const eligible = eloOk && membersOk && womenOk
 
-              const hasProgram = hasProgramForDate(dato)
-
               const signupUrl =
                 (ev as any).signup_url
-                || (ev.location ? getSignupUrlByLocation(ev.location) : getSignupUrlByISODate(dato))
+                || (ev.location ? getSignupUrlByLocation(ev.location) : getSignupUrlByISODate(ev.date))
 
               const timeStr = [fmt(ev.start_time), fmt(ev.end_time)].filter(Boolean).join('–')
               const locationStr = ev.location ? ` · ${ev.location}` : ''
 
               const emoji = getEmojiForEvent({ requireMembers: closedGroup, womenOnly })
+
+              const showProgram = status === 'published'
 
               return (
                 <div
@@ -380,7 +419,7 @@ export default function KommendeKampePage() {
                 >
                   {/* 1: Dato – tid – location */}
                   <div className="text-sm opacity-80">
-                    {formatDanishDate(dato)}
+                    {formatDanishDate(ev.date)}
                     {timeStr ? ` · ${timeStr}` : ''}
                     {locationStr}
                   </div>
@@ -398,10 +437,10 @@ export default function KommendeKampePage() {
                       {buildRequirementsText(minElo, maxElo, closedGroup, womenOnly)}
                     </div>
 
-                    {hasProgram ? (
+                    {showProgram ? (
                       <button
                         type="button"
-                        onClick={() => visFuldtProgram(dato)}
+                        onClick={() => visFuldtProgramForEvent(ev.id)}
                         className="inline-flex items-center justify-center px-3 py-1.5 rounded-full border-2 border-pink-500 text-pink-600 bg-white/90 dark:bg-[#2a2a2a]/90 shadow hover:bg-pink-50 dark:hover:bg-pink-900/20 transition"
                         title="Se fuldt program"
                       >
@@ -413,6 +452,7 @@ export default function KommendeKampePage() {
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center justify-center px-3 py-1.5 rounded-full border-2 border-pink-500 text-pink-600 bg-white/90 dark:bg-[#2a2a2a]/90 shadow hover:bg-pink-50 dark:hover:bg-pink-900/20 transition"
+                        title="Åbner i nyt vindue"
                       >
                         Tilmelding ↗
                       </a>
@@ -453,7 +493,7 @@ export default function KommendeKampePage() {
                 <p className="text-center text-zinc-600 dark:text-zinc-300">Der er ingen planlagte kampe for denne dato.</p>
               ) : (
                 <div className="space-y-3">
-                  {Array.from(programGroups.entries()).map(([kampKey, sets]) => {
+                  {Array.from(groupByMatch(programRows).entries()).map(([kampKey, sets]) => {
                     const meta = sets[0]
                     return (
                       <div key={kampKey}
@@ -494,6 +534,7 @@ export default function KommendeKampePage() {
 }
 
 /* ===================== Hjælpere ===================== */
+
 function toStr(v: unknown): string | null {
   if (v == null) return null
   const s = String(v).trim()
@@ -551,11 +592,10 @@ function getSignupUrlByLocation(location?: string | null): string {
   if (loc.includes('helsinge')) return MATCHI_HELSINGE
   return MATCHI_HELSINGE
 }
-
 function getSignupUrlByISODate(isoDate: string): string {
   const day = new Date(`${isoDate}T00:00:00`).getDay()
-  if (day === 3 || day === 0) return MATCHI_GILLELEJE
-  if (day === 4 || day === 5) return MATCHI_HELSINGE
+  if (day === 3 || day === 0) return MATCHI_GILLELEJE // ons/søn
+  if (day === 4 || day === 5) return MATCHI_HELSINGE  // tor/fre
   return MATCHI_HELSINGE
 }
 
@@ -583,12 +623,12 @@ function buildRequirementsText(
   return bits.join(' · ')
 }
 
-/** Gruppér helpers */
+/** Gruppér helpers (dato → kamp → sæt) */
 function groupByDateAndMatch(rows: EventSet[]) {
   const byDate = new Map<string, Map<string, EventSet[]>>()
   for (const r of rows) {
     const dateKey = r.event_dato
-    const kampKey = `${r.event_dato}#${r.kamp_nr}`
+    const kampKey = `${r.event_id}#${r.kamp_nr}` // mere entydig nøgle
     if (!byDate.has(dateKey)) byDate.set(dateKey, new Map())
     const inner = byDate.get(dateKey)!
     if (!inner.has(kampKey)) inner.set(kampKey, [])
@@ -606,7 +646,7 @@ function groupByDateAndMatch(rows: EventSet[]) {
 function groupByMatch(rows: EventSet[]) {
   const map = new Map<string, EventSet[]>()
   for (const r of rows) {
-    const key = `${r.event_dato}#${r.kamp_nr}`
+    const key = `${r.event_id}#${r.kamp_nr}`
     if (!map.has(key)) map.set(key, [])
     map.get(key)!.push(r)
   }
