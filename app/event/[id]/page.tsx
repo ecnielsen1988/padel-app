@@ -1,6 +1,12 @@
-// app/event/[id]/page.tsx  (SERVER COMPONENT – ingen "use client" her)
+// app/event/[id]/page.tsx  (SERVER – ingen "use client")
 import EventAdminClient from "./EventAdminClient";
 
-export default function Page({ params }: { params: { id: string } }) {
-  return <EventAdminClient eventId={params.id} />;
+export default async function Page({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params; // Next 15 kræver await her
+  return <EventAdminClient eventId={id} />;
 }
+
