@@ -41,7 +41,7 @@ type EventResultInsert = {
   scoreA: number;
   scoreB: number;
   tiebreak: boolean;
-  updated_by: string | null;
+
 };
 type EventResultMeta = Pick<
   EventResultInsert,
@@ -63,6 +63,7 @@ type NewResultInsert = {
   scoreB: number;
   indberettet_af: string;
 };
+
 
 /* ======================== Hjælpere ======================== */
 const fmtTime = (t?: string | null) => (t ? t.slice(0, 5) : "");
@@ -213,12 +214,13 @@ async function upsertEventResultRow(p: {
     scoreA: p.scoreA ?? 0,
     scoreB: p.scoreB ?? 0,
     tiebreak: p.tiebreak ?? false,
-    updated_by,
+  
   };
 
-  const { error } = await supabase
-  .from("event_result")
-  .upsert(payload, { onConflict: "event_id,group_index,set_index" });
+  const eventResultTbl = supabase.from("event_result") as any;
+const { error } = await eventResultTbl.upsert([payload], {
+  onConflict: "event_id,group_index,set_index",
+});
 
   if (error) {
     console.error("upsertEventResultRow", error);
@@ -397,12 +399,13 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
       alert("Kunne ikke finde visningsnavn.");
       return;
     }
-    const { error } = await supabase
-      .from("event_players")
-      .upsert([{ event_id: eventId, user_id: uid, visningsnavn, status: "registered" as const }], {
-        onConflict: "event_id,user_id",
-      })
-      .select();
+    const eventPlayersTbl = supabase.from("event_players") as any;
+const { error } = await eventPlayersTbl
+  .upsert([{ event_id: eventId, user_id: uid, visningsnavn, status: "registered" }], {
+    onConflict: "event_id,user_id",
+  })
+  .select();
+
     if (error) {
       alert(error.message);
       return;
@@ -438,11 +441,12 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
       return;
     }
     const vn = (np.visningsnavn || "").trim();
-    const ins = await supabase
-      .from("event_players")
-      .upsert([{ event_id: eventId, user_id: np.id, visningsnavn: vn, status: "registered" as const }], {
-        onConflict: "event_id,user_id",
-      });
+    const eventPlayersTbl = supabase.from("event_players") as any;
+const ins = await eventPlayersTbl.upsert(
+  [{ event_id: eventId, user_id: np.id, visningsnavn: vn, status: "registered" }],
+  { onConflict: "event_id,user_id" }
+);
+
     if (ins.error) {
       alert(ins.error.message);
       return;
@@ -455,11 +459,15 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
     setPlayers((prev) => {
       const map = new Map(prev.map((p) => [p.user_id, p]));
       map.delete(cur);
-      map.set(np.id, {
-        user_id: np.id,
-        visningsnavn: np.visningsnavn,
-        elo: (np.visningsnavn && eloMap[(np.visningsnavn || "").trim()]) ?? 1000,
-      });
+      map.set(
+  np.id,
+  {
+    user_id: np.id,
+    visningsnavn: np.visningsnavn,
+    elo: ((np.visningsnavn || "").trim() && eloMap[(np.visningsnavn || "").trim()]) ?? 1000,
+  } as any
+);
+
       return Array.from(map.values());
     });
     setSwapIndex(null);
@@ -838,33 +846,32 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
   async function submitResults() {
   if (!event) return;
 
-  // 1) Find første ledige kampid i DB
+  // Hent reporter én gang (ingen await inde i loops/objekter)
+  const { data: auth } = await supabase.auth.getUser();
+  const reporter =
+    (auth?.user?.user_metadata as any)?.visningsnavn ??
+    auth?.user?.email ??
+    "EventAdmin";
+
+  // 1) Første ledige kampid
   const startKampId = await getNextKampId();
 
-  // 2) Find hvilke grupper (gi) der har mindst ét sæt ≠ 0-0
+  // 2) Find hvilke grupper (gi) der har mindst ét sæt ≠ 0–0
   const giHasData: boolean[] = [];
   basePlan.forEach((_, gi) => {
     const r = roundsPerCourt[gi] ?? 3;
     for (let si = 0; si < r; si++) {
       const sc = scores[`${gi}-${si}`] ?? { a: 0, b: 0 };
-      if (sc.a !== 0 || sc.b !== 0) {
-        giHasData[gi] = true;
-        break;
-      }
+      if (sc.a !== 0 || sc.b !== 0) { giHasData[gi] = true; break; }
     }
   });
 
-  // 3) Tildel kampid pr. gi der har data
+  // 3) Tildel kampid per gi med data
   let nextId = startKampId;
   const kampidByGi: Record<number, number> = {};
-  basePlan.forEach((_, gi) => {
-    if (giHasData[gi]) {
-      kampidByGi[gi] = nextId;
-      nextId += 1;
-    }
-  });
+  basePlan.forEach((_, gi) => { if (giHasData[gi]) kampidByGi[gi] = nextId++; });
 
-  // 4) Byg rows til newresults (spring 0-0 over; finish må gerne være false)
+  // 4) Byg rows (spring 0–0 over; finish må gerne være false)
   const rows: NewResultInsert[] = [];
   basePlan.forEach((g, gi) => {
     const r = roundsPerCourt[gi] ?? 3;
@@ -876,34 +883,22 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
       const b2 = g.players[rot[1][1]]?.visningsnavn || "";
       const sc = scores[`${gi}-${si}`] ?? { a: 0, b: 0 };
 
-      // 0–0 springes over
       if (sc.a === 0 && sc.b === 0) continue;
 
-      // færdig-spillet logik for almindeligt sæt
-      const finish = erFærdigtSæt(sc.a, sc.b);
-
       rows.push({
-        date: event.date,                  // <- string "YYYY-MM-DD"
-        finish,                            // <- boolean (må gerne være false)
-        tiebreak: false,                   // <- boolean
-        event: true,                       // <- boolean
-        kampid: kampidByGi[gi],            // <- samlet id pr. kamp
+        date: event.date,
+        finish: erFærdigtSæt(sc.a, sc.b),
+        tiebreak: false,
+        event: true,
+        kampid: kampidByGi[gi],
         holdA1: a1,
         holdA2: a2,
         holdB1: b1,
         holdB2: b2,
         scoreA: sc.a,
         scoreB: sc.b,
-        indberettet_af:
-          (await (async () => {
-            const { data: auth } = await supabase.auth.getUser();
-            return (
-              (auth?.user?.user_metadata as any)?.visningsnavn ||
-              auth?.user?.email ||
-              "EventAdmin"
-            );
-          })()),
-      } satisfies NewResultInsert);
+        indberettet_af: reporter,
+      });
     }
   });
 
@@ -912,16 +907,18 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
     return;
   }
 
-  // 5) Insert (kun de kolonner din tabel har)
-  const { error } = await supabase.from("newresults").insert(rows);
-
-  if (error) {
-    alert("Kunne ikke indsende: " + error.message);
-    return;
-  }
+  // 5) Insert
+  const newresultsTbl = supabase.from("newresults") as any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const { error } = await newresultsTbl.insert(rows as any[]);
+if (error) {
+  alert("Kunne ikke indsende: " + error.message);
+  return;
+}
 
   alert(`Indsendt ${rows.length} sæt ✔️ (første kampid i batch: ${startKampId})`);
 }
+
 
 
   if (!event) return <div className="p-4">Indlæser…</div>;
@@ -1150,12 +1147,19 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
           event={event}
           onClose={() => setShowEdit(false)}
           onSave={async (patch) => {
-            const { data, error } = await supabase
-              .from("events")
-              .update(patch)
-              .eq("id", event.id)
-              .select("*")
-              .maybeSingle<EventRow>();
+            const cleanPatch = Object.fromEntries(
+  Object.entries(patch).filter(([_, v]) => v !== undefined)
+);
+
+const eventsTbl = supabase.from("events") as any;
+
+const { data, error } = await eventsTbl
+  .update(cleanPatch)
+  .eq("id", event.id)
+  .select("*")
+  .maybeSingle();
+
+
             if (!error && data) setEvent(data);
             setShowEdit(false);
           }}
