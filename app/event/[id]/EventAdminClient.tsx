@@ -21,7 +21,8 @@ type EventRow = {
   rules_text: string | null;
   is_published: boolean | null;
   signup_url: string | null;
-  status: "planned" | "ongoing" | "done" | "canceled" | null;
+  // ⬇️ Tilføjet "programed" i unionen
+  status: "planned" | "published" | "ongoing" | "done" | "canceled" | null;
 };
 type Profile = { id: string; visningsnavn: string | null };
 type EventPlayer = { user_id: string; visningsnavn: string | null; elo: number };
@@ -41,7 +42,6 @@ type EventResultInsert = {
   scoreA: number;
   scoreB: number;
   tiebreak: boolean;
-
 };
 type EventResultMeta = Pick<
   EventResultInsert,
@@ -50,11 +50,11 @@ type EventResultMeta = Pick<
 
 // ---- NEWRESULTS: Insert-type (KUN de kolonner der findes i din tabel) ----
 type NewResultInsert = {
-  date: string;              // "YYYY-MM-DD"
+  date: string; // "YYYY-MM-DD"
   finish: boolean;
   tiebreak: boolean;
   event: boolean;
-  kampid: number;            // fælles for sæt i samme kamp
+  kampid: number; // fælles for sæt i samme kamp
   holdA1: string;
   holdA2: string;
   holdB1: string;
@@ -63,7 +63,6 @@ type NewResultInsert = {
   scoreB: number;
   indberettet_af: string;
 };
-
 
 /* ======================== Hjælpere ======================== */
 const fmtTime = (t?: string | null) => (t ? t.slice(0, 5) : "");
@@ -214,13 +213,12 @@ async function upsertEventResultRow(p: {
     scoreA: p.scoreA ?? 0,
     scoreB: p.scoreB ?? 0,
     tiebreak: p.tiebreak ?? false,
-  
   };
 
   const eventResultTbl = supabase.from("event_result") as any;
-const { error } = await eventResultTbl.upsert([payload], {
-  onConflict: "event_id,group_index,set_index",
-});
+  const { error } = await eventResultTbl.upsert([payload], {
+    onConflict: "event_id,group_index,set_index",
+  });
 
   if (error) {
     console.error("upsertEventResultRow", error);
@@ -295,6 +293,9 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
   const [matchTimes, setMatchTimes] = useState<Record<number, { start: string; end: string }>>({});
   const [scores, setScores] = useState<Record<string, Score>>({});
   const [groupOrder, setGroupOrder] = useState<number[]>([]);
+
+  // 🔒 Låse-flag når programmet er offentliggjort
+  const locked = event?.status === "published";
 
   /* --- fetch event + liste --- */
   useEffect(() => {
@@ -391,20 +392,24 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
     [allProfiles]
   );
 
-  /* --- spillere add/remove/swap --- */
+  /* --- spillere add/remove/swap (respekter locked) --- */
   async function addPlayer(uid: string, nameFromList?: string | null) {
     if (!eventId) return;
+    if (locked) {
+      alert("Programmet er offentliggjort – spillere kan ikke ændres.");
+      return;
+    }
     const visningsnavn = (nameFromList ?? findVisningsnavn(uid) ?? "").trim();
     if (!visningsnavn) {
       alert("Kunne ikke finde visningsnavn.");
       return;
     }
     const eventPlayersTbl = supabase.from("event_players") as any;
-const { error } = await eventPlayersTbl
-  .upsert([{ event_id: eventId, user_id: uid, visningsnavn, status: "registered" }], {
-    onConflict: "event_id,user_id",
-  })
-  .select();
+    const { error } = await eventPlayersTbl
+      .upsert([{ event_id: eventId, user_id: uid, visningsnavn, status: "registered" }], {
+        onConflict: "event_id,user_id",
+      })
+      .select();
 
     if (error) {
       alert(error.message);
@@ -416,6 +421,10 @@ const { error } = await eventPlayersTbl
 
   async function removePlayer(uid: string) {
     if (!eventId) return;
+    if (locked) {
+      alert("Programmet er offentliggjort – spillere kan ikke ændres.");
+      return;
+    }
     if (!confirm("Fjern spiller fra event?")) return;
     const { error } = await supabase.from("event_players").delete().eq("event_id", eventId).eq("user_id", uid);
     if (error) alert(error.message);
@@ -424,6 +433,10 @@ const { error } = await eventPlayersTbl
 
   async function replacePlayerAt(index: number, np: Profile & { elo?: number }) {
     if (!eventId) return;
+    if (locked) {
+      alert("Programmet er offentliggjort – spillere kan ikke ændres.");
+      return;
+    }
     const cur = orderIds[index];
     if (!cur) return;
     if (np.id === cur) {
@@ -442,10 +455,10 @@ const { error } = await eventPlayersTbl
     }
     const vn = (np.visningsnavn || "").trim();
     const eventPlayersTbl = supabase.from("event_players") as any;
-const ins = await eventPlayersTbl.upsert(
-  [{ event_id: eventId, user_id: np.id, visningsnavn: vn, status: "registered" }],
-  { onConflict: "event_id,user_id" }
-);
+    const ins = await eventPlayersTbl.upsert(
+      [{ event_id: eventId, user_id: np.id, visningsnavn: vn, status: "registered" }],
+      { onConflict: "event_id,user_id" }
+    );
 
     if (ins.error) {
       alert(ins.error.message);
@@ -459,14 +472,11 @@ const ins = await eventPlayersTbl.upsert(
     setPlayers((prev) => {
       const map = new Map(prev.map((p) => [p.user_id, p]));
       map.delete(cur);
-      map.set(
-  np.id,
-  {
-    user_id: np.id,
-    visningsnavn: np.visningsnavn,
-    elo: ((np.visningsnavn || "").trim() && eloMap[(np.visningsnavn || "").trim()]) ?? 1000,
-  } as any
-);
+      map.set(np.id, {
+        user_id: np.id,
+        visningsnavn: np.visningsnavn,
+        elo: ((np.visningsnavn || "").trim() && eloMap[(np.visningsnavn || "").trim()]) ?? 1000,
+      } as any);
 
       return Array.from(map.values());
     });
@@ -485,6 +495,10 @@ const ins = await eventPlayersTbl.upsert(
   }, [search, allProfiles, orderIds, eloMap]);
 
   function movePlayerUp(uid: string) {
+    if (locked) {
+      alert("Programmet er offentliggjort – spillere kan ikke ændres.");
+      return;
+    }
     setOrderIds((prev) => {
       const i = prev.indexOf(uid);
       if (i <= 0) return prev;
@@ -842,84 +856,97 @@ const ins = await eventPlayersTbl.upsert(
     return { emojiLeft: "🎾", emojiRight: "🎾" };
   }, [event]);
 
-  /* --- Submit til newresults --- */
-  async function submitResults() {
+  /* --- Toggle “Programmet offentliggøres” -> status planned/programed --- */
+  async function setProgramPublished(next: boolean) {
   if (!event) return;
-
-  // Hent reporter én gang (ingen await inde i loops/objekter)
-  const { data: auth } = await supabase.auth.getUser();
-  const reporter =
-    (auth?.user?.user_metadata as any)?.visningsnavn ??
-    auth?.user?.email ??
-    "EventAdmin";
-
-  // 1) Første ledige kampid
-  const startKampId = await getNextKampId();
-
-  // 2) Find hvilke grupper (gi) der har mindst ét sæt ≠ 0–0
-  const giHasData: boolean[] = [];
-  basePlan.forEach((_, gi) => {
-    const r = roundsPerCourt[gi] ?? 3;
-    for (let si = 0; si < r; si++) {
-      const sc = scores[`${gi}-${si}`] ?? { a: 0, b: 0 };
-      if (sc.a !== 0 || sc.b !== 0) { giHasData[gi] = true; break; }
-    }
-  });
-
-  // 3) Tildel kampid per gi med data
-  let nextId = startKampId;
-  const kampidByGi: Record<number, number> = {};
-  basePlan.forEach((_, gi) => { if (giHasData[gi]) kampidByGi[gi] = nextId++; });
-
-  // 4) Byg rows (spring 0–0 over; finish må gerne være false)
-  const rows: NewResultInsert[] = [];
-  basePlan.forEach((g, gi) => {
-    const r = roundsPerCourt[gi] ?? 3;
-    for (let si = 0; si < r; si++) {
-      const rot = ROTATIONS[si % ROTATIONS.length];
-      const a1 = g.players[rot[0][0]]?.visningsnavn || "";
-      const a2 = g.players[rot[0][1]]?.visningsnavn || "";
-      const b1 = g.players[rot[1][0]]?.visningsnavn || "";
-      const b2 = g.players[rot[1][1]]?.visningsnavn || "";
-      const sc = scores[`${gi}-${si}`] ?? { a: 0, b: 0 };
-
-      if (sc.a === 0 && sc.b === 0) continue;
-
-      rows.push({
-        date: event.date,
-        finish: erFærdigtSæt(sc.a, sc.b),
-        tiebreak: false,
-        event: true,
-        kampid: kampidByGi[gi],
-        holdA1: a1,
-        holdA2: a2,
-        holdB1: b1,
-        holdB2: b2,
-        scoreA: sc.a,
-        scoreB: sc.b,
-        indberettet_af: reporter,
-      });
-    }
-  });
-
-  if (!rows.length) {
-    alert("Ingen sæt at indsende (alle står 0–0).");
+  const { data, error } = await (supabase.from("events") as any)
+    .update({ status: next ? "published" : "planned" })
+    .eq("id", event.id)
+    .select("*")
+    .maybeSingle();
+  if (error) {
+    alert("Kunne ikke opdatere status: " + error.message);
     return;
   }
-
-  // 5) Insert
-  const newresultsTbl = supabase.from("newresults") as any;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const { error } = await newresultsTbl.insert(rows as any[]);
-if (error) {
-  alert("Kunne ikke indsende: " + error.message);
-  return;
-}
-
-  alert(`Indsendt ${rows.length} sæt ✔️ (første kampid i batch: ${startKampId})`);
+  if (data) setEvent(data);
 }
 
 
+  /* --- Submit til newresults --- */
+  async function submitResults() {
+    if (!event) return;
+
+    const { data: auth } = await supabase.auth.getUser();
+    const reporter =
+      (auth?.user?.user_metadata as any)?.visningsnavn ??
+      auth?.user?.email ??
+      "EventAdmin";
+
+    const startKampId = await getNextKampId();
+
+    const giHasData: boolean[] = [];
+    basePlan.forEach((_, gi) => {
+      const r = roundsPerCourt[gi] ?? 3;
+      for (let si = 0; si < r; si++) {
+        const sc = scores[`${gi}-${si}`] ?? { a: 0, b: 0 };
+        if (sc.a !== 0 || sc.b !== 0) {
+          giHasData[gi] = true;
+          break;
+        }
+      }
+    });
+
+    let nextId = startKampId;
+    const kampidByGi: Record<number, number> = {};
+    basePlan.forEach((_, gi) => {
+      if (giHasData[gi]) kampidByGi[gi] = nextId++;
+    });
+
+    const rows: NewResultInsert[] = [];
+    basePlan.forEach((g, gi) => {
+      const r = roundsPerCourt[gi] ?? 3;
+      for (let si = 0; si < r; si++) {
+        const rot = ROTATIONS[si % ROTATIONS.length];
+        const a1 = g.players[rot[0][0]]?.visningsnavn || "";
+        const a2 = g.players[rot[0][1]]?.visningsnavn || "";
+        const b1 = g.players[rot[1][0]]?.visningsnavn || "";
+        const b2 = g.players[rot[1][1]]?.visningsnavn || "";
+        const sc = scores[`${gi}-${si}`] ?? { a: 0, b: 0 };
+
+        if (sc.a === 0 && sc.b === 0) continue;
+
+        rows.push({
+          date: event.date,
+          finish: erFærdigtSæt(sc.a, sc.b),
+          tiebreak: false,
+          event: true,
+          kampid: kampidByGi[gi],
+          holdA1: a1,
+          holdA2: a2,
+          holdB1: b1,
+          holdB2: b2,
+          scoreA: sc.a,
+          scoreB: sc.b,
+          indberettet_af: reporter,
+        });
+      }
+    });
+
+    if (!rows.length) {
+      alert("Ingen sæt at indsende (alle står 0–0).");
+      return;
+    }
+
+    const newresultsTbl = supabase.from("newresults") as any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await newresultsTbl.insert(rows as any[]);
+    if (error) {
+      alert("Kunne ikke indsende: " + error.message);
+      return;
+    }
+
+    alert(`Indsendt ${rows.length} sæt ✔️ (første kampid i batch: ${startKampId})`);
+  }
 
   if (!event) return <div className="p-4">Indlæser…</div>;
 
@@ -943,7 +970,7 @@ if (error) {
       {/* Header */}
       <div className="mt-1 mb-2 text-center">
         <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-pink-600">
-          {header.emojiLeft} {event.name} {header.emojiRight}
+          {header.emojiLeft} {event.name} {header.emojiRight} {locked && <span className="ml-2 text-xs align-middle px-2 py-0.5 rounded-full bg-pink-600 text-white">🔒 Offentliggjort</span>}
         </h1>
         <div className="text-xs opacity-70 mt-1">
           {event.date} · {fmtTime(event.start_time)}–{fmtTime(event.end_time)} · {event.location}
@@ -966,13 +993,26 @@ if (error) {
             ))}
           </select>
         </label>
+
+        {/* 🔒 Programmet offentliggøres toggle */}
         <button
-          type="button"
-          onClick={() => setShowEdit(true)}
-          className="px-3 py-1 rounded-md border text-sm bg-pink-50 border-pink-300 text-pink-800 hover:bg-pink-100 dark:bg-pink-900/20 dark:text-pink-200 dark:border-pink-700"
-        >
-          Redigér
-        </button>
+  type="button"
+  onClick={() => setShowEdit(true)}
+  className="px-3 py-1 rounded-md border text-sm bg-pink-50 border-pink-300 text-pink-800 hover:bg-pink-100 dark:bg-pink-900/20 dark:text-pink-200 dark:border-pink-700"
+>
+  Redigér
+</button>
+
+<label className="text-sm flex items-center gap-2 px-2 py-1 rounded-md border bg-white dark:bg-zinc-900 border-pink-300 dark:border-pink-700">
+  <input
+    type="checkbox"
+    checked={locked}
+    onChange={(e) => void setProgramPublished(e.target.checked)}
+  />
+  <span>Programmet offentliggøres</span>
+</label>
+
+
       </div>
 
       {/* Grid */}
@@ -994,10 +1034,11 @@ if (error) {
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Søg (visningsnavn)…"
-              className="w-full border rounded px-2 py-1 text-sm bg-white/90 dark:bg-zinc-900 border-pink-400/70 dark:border-pink-800/70"
+              placeholder={locked ? "Programmet er låst" : "Søg (visningsnavn)…"}
+              disabled={locked}
+              className={`w-full border rounded px-2 py-1 text-sm bg-white/90 dark:bg-zinc-900 border-pink-400/70 dark:border-pink-800/70 ${locked ? "opacity-60 cursor-not-allowed" : ""}`}
             />
-            {!!search && (
+            {!!search && !locked && (
               <div className="mt-1 max-h-56 overflow-auto rounded border bg-white dark:bg-zinc-900 border-pink-300 dark:border-pink-800">
                 {loadingProfiles && <div className="p-2 text-xs opacity-70">Indlæser…</div>}
                 {!loadingProfiles &&
@@ -1051,28 +1092,32 @@ if (error) {
                             <button
                               type="button"
                               onClick={() => movePlayerUp(uid)}
-                              className="p-1.5 rounded-md border text-xs hover:bg-pink-50 dark:hover:bg-pink-900/30 border-pink-300 dark:border-pink-700 text-pink-700 dark:text-pink-300"
-                              title="Ryk spiller op"
+                              disabled={locked}
+                              className={`p-1.5 rounded-md border text-xs hover:bg-pink-50 dark:hover:bg-pink-900/30 border-pink-300 dark:border-pink-700 text-pink-700 dark:text-pink-300 ${locked ? "opacity-50 cursor-not-allowed" : ""}`}
+                              title={locked ? "Låst" : "Ryk spiller op"}
                             >
                               ⬆️
                             </button>
                             <button
                               type="button"
                               onClick={() => {
+                                if (locked) return;
                                 setSwapIndex(i);
                                 setSwapOpen(true);
                                 setSearch("");
                               }}
-                              className="p-1.5 rounded-md border text-xs hover:bg-blue-50 border-blue-300 text-blue-700 dark:hover:bg-blue-900/30 dark:border-blue-700 dark:text-blue-200"
-                              title="Skift spiller"
+                              disabled={locked}
+                              className={`p-1.5 rounded-md border text-xs hover:bg-blue-50 border-blue-300 text-blue-700 dark:hover:bg-blue-900/30 dark:border-blue-700 dark:text-blue-200 ${locked ? "opacity-50 cursor-not-allowed" : ""}`}
+                              title={locked ? "Låst" : "Skift spiller"}
                             >
                               🔁
                             </button>
                             <button
                               type="button"
                               onClick={() => removePlayer(uid)}
-                              className="p-1.5 rounded-md border text-xs hover:bg-pink-50 dark:hover:bg-pink-900/30 border-red-300 dark:border-red-700 text-red-600 dark:text-red-400"
-                              title="Fjern spiller"
+                              disabled={locked}
+                              className={`p-1.5 rounded-md border text-xs hover:bg-pink-50 dark:hover:bg-pink-900/30 border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 ${locked ? "opacity-50 cursor-not-allowed" : ""}`}
+                              title={locked ? "Låst" : "Fjern spiller"}
                             >
                               🗑️
                             </button>
@@ -1148,17 +1193,15 @@ if (error) {
           onClose={() => setShowEdit(false)}
           onSave={async (patch) => {
             const cleanPatch = Object.fromEntries(
-  Object.entries(patch).filter(([_, v]) => v !== undefined)
-);
+              Object.entries(patch).filter(([_, v]) => v !== undefined)
+            );
 
-const eventsTbl = supabase.from("events") as any;
-
-const { data, error } = await eventsTbl
-  .update(cleanPatch)
-  .eq("id", event.id)
-  .select("*")
-  .maybeSingle();
-
+            const eventsTbl = supabase.from("events") as any;
+            const { data, error } = await eventsTbl
+              .update(cleanPatch)
+              .eq("id", event.id)
+              .select("*")
+              .maybeSingle();
 
             if (!error && data) setEvent(data);
             setShowEdit(false);
@@ -1167,7 +1210,7 @@ const { data, error } = await eventsTbl
         />
       )}
       <SwapModal
-        open={swapOpen}
+        open={swapOpen && !locked}
         onClose={() => {
           setSwapOpen(false);
           setSwapIndex(null);
@@ -1200,11 +1243,6 @@ function CenterMatches({
 }) {
   const setKey = (gi:number,si:number)=>`${gi}-${si}`;
   const scoreOf = (s?:{a:number;b:number})=>({a:s?.a??0,b:s?.b??0});
-  const previousSetsFor = (gi:number, si:number)=>{ const sets:any[]=[]; for(let g=0; g<=gi; g++){ const rMax=roundsPerCourt[g]??3; const lastSi=g===gi?si-1:rMax-1; if(lastSi<0) continue;
-    const players=(plan.find(x=>x.gi===g)?.players) ?? []; for(let s=0; s<=lastSi; s++){ const rot=ROTATIONS[s%ROTATIONS.length]; const a1=players[rot[0][0]]?.visningsnavn||"?"; const a2=players[rot[0][1]]?.visningsnavn||"?"; const b1=players[rot[1][0]]?.visningsnavn||"?"; const b2=players[rot[1][1]]?.visningsnavn||"?";
-      const sc=scoreOf(scores[setKey(g,s)]); const done=sc.a!==0||sc.b!==0?erFærdigtSæt(sc.a,sc.b):false;
-      sets.push({ id:2_000_000+g*100+s, kampid:800_000+g, date:event.date??"1970-01-01", holdA1:a1,holdA2:a2,holdB1:b1,holdB2:b2, scoreA:sc.a,scoreB:sc.b, finish:done, event:true, tiebreak:"false" }); } }
-    return sets; };
 
   const ScoreBox = ({ value, onChange, title }:{ value:number; onChange:(val:string)=>void; title:string }) => (
     <input type="text" inputMode="numeric" pattern="[0-7]" maxLength={1} value={String(value)} onFocus={(e)=>e.currentTarget.select()} onChange={(e)=>onChange(e.target.value)}
@@ -1214,10 +1252,11 @@ function CenterMatches({
   return (
     <div className="space-y-3">
       {plan.map((g, index)=>{
-        const gi=g.gi;                       // stabil nøgle for denne kamp
-        const kampNr=index+1;                // label i vist rækkefølge
+        const gi=g.gi;
+        const kampNr=index+1;
         const runder=roundsPerCourt[gi]??3;
         const mt=matchTimes[gi]??{ start:(event.start_time||"17:00").slice(0,5), end:(event.end_time||"18:30").slice(0,5) };
+        const locked = event?.status === "published";
 
         return (
           <div key={`kamp-${gi}`} className="rounded-lg border dark:border-zinc-800 overflow-hidden">
@@ -1250,8 +1289,32 @@ function CenterMatches({
             {/* Sætlinjer */}
             <div className="px-3 py-2 space-y-1">
               {Array.from({length:runder}).map((_,si)=>{
-                const rot=ROTATIONS[si%ROTATIONS.length], a1=g.players[rot[0][0]], a2=g.players[rot[0][1]], b1=g.players[rot[1][0]], b2=g.players[rot[1][1]], key=setKey(gi,si), sc=scoreOf(scores[key]);
-                const prevSets=(()=>{ const sets:any[]=[]; for(let gg=0; gg<=gi; gg++){ const rMax=roundsPerCourt[gg]??3; const lastSi=gg===gi?si-1:rMax-1; if(lastSi<0) continue; const players=(plan.find(x=>x.gi===gg)?.players)??[]; for(let s=0;s<=lastSi;s++){ const r=ROTATIONS[s%ROTATIONS.length]; const A1=players[r[0][0]]?.visningsnavn||"?"; const A2=players[r[0][1]]?.visningsnavn||"?"; const B1=players[r[1][0]]?.visningsnavn||"?"; const B2=players[r[1][1]]?.visningsnavn||"?"; const SS=scoreOf(scores[setKey(gg,s)]); const done=SS.a!==0||SS.b!==0?erFærdigtSæt(SS.a,SS.b):false; sets.push({id:2_000_000+gg*100+s,kampid:800_000+gg,date:event.date??"1970-01-01",holdA1:A1,holdA2:A2,holdB1:B1,holdB2:B2,scoreA:SS.a,scoreB:SS.b,finish:done,event:true,tiebreak:"false"});} } return sets; })();
+                const rot=ROTATIONS[si%ROTATIONS.length];
+                const a1=g.players[rot[0][0]];
+                const a2=g.players[rot[0][1]];
+                const b1=g.players[rot[1][0]];
+                const b2=g.players[rot[1][1]];
+                const key=setKey(gi,si);
+                const sc=scoreOf(scores[key]);
+
+                // Forventningspct for visning
+                const prevSets:any[]=[];
+                for(let gg=0; gg<=gi; gg++){
+                  const rMax=roundsPerCourt[gg]??3;
+                  const lastSi=gg===gi?si-1:rMax-1;
+                  if(lastSi<0) continue;
+                  const players=(plan.find(x=>x.gi===gg)?.players)??[];
+                  for(let s=0; s<=lastSi; s++){
+                    const r=ROTATIONS[s%ROTATIONS.length];
+                    const A1=players[r[0][0]]?.visningsnavn||"?";
+                    const A2=players[r[0][1]]?.visningsnavn||"?";
+                    const B1=players[r[1][0]]?.visningsnavn||"?";
+                    const B2=players[r[1][1]]?.visningsnavn||"?";
+                    const SS=scoreOf(scores[setKey(gg,s)]);
+                    const done=SS.a!==0||SS.b!==0?erFærdigtSæt(SS.a,SS.b):false;
+                    prevSets.push({id:2_000_000+gg*100+s,kampid:800_000+gg,date:event.date??"1970-01-01",holdA1:A1,holdA2:A2,holdB1:B1,holdB2:B2,scoreA:SS.a,scoreB:SS.b,finish:done,event:true,tiebreak:"false"});
+                  }
+                }
                 const { nyEloMap } = beregnEloForKampe(prevSets as any, eloMap);
                 const rA1=a1?.visningsnavn?nyEloMap[a1.visningsnavn]??1500:1500, rA2=a2?.visningsnavn?nyEloMap[a2.visningsnavn]??1500:1500;
                 const rB1=b1?.visningsnavn?nyEloMap[b1.visningsnavn]??1500:1500, rB2=b2?.visningsnavn?nyEloMap[b2.visningsnavn]??1500:1500;
@@ -1302,7 +1365,9 @@ function CenterMatches({
 }
 
 /* ===== Modal: Redigér event ===== */
-function EditModal({ event, onClose, onSave, onResetEmptySets }:{ event:EventRow; onClose:()=>void; onSave:(patch:Partial<EventRow>)=>void; onResetEmptySets:()=>void; }) {
+function EditModal({ event, onClose, onSave, onResetEmptySets }:{
+  event:EventRow; onClose:()=>void; onSave:(patch:Partial<EventRow>)=>void; onResetEmptySets:()=>void;
+}) {
   const [draft, setDraft] = useState<Partial<EventRow>>({ ...event });
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-6">
@@ -1365,3 +1430,4 @@ function SwapModal({ open, onClose, onPick, searchResults, search, setSearch, lo
     </div>
   );
 }
+
