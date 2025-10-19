@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 
-/** Offentligt view (fallback til event_sets, hvis view ikke findes) */
+/** Offentligt view (fallback til event_sets) */
 const PUBLIC_VIEW = 'publicerede_kampe'
 
 /** Matchi-links */
@@ -26,41 +26,38 @@ type EventSet = {
   holdb2: string
 }
 
-/** Præcis struktur i `events` */
 type EventRow = {
   id: string | number
   name: string | null
-  date: string | null             // ISO (YYYY-MM-DD)
-  start_time: string | null       // "HH:MM[:SS]"
+  date: string | null
+  start_time: string | null
   end_time: string | null
-  location: string | null         // "Helsinge" | "Gilleleje" | ...
+  location: string | null
   min_elo: number | null
   max_elo: number | null
-  only_women: boolean | null      // Kun for kvinder
-  closed_group: boolean | null    // Kun for medlemmer
-  signup_url?: string | null      // valgfrit felt
+  only_women: boolean | null
+  closed_group: boolean | null
+  signup_url?: string | null
 }
 
 export default function KommendeKampePage() {
   const [visningsnavn, setVisningsnavn] = useState<string | null>(null)
+  const [isFemale, setIsFemale] = useState<boolean>(false)
+  const [isTorsdagspadel, setIsTorsdagspadel] = useState<boolean>(false)
+
+  const [elo, setElo] = useState<number | null>(null)
+
   const [mineSets, setMineSets] = useState<EventSet[]>([])
   const [alleUpcoming, setAlleUpcoming] = useState<EventSet[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [kommendeEvents, setKommendeEvents] = useState<EventRow[]>([])
 
-  // Profil/eligibility
-  const [elo, setElo] = useState<number | null>(null)
-  const [isTorsdagspadel, setIsTorsdagspadel] = useState<boolean>(false)
-  const [isFemale, setIsFemale] = useState<boolean>(false)
-
-  // Modal (bruges af “📋 Program”-knappen)
   const [programOpen, setProgramOpen] = useState(false)
   const [programDato, setProgramDato] = useState<string | null>(null)
   const [programRows, setProgramRows] = useState<EventSet[]>([])
   const [programLoading, setProgramLoading] = useState(false)
 
-  // Events-liste (i dag → +14 dage)
-  const [kommendeEvents, setKommendeEvents] = useState<EventRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   const todayISO = useMemo(() => todayInCphISO(), [])
 
@@ -79,65 +76,59 @@ export default function KommendeKampePage() {
       setLoading(true)
       setError(null)
       try {
-        // ===== 1) Auth + profil (visningsnavn, torsdagsflag, køn) =====
+        // ===== 1) Auth + PROFIL (visningsnavn, torsdagspadel, koen) =====
         const { data: auth } = await supabase.auth.getUser()
         const user = auth?.user ?? null
 
-        let navn = ''
-        let tors = false
+        let navn: string | null = null
         let female = false
+        let tors = false
 
         if (user) {
-          // visningsnavn
-          navn = String(user.user_metadata?.visningsnavn ?? '').trim()
-          if (!navn) {
-            const { data: prof } = await supabase
-              .from('profiles')
-              .select('visningsnavn')
-              .eq('id', user.id)
-              .maybeSingle()
-            const raw = (prof as { visningsnavn?: unknown } | null)?.visningsnavn
-            if (typeof raw === 'string') navn = raw.trim()
-          }
-
-          // torsdagspadel + køn
-          const { data: profMore } = await supabase
-            .from('profiles')
-            .select('torsdagspadel, gender, koen')
+          // Cast .from(...) til any som i din rangliste for at undgå TS-issues
+          const { data: prof, error: profErr } = await (supabase.from('profiles') as any)
+            .select('visningsnavn, torsdagspadel, koen')
             .eq('id', user.id)
             .maybeSingle()
 
-          tors = !!(profMore as any)?.torsdagspadel
-          const g = ((profMore as any)?.gender ?? (profMore as any)?.koen ?? '').toString().toLowerCase()
-          female = g === 'female' || g === 'kvinde' || g === 'kvindelig'
+          if (profErr) throw profErr
 
-          setVisningsnavn(navn || null)
-          setIsTorsdagspadel(tors)
-          setIsFemale(female)
-        } else {
-          setVisningsnavn(null)
-          setIsTorsdagspadel(false)
-          setIsFemale(false)
+          navn = toStr(prof?.visningsnavn)
+          tors = !!prof?.torsdagspadel
+          female = normKoen(prof?.koen) === 'kvinde'
         }
 
-        // ===== 2) Hent Elo fra /api/rangliste =====
+        setVisningsnavn(navn)
+        setIsTorsdagspadel(tors)
+        setIsFemale(female)
+
+        // ===== 2) Elo: dynamisk fra /api/rangliste (samme model som din rangliste-side) =====
         let aktueltElo: number | null = null
         if (navn) {
           try {
             const res = await fetch('/api/rangliste', { cache: 'no-store' })
-            if (res.ok) {
-              const json = await res.json()
-              const liste = Array.isArray(json?.data) ? json.data : []
-              const me = liste.find((r: any) =>
-                (r?.visningsnavn ?? '').toString().trim().toLowerCase() === navn.trim().toLowerCase()
-              )
-              if (me && typeof me.elo === 'number') aktueltElo = me.elo
-            }
-          } catch { /* ignore */ }
+            const json = await res.json()
+
+            // Din rangliste bruger en "ren liste", men vi understøtter også {data:[...]} fallback
+            const maybeList = Array.isArray(json) ? json : Array.isArray(json?.data) ? json.data : []
+            const list: Array<{ visningsnavn: string; elo: number; koen?: string | null }> =
+              maybeList
+                .map((r: any) => ({
+                  visningsnavn: toStr(r?.visningsnavn) ?? '',
+                  elo: Number(r?.elo ?? r?.Elo ?? 0),
+                  koen: r?.koen ?? null,
+                }))
+                .filter((r: any) => r.visningsnavn && Number.isFinite(r.elo))
+
+            const me = list.find(
+              (r) => r.visningsnavn.toLowerCase() === navn!.toLowerCase()
+            )
+            aktueltElo = me ? me.elo : null
+          } catch { /* ignorer netværksfejl */ }
         }
         setElo(aktueltElo)
 
-        // ===== 3) Hent programsatte sæt (public view → fallback event_sets) =====
+        // ===== 3) Programsatte sæt (public view → fallback event_sets) =====
         let rows: EventSet[] = []
         const { data: pubData, error: pubErr } = await supabase
           .from(PUBLIC_VIEW)
@@ -162,20 +153,19 @@ export default function KommendeKampePage() {
         }
         setAlleUpcoming(rows)
 
-        // ===== 4) Mine kampe (fra ovenstående rows) =====
-        if (user && navn) {
-          const navnTilMatch = navn.trim()
+        // ===== 4) Mine kampe (filtrér på visningsnavn) =====
+        if (navn) {
           const mine = rows.filter((r) =>
             [r.holda1, r.holda2, r.holdb1, r.holdb2]
               .map((x) => (x || '').trim())
-              .includes(navnTilMatch)
+              .includes(navn!)
           )
           setMineSets(mine)
         } else {
           setMineSets([])
         }
 
-        // ===== 5) Hent events (kun ønskede felter) i dag → +14 dage =====
+        // ===== 5) Events (i dag → +14 dage) =====
         const toISO = plusDaysISO(todayISO, 14)
         const { data: eventsData, error: eventsErr } = await supabase
           .from('events')
@@ -240,14 +230,10 @@ export default function KommendeKampePage() {
     }
   }
 
-  // Gruppér
+  // Hjælpere til render
   const groupedMine = groupByDateAndMatch(mineSets)
   const mineDatoer = Array.from(groupedMine.keys()).sort()
-
-  // bruges til at afgøre om et event har program: check om der findes sæt på datoen
-  const hasProgramForDate = (isoDate: string) =>
-    alleUpcoming.some(r => r.event_dato === isoDate)
-
+  const hasProgramForDate = (isoDate: string) => alleUpcoming.some(r => r.event_dato === isoDate)
   const programGroups = useMemo(() => groupByMatch(programRows), [programRows])
 
   // =============== RENDER =============== //
@@ -275,7 +261,15 @@ export default function KommendeKampePage() {
         </button>
       </div>
 
-      <h1 className="text-3xl font-bold mb-6 text-center">📅 Kommende</h1>
+      <h1 className="text-3xl font-bold mb-2 text-center">📅 Kommende</h1>
+
+      {/* Debug badge — valgfri (fjern hvis ikke ønsket) */}
+      {visningsnavn && (
+        <p className="text-center text-xs opacity-70 mb-4">
+          {`Bruger: ${visningsnavn} · Køn: ${isFemale ? 'kvinde' : 'mand'} · Elo: ${elo ?? 'ikke fundet'}`}
+        </p>
+      )}
+
       {error && <p className="text-center text-red-600 mb-4">{error}</p>}
 
       {/* ===== Mine kampe ===== */}
@@ -316,7 +310,6 @@ export default function KommendeKampePage() {
                     )
                   })}
                 </div>
-                {/* Egen "Program"-genvej for den dato (valgfrit) */}
                 {hasProgramForDate(dato) && (
                   <div className="mt-4">
                     <button type="button" onClick={() => visFuldtProgram(dato)}
@@ -338,7 +331,7 @@ export default function KommendeKampePage() {
         )}
       </section>
 
-      {/* ===== Kommende events (i dag → +14 dage) — 3 RÆKKER + EMOJIS + PROGRAM-KNAP ===== */}
+      {/* ===== Kommende events ===== */}
       <section>
         <h2 className="text-2xl font-semibold mb-4">Kommende events</h2>
 
@@ -352,13 +345,13 @@ export default function KommendeKampePage() {
               const navn = (ev.name ?? '').toString().trim() || 'Event'
 
               const womenOnly = !!ev.only_women || /torsdagstøserne/i.test(navn)
-              const closedGroup = !!ev.closed_group // Kun for medlemmer fra DB
+              const closedGroup = !!ev.closed_group
 
-              const minElo = typeof ev.min_elo === 'number' ? ev.min_elo : null
-              const maxElo = typeof ev.max_elo === 'number' ? ev.max_elo : null
+              const minElo = numOrNull(ev.min_elo)
+              const maxElo = numOrNull(ev.max_elo)
               const hasEloReq = minElo != null || maxElo != null
 
-              // Elo: hvis krav og Elo ukendt → ikke kvalificeret
+              // Elo-krav: hvis event har krav og Elo ukendt/udenfor range → ikke kvalificeret
               const eloOk = hasEloReq
                 ? (elo != null)
                   && (minElo == null || (elo as number) >= minElo)
@@ -369,10 +362,8 @@ export default function KommendeKampePage() {
               const womenOk = womenOnly ? isFemale : true
               const eligible = eloOk && membersOk && womenOk
 
-              // Har denne dato et publiceret/planlagt program?
               const hasProgram = hasProgramForDate(dato)
 
-              // Signup-link: eventets eget > location > ugedag
               const signupUrl =
                 (ev as any).signup_url
                 || (ev.location ? getSignupUrlByLocation(ev.location) : getSignupUrlByISODate(dato))
@@ -380,7 +371,6 @@ export default function KommendeKampePage() {
               const timeStr = [fmt(ev.start_time), fmt(ev.end_time)].filter(Boolean).join('–')
               const locationStr = ev.location ? ` · ${ev.location}` : ''
 
-              // Emojis: 🍺 = Kun for medlemmer, 💃 = Kun for kvinder, else 🎾
               const emoji = getEmojiForEvent({ requireMembers: closedGroup, womenOnly })
 
               return (
@@ -402,14 +392,13 @@ export default function KommendeKampePage() {
                     <span className="ml-1">{emoji}</span>
                   </div>
 
-                  {/* 3: Krav + CTA (Program eller Tilmelding/label) */}
+                  {/* 3: Krav + CTA */}
                   <div className="mt-1 flex items-center justify-between gap-2">
                     <div className="text-sm opacity-80">
                       {buildRequirementsText(minElo, maxElo, closedGroup, womenOnly)}
                     </div>
 
                     {hasProgram ? (
-                      // PROGRAM-knap vises altid – uanset eligibility
                       <button
                         type="button"
                         onClick={() => visFuldtProgram(dato)}
@@ -440,7 +429,7 @@ export default function KommendeKampePage() {
         )}
       </section>
 
-      {/* ===== Modal (bruges af “📋 Program”) ===== */}
+      {/* ===== Modal (📋 Program) ===== */}
       {programOpen && (
         <div className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm flex items-stretch sm:items-center justify-center p-4 sm:p-6"
           onClick={(e) => { if (e.target === e.currentTarget) lukProgram() }}>
@@ -505,6 +494,25 @@ export default function KommendeKampePage() {
 }
 
 /* ===================== Hjælpere ===================== */
+function toStr(v: unknown): string | null {
+  if (v == null) return null
+  const s = String(v).trim()
+  return s || null
+}
+
+function numOrNull(v: unknown): number | null {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null
+  if (typeof v === 'string') {
+    const p = parseFloat(v.replace(',', '.'))
+    return Number.isFinite(p) ? p : null
+  }
+  return null
+}
+
+function normKoen(s?: string | null) {
+  return (s ?? '').toString().trim().toLowerCase()
+}
+
 function fmt(t?: string | null) {
   if (!t) return ''
   return t.slice(0, 5)
@@ -519,7 +527,7 @@ function todayInCphISO(): string {
 }
 
 function plusDaysISO(isoDate: string, days: number): string {
-  const d = new Date(`${isoDate}T00:00:00+02:00`) // CPH
+  const d = new Date(`${isoDate}T00:00:00+02:00`)
   d.setDate(d.getDate() + days)
   const yyyy = d.getFullYear()
   const mm = String(d.getMonth() + 1).padStart(2, '0')
@@ -536,7 +544,7 @@ function formatDanishDate(isoDate: string): string {
   })
 }
 
-/** Korrekt tilmeldingslink efter location (ellers ugedag) */
+/** Signup links */
 function getSignupUrlByLocation(location?: string | null): string {
   const loc = (location ?? '').toLowerCase()
   if (loc.includes('gilleleje')) return MATCHI_GILLELEJE
@@ -544,22 +552,20 @@ function getSignupUrlByLocation(location?: string | null): string {
   return MATCHI_HELSINGE
 }
 
-/** Ugedag → korrekt tilmeldingslink (fallback) */
 function getSignupUrlByISODate(isoDate: string): string {
   const day = new Date(`${isoDate}T00:00:00`).getDay()
-  if (day === 3 || day === 0) return MATCHI_GILLELEJE // Ons & Søn
-  if (day === 4 || day === 5) return MATCHI_HELSINGE // Tor & Fre
+  if (day === 3 || day === 0) return MATCHI_GILLELEJE
+  if (day === 4 || day === 5) return MATCHI_HELSINGE
   return MATCHI_HELSINGE
 }
 
-// Emojis: 🍺 for “Kun for medlemmer”, 💃 for “Kun for kvinder”, ellers 🎾
+// Emojis: 🍺 = “Kun for medlemmer”, 💃 = “Kun for kvinder”, ellers 🎾
 function getEmojiForEvent(opts: { requireMembers: boolean; womenOnly: boolean }) {
   if (opts.womenOnly) return '💃'
   if (opts.requireMembers) return '🍺'
   return '🎾'
 }
 
-// Krav-tekst (Elo + flags)
 function buildRequirementsText(
   minElo: number | null,
   maxElo: number | null,
@@ -577,7 +583,7 @@ function buildRequirementsText(
   return bits.join(' · ')
 }
 
-/** Map<dato, Map<kampKey, EventSet[]>> */
+/** Gruppér helpers */
 function groupByDateAndMatch(rows: EventSet[]) {
   const byDate = new Map<string, Map<string, EventSet[]>>()
   for (const r of rows) {
@@ -597,7 +603,6 @@ function groupByDateAndMatch(rows: EventSet[]) {
   return byDate
 }
 
-/** Map<kampKey, EventSet[]> */
 function groupByMatch(rows: EventSet[]) {
   const map = new Map<string, EventSet[]>()
   for (const r of rows) {
