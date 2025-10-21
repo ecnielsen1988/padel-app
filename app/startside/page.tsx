@@ -184,7 +184,7 @@ export default function StartSide() {
           href="/kommende"
           className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
         >
-          📅 Kommende kampe
+          📅 Kommende Events
         </Link>
 
         {bruger.torsdagspadel && (
