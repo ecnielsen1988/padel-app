@@ -415,32 +415,64 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
 
   /* --- Load players (event_players) --- */
   useEffect(() => {
-    if (!eventId) return;
-    void loadPlayers();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [eventId, eloMap]);
+  if (!eventId) return;
+  // initial fetch: hent spillere, men bevar/seed rækkefølge (ingen re-sort)
+  void loadPlayers({ mode: "initial" });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [eventId]);
 
-  async function loadPlayers() {
-    setLoadingPlayers(true);
-    try {
-      const { data: ep } = await supabase
-        .from("event_players")
-        .select("user_id, visningsnavn")
-        .eq("event_id", eventId)
-        .eq("status", "registered");
 
-      const eloed: EventPlayer[] = (ep ?? []).map((x: any) => {
-        const vn = (x.visningsnavn || "").trim();
-        return { user_id: x.user_id, visningsnavn: x.visningsnavn, elo: vn ? eloMap[vn] ?? 1000 : 1000 };
-      });
+  async function loadPlayers(opts?: { mode?: "initial" | "refresh" }) {
+  const mode = opts?.mode ?? "initial";
+  const preserve = event?.status === "published" || mode !== "refresh";
 
-      const seeded = sortByElo(eloed) as EventPlayer[];
-      setPlayers(seeded);
-      setOrderIds(seeded.map((p) => p.user_id));
-    } finally {
-      setLoadingPlayers(false);
+  setLoadingPlayers(true);
+  try {
+    const { data: ep } = await supabase
+      .from("event_players")
+      .select("user_id, visningsnavn")
+      .eq("event_id", eventId)
+      .eq("status", "registered");
+
+    const eloed: EventPlayer[] = (ep ?? []).map((x: any) => {
+      const vn = (x.visningsnavn || "").trim();
+      return { user_id: x.user_id, visningsnavn: x.visningsnavn, elo: vn ? eloMap[vn] ?? 1000 : 1000 };
+    });
+
+    let next: EventPlayer[];
+
+    if (preserve && orderIds.length) {
+      // Behold den nuværende rækkefølge (tilføj nye spillere bagerst, fjern manglende)
+      const byId = new Map(eloed.map((p) => [p.user_id, p]));
+      next = orderIds.map((id) => byId.get(id)).filter(Boolean) as EventPlayer[];
+      const known = new Set(orderIds);
+      const extras = eloed.filter((p) => !known.has(p.user_id));
+      next = [...next, ...extras];
+
+      // Important: rør ikke ved orderIds her (rækkefølgen fastholdes)
+    } else if (!orderIds.length) {
+      // Første gang: seed efter Elo
+      next = sortByElo(eloed) as EventPlayer[];
+      setOrderIds(next.map((p) => p.user_id));
+    } else if (mode === "refresh" && event?.status !== "published") {
+      // Kun når du trykker "Opdater" og event IKKE er låst, må vi re-sortere efter Elo
+      next = sortByElo(eloed) as EventPlayer[];
+      setOrderIds(next.map((p) => p.user_id));
+    } else {
+      // Fald-tilbage: map til eksisterende orderIds, opdatér Elo-værdier
+      const byId = new Map(eloed.map((p) => [p.user_id, p]));
+      next = orderIds.map((id) => byId.get(id)).filter(Boolean) as EventPlayer[];
+      const known = new Set(orderIds);
+      const extras = eloed.filter((p) => !known.has(p.user_id));
+      next = [...next, ...extras];
     }
+
+    setPlayers(next);
+  } finally {
+    setLoadingPlayers(false);
   }
+}
+
 
   /* --- DB scorer/sæt ved event skift --- */
   useEffect(() => {
@@ -1119,12 +1151,14 @@ async function setProgramPublished(next: boolean) {
           <div className="flex items-center justify-between mb-2">
             <h2 className="font-semibold text-pink-900 dark:text-pink-200">Spillere ({orderedPlayers.length})</h2>
             <button
-              type="button"
-              className="text-xs underline text-pink-700 dark:text-pink-300"
-              onClick={() => loadPlayers()}
-            >
-              Opdater
-            </button>
+  type="button"
+  className="text-xs underline text-pink-700 dark:text-pink-300"
+  onClick={() => loadPlayers({ mode: "refresh" })}
+  title={locked ? "Event er låst – rækkefølgen bevares" : "Opdater (kan re-sorte efter Elo)"}
+>
+  Opdater
+</button>
+
           </div>
 
           <div>
