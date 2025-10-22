@@ -67,9 +67,6 @@ export default function KommendeKampePage() {
   const [alleUpcoming, setAlleUpcoming] = useState<EventSet[]>([])   // alle sæt fra event_result for publicerede events
   const [kommendeEvents, setKommendeEvents] = useState<EventRow[]>([])
 
-  // Inline program under hvert event
-  const programByEvent = useMemo(() => groupByEventThenMatch(alleUpcoming), [alleUpcoming])
-
   const [programOpen, setProgramOpen] = useState(false)
   const [programDato, setProgramDato] = useState<string | null>(null)
   const [programRows, setProgramRows] = useState<EventSet[]>([])
@@ -341,8 +338,8 @@ export default function KommendeKampePage() {
                             <div key={r.saet_nr} className="flex items-start gap-3">
                               <span className="font-medium shrink-0">Sæt {r.saet_nr}:</span>
                               <span className="leading-tight break-words text-left">
-                                {highlightName(r.holda1, visningsnavn)} & {highlightName(r.holda2, visningsnavn)} <span className="opacity-60">vs</span><br />
-                                {highlightName(r.holdb1, visningsnavn)} & {highlightName(r.holdb2, visningsnavn)}
+                                {r.holda1} & {r.holda2} <span className="opacity-60">vs</span><br />
+                                {r.holdb1} & {r.holdb2}
                               </span>
                             </div>
                           ))}
@@ -368,7 +365,7 @@ export default function KommendeKampePage() {
           <div className="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4">
             <p className="text-zinc-700 dark:text-zinc-300">Ingen kommende kampe.</p>
             <p className="text-sm mt-1 text-zinc-600 dark:text-zinc-400">
-              Tjek events nedenfor – programmet vises under publicerede events (også selvom du ikke er kvalificeret).
+              Tjek events nedenfor – “📋 Program” vises på publicerede events.
             </p>
           </div>
         )}
@@ -415,13 +412,6 @@ export default function KommendeKampePage() {
 
               const showProgram = status === 'published'
 
-              // Inline program for dette event
-              const evMap = programByEvent.get(String(ev.id))
-              const matchEntries = evMap ? Array.from(evMap.entries()) : []
-
-              // er brugeren programsat i dette event?
-              const userScheduled = !!(visningsnavn && matchEntries.some(([_, sets]) => sets.some(s => isNameInSet(visningsnavn, s))))
-
               return (
                 <div
                   key={`ev-${ev.id}`}
@@ -435,13 +425,10 @@ export default function KommendeKampePage() {
                   </div>
 
                   {/* 2: Emoji · Navn · Emoji */}
-                  <div className="text-base font-semibold my-1 flex items-center gap-2 flex-wrap">
+                  <div className="text-base font-semibold my-1">
                     <span className="mr-1">{emoji}</span>
                     {navn}
                     <span className="ml-1">{emoji}</span>
-                    {showProgram && userScheduled && (
-                      <span className="ml-2 text-xs px-2 py-0.5 rounded-full border border-pink-500 text-pink-600">Du er programsat</span>
-                    )}
                   </div>
 
                   {/* 3: Krav + CTA */}
@@ -455,9 +442,9 @@ export default function KommendeKampePage() {
                         type="button"
                         onClick={() => visFuldtProgramForEvent(ev.id)}
                         className="inline-flex items-center justify-center px-3 py-1.5 rounded-full border-2 border-pink-500 text-pink-600 bg-white/90 dark:bg-[#2a2a2a]/90 shadow hover:bg-pink-50 dark:hover:bg-pink-900/20 transition"
-                        title="Åbn i modal"
+                        title="Se fuldt program"
                       >
-                        📋 Åbn program
+                        📋 Program
                       </button>
                     ) : eligible ? (
                       <a
@@ -475,39 +462,6 @@ export default function KommendeKampePage() {
                       </span>
                     )}
                   </div>
-
-                  {/* 4: Inline program (vises ALTID når event er publiceret – også hvis man ikke er kvalificeret) */}
-                  {showProgram && (
-                    <div className="mt-3 space-y-2">
-                      {matchEntries.length === 0 ? (
-                        <div className="text-sm text-zinc-600 dark:text-zinc-400">Der er endnu ikke sat kampe på.</div>
-                      ) : (
-                        matchEntries.map(([matchKey, sets]) => {
-                          const meta = sets[0]
-                          return (
-                            <div key={matchKey}
-                              className="rounded-xl px-3 py-2 shadow bg-white dark:bg-[#232323] border border-zinc-200 dark:border-zinc-800">
-                              <div className="flex items-center justify-between mb-1 text-sm">
-                                <div className="font-semibold">Kamp #{meta.kamp_nr}</div>
-                                <div className="opacity-80">🏟 {meta.bane} · ⏱ {fmt(meta.starttid)}–{fmt(meta.sluttid)}</div>
-                              </div>
-                              <div className="space-y-1 text-sm">
-                                {sets.map((r) => (
-                                  <div key={r.saet_nr} className="flex items-start gap-2">
-                                    <span className="font-medium shrink-0">Sæt {r.saet_nr}:</span>
-                                    <span className="leading-tight break-words text-left">
-                                      {highlightName(r.holda1, visningsnavn)} & {highlightName(r.holda2, visningsnavn)} <span className="opacity-60">vs</span><br />
-                                      {highlightName(r.holdb1, visningsnavn)} & {highlightName(r.holdb2, visningsnavn)}
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )
-                        })
-                      )}
-                    </div>
-                  )}
                 </div>
               )
             })}
@@ -515,7 +469,7 @@ export default function KommendeKampePage() {
         )}
       </section>
 
-      {/* ===== Modal (📋 Program) – stadig tilgængelig fra "Mine kampe" eller knap ===== */}
+      {/* ===== Modal (📋 Program) ===== */}
       {programOpen && (
         <div className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm flex items-stretch sm:items-center justify-center p-4 sm:p-6"
           onClick={(e) => { if (e.target === e.currentTarget) lukProgram() }}>
@@ -553,8 +507,8 @@ export default function KommendeKampePage() {
                             <div key={r.saet_nr} className="flex items-start gap-2">
                               <span className="font-medium shrink-0">Sæt {r.saet_nr}:</span>
                               <span className="leading-tight break-words text-left">
-                                {highlightName(r.holda1, visningsnavn)} & {highlightName(r.holda2, visningsnavn)} <span className="opacity-60">vs</span><br />
-                                {highlightName(r.holdb1, visningsnavn)} & {highlightName(r.holdb2, visningsnavn)}
+                                {r.holda1} & {r.holda2} <span className="opacity-60">vs</span><br />
+                                {r.holdb1} & {r.holdb2}
                               </span>
                             </div>
                           ))}
@@ -701,36 +655,5 @@ function groupByMatch(rows: EventSet[]) {
     map.set(k, arr)
   }
   return map
-}
-
-function groupByEventThenMatch(rows: EventSet[]) {
-  // returnerer Map<EventId, Map<MatchKey, EventSet[]>>
-  const byEvent = new Map<string, Map<string, EventSet[]>>()
-  for (const r of rows) {
-    const evKey = String(r.event_id)
-    const matchKey = `${r.event_id}#${r.kamp_nr}`
-    if (!byEvent.has(evKey)) byEvent.set(evKey, new Map())
-    const inner = byEvent.get(evKey)!
-    if (!inner.has(matchKey)) inner.set(matchKey, [])
-    inner.get(matchKey)!.push(r)
-  }
-  for (const [, matchMap] of byEvent) {
-    for (const [k, arr] of matchMap) {
-      arr.sort((a, b) => a.saet_nr - b.saet_nr)
-      matchMap.set(k, arr)
-    }
-  }
-  return byEvent
-}
-
-function isNameInSet(name: string, s: EventSet) {
-  const n = name.trim().toLowerCase()
-  return [s.holda1, s.holda2, s.holdb1, s.holdb2].some(x => (x || '').trim().toLowerCase() === n)
-}
-
-function highlightName(n: string, me: string | null) {
-  if (!me) return <span>{n}</span>
-  const isMe = n.trim().toLowerCase() === me.trim().toLowerCase()
-  return <span className={isMe ? 'font-semibold text-pink-600' : ''}>{n}</span>
 }
 
