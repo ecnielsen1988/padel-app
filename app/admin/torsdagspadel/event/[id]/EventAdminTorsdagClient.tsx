@@ -169,6 +169,58 @@ async function upsertEventResultRow(p: {
   }
 }
 
+// Byg alle event_result-rækker ud fra nuværende UI-plan
+function buildEventResultRows(eventId: string, opts: {
+  plan: Array<{ pos: number; groupIdx: number; court: string | number; players: EventPlayer[] }>;
+  roundsPerPos: Record<number, number>;
+  matchTimes: Record<number, { start: string; end: string }>;
+  courtsOrder: (string | number)[];
+  scores: Record<string, { a: number; b: number }>;
+  date: string | undefined | null;
+}): EventResultInsert[] {
+  const rows: EventResultInsert[] = [];
+
+  opts.plan.forEach(({ pos }, visualIndex) => {
+    const players = opts.plan[visualIndex]?.players ?? [];
+    if (players.length < 4) return; // kun komplette grupper
+
+    const runder = opts.roundsPerPos[pos] ?? 3;
+    const mt = opts.matchTimes[pos] ?? { start: "17:00", end: "18:30" };
+    const court = opts.courtsOrder[visualIndex] ?? pos + 1;
+
+    for (let si = 0; si < runder; si++) {
+      const rot = ROTATIONS[si % ROTATIONS.length];
+
+      const a1 = players[rot[0][0]]?.visningsnavn || null;
+      const a2 = players[rot[0][1]]?.visningsnavn || null;
+      const b1 = players[rot[1][0]]?.visningsnavn || null;
+      const b2 = players[rot[1][1]]?.visningsnavn || null;
+
+      const sc = opts.scores[`${visualIndex}-${si}`] ?? { a: 0, b: 0 };
+      const done = sc.a !== 0 || sc.b !== 0 ? erFærdigtSæt(sc.a, sc.b) : false;
+
+      rows.push({
+        event_id: eventId,
+        group_index: pos,      // vi bruger den VISUELLE position som "gi" (som i resten af koden)
+        set_index: si,
+        court_label: String(court),
+        start_time: hhmmToDb(mt.start),
+        end_time: hhmmToDb(mt.end),
+        holdA1: a1,
+        holdA2: a2,
+        holdB1: b1,
+        holdB2: b2,
+        scoreA: sc.a,
+        scoreB: sc.b,
+        tiebreak: false,
+      });
+    }
+  });
+
+  return rows;
+}
+
+
 /* ======================== Hovedkomponent ======================== */
 export default function EventAdminTorsdagClient({ eventId }: { eventId: string }) {
   const router = useRouter();
@@ -570,6 +622,55 @@ export default function EventAdminTorsdagClient({ eventId }: { eventId: string }
 
   if (!event) return <div className="p-4">Indlæser…</div>;
 
+async function handlePublishToggle(checked: boolean) {
+  if (!event) return;
+
+  // 1) Opdater event-status
+  const { data, error } = await (supabase.from("events") as any)
+    .update({ status: checked ? "published" : "planned" })
+    .eq("id", event.id)
+    .select("*")
+    .maybeSingle();
+
+  if (error) {
+    alert("Kunne ikke opdatere status: " + error.message);
+    return;
+  }
+  if (!data) return;
+  setEvent(data as EventRow);
+
+  // 2) Synkroniser event_result
+  if (checked) {
+    // Opret/overstyr alle rækker for hele programmet (idempotent via onConflict)
+    const payloads = buildEventResultRows(event.id, {
+      plan,
+      roundsPerPos,
+      matchTimes,
+      courtsOrder,
+      scores,
+      date: event.date,
+    });
+
+    if (payloads.length === 0) return;
+
+    const { error: upErr } = await (supabase.from("event_result") as any).upsert(payloads, {
+      onConflict: "event_id,group_index,set_index",
+    });
+    if (upErr) {
+      alert("Kunne ikke oprette rækker i event_result: " + upErr.message);
+    }
+  } else {
+    // Slet ALT for dette event (du kan nøjes med planned->clear)
+    const { error: delErr } = await (supabase.from("event_result") as any)
+      .delete()
+      .eq("event_id", event.id);
+    if (delErr) {
+      alert("Kunne ikke slette rækker i event_result: " + delErr.message);
+    }
+  }
+}
+
+
   // Helper: præcis match – udeluk fx "TorsdagsTøserne"
   const isThursdayBeer = (name?: string | null) => {
     if (!name) return false;
@@ -650,17 +751,10 @@ export default function EventAdminTorsdagClient({ eventId }: { eventId: string }
 
           <label className="text-sm flex items-center gap-2 px-2 py-1 rounded-md border bg-white dark:bg-zinc-900 border-green-300 dark:border-green-700">
             <input
-              type="checkbox"
-              checked={locked}
-              onChange={async (e) => {
-                const { data, error } = await (supabase.from("events") as any)
-                  .update({ status: e.target.checked ? "published" : "planned" })
-                  .eq("id", event!.id)
-                  .select("*")
-                  .maybeSingle();
-                if (!error && data) setEvent(data);
-              }}
-            />
+  type="checkbox"
+  checked={locked}
+  onChange={(e) => handlePublishToggle(e.target.checked)}
+/>
             <span>Programmet offentliggøres</span>
           </label>
         </div>
