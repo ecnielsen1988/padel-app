@@ -5,1324 +5,953 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { beregnEloForKampe } from "@/lib/beregnElo";
 
-/* ======================== Typer ======================== */
-type EventRow = {
-  id: string;
-  name: string | null;
-  date: string; // YYYY-MM-DD
-  start_time: string | null;
-  end_time: string | null;
-  location: "Helsinge" | "Gilleleje";
-  max_players: number | null;
-  min_elo: number | null;
-  max_elo: number | null;
-  only_women: boolean;
-  closed_group: boolean;
-  rules_text: string | null;
-  is_published: boolean | null;
-  status: "planned" | "published" | "ongoing" | "done" | "canceled" | null;
-};
+import {
+  EventRow,
+  Profile,
+  EventPlayer,
+  Score,
+  bentleyGreen,
+  fmtTime,
+  normName,
+  toMinutes,
+  toHHMM,
+  makeDefaultThursdaySlots,
+  grupperAf4,
+  ROT,
+  erFærdigtSæt,
+  persistProgramToEventResult,
+  buildAllRows,
+  upsertEventResultRow,
+  getNextKampId,
+  emojiForPluspoint,
+} from "./EventAdminHelpers";
 
-type Profile = { id: string; visningsnavn: string | null };
+import PlayerListColumn from "./PlayerListColumn";
+import CenterMatches from "./CenterMatches";
+import EloSidebar from "./EloSidebar";
+import SlotsModal from "./SlotsModal";
+import SwapModal from "./SwapModal";
 
-type EventSignup = {
-  visningsnavn: string | null;
-  tidligste_tid: string | null;
-  kan_spille: boolean | null;
-  event_dato: string | null;
-};
+/** ======================== Types ======================== */
+type ScoreMap = Record<string, Score>;
+type RoundsMap = Record<number, number>;
+type MatchNoMap = Record<number, number>;
 
-type EventPlayer = {
-  user_id: string; // "name:<lowercased-trimmed>"
-  visningsnavn: string | null;
-  elo: number;
-  tidligste_tid: string | null; // "HH:MM"
-};
-
-type Score = { a: number; b: number };
-
-type EventResultInsert = {
-  event_id: string;
-  group_index: number; // her = kamp-position (0-baseret)
-  set_index: number;
-  court_label: string | null;
-  start_time: string | null;
-  end_time: string | null;
-  holdA1: string | null;
-  holdA2: string | null;
-  holdB1: string | null;
-  holdB2: string | null;
-  scoreA: number;
-  scoreB: number;
-  tiebreak: boolean;
-};
-
-/* ======================== Hjælpere ======================== */
-const fmtTime = (t?: string | null) => (t ? t.slice(0, 5) : "");
-const toHHMM = (v?: string | null) => (v ? v.slice(0, 5) : null);
-const chunk4 = <T,>(arr: T[]) => {
-  const out: T[][] = [];
-  for (let i = 0; i < arr.length; i += 4) out.push(arr.slice(i, i + 4));
-  return out;
-};
-const ROTATIONS = [
-  [
-    [0, 1],
-    [2, 3],
-  ],
-  [
-    [0, 2],
-    [1, 3],
-  ],
-  [
-    [0, 3],
-    [1, 2],
-  ],
-] as const;
-const erFærdigtSæt = (a: number, b: number) => {
-  const max = Math.max(a, b),
-    min = Math.min(a, b);
-  return (max === 6 && min <= 4) || (max === 7 && (min === 5 || min === 6));
-};
-const pctColor = (p: number) =>
-  `hsl(${Math.round(120 * Math.max(0, Math.min(1, p)))} ${
-    55 + Math.round(40 * Math.abs(p - 0.5) * 2)
-  }% 42%)`;
-const emojiForPluspoint = (p: number) => {
-  if (p >= 100) return "🍾";
-  if (p >= 50) return "🏆";
-  if (p >= 40) return "🏅";
-  if (p >= 30) return "☄️";
-  if (p >= 20) return "🚀";
-  if (p >= 10) return "🔥";
-  if (p >= 5) return "📈";
-  if (p >= 0) return "💪";
-  if (p > -5) return "🎲";
-  if (p > -10) return "📉";
-  if (p > -20) return "🧯";
-  if (p > -30) return "🪂";
-  if (p > -40) return "❄️";
-  if (p > -50) return "🙈";
-  if (p > -100) return "🥊";
-  if (p > -150) return "💩";
-  return "💩💩";
-};
-const hhmmToDb = (v?: string) => (v ? (v.length === 5 ? `${v}:00` : v) : null);
-
-const thursdayCourts = ["CC", "1", "2", "3"] as const;
-const thursdayTime = (gi: number) =>
-  gi < 4
-    ? { start: "17:00", end: "18:40" }
-    : gi < 8
-    ? { start: "18:40", end: "20:20" }
-    : { start: "20:20", end: "22:00" };
-
-function normName(v?: string | null) {
-  return (v || "").trim().toLowerCase();
-}
-function toMinutes(v?: string | null) {
-  if (!v) return Number.POSITIVE_INFINITY;
-  const m = v.slice(0, 5).match(/^(\d{2}):(\d{2})$/);
-  if (!m) return Number.POSITIVE_INFINITY;
-  return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
-}
-
-/* ====== DB helper: event_result ====== */
-async function upsertEventResultRow(p: {
-  eventId: string;
-  gi: number; // kamp-position (0-baseret)
-  si: number;
-  courtLabel?: string | number;
-  start?: string;
-  end?: string;
-  a1?: string;
-  a2?: string;
-  b1?: string;
-  b2?: string;
-  scoreA?: number;
-  scoreB?: number;
-  tiebreak?: boolean;
-}) {
-  const payload: EventResultInsert = {
-    event_id: p.eventId,
-    group_index: p.gi,
-    set_index: p.si,
-    court_label: p.courtLabel != null ? String(p.courtLabel) : null,
-    start_time: hhmmToDb(p.start),
-    end_time: hhmmToDb(p.end),
-    holdA1: p.a1 ?? null,
-    holdA2: p.a2 ?? null,
-    holdB1: p.b1 ?? null,
-    holdB2: p.b2 ?? null,
-    scoreA: p.scoreA ?? 0,
-    scoreB: p.scoreB ?? 0,
-    tiebreak: p.tiebreak ?? false,
-  };
-
-  const eventResultTbl = supabase.from("event_result") as any;
-  const { error } = await eventResultTbl.upsert([payload], {
-    onConflict: "event_id,group_index,set_index",
-  });
-  if (error) {
-    console.error("upsertEventResultRow", error);
-    alert("Kunne ikke gemme sæt i event_result: " + error.message);
+type SetInfoMap = Record<
+  string,
+  {
+    pctA: number;
+    pctB: number;
+    plusTxt: string;
   }
-}
+>;
 
-// Byg alle event_result-rækker ud fra nuværende UI-plan
-function buildEventResultRows(eventId: string, opts: {
-  plan: Array<{ pos: number; groupIdx: number; court: string | number; players: EventPlayer[] }>;
-  roundsPerPos: Record<number, number>;
-  matchTimes: Record<number, { start: string; end: string }>;
-  courtsOrder: (string | number)[];
-  scores: Record<string, { a: number; b: number }>;
-  date: string | undefined | null;
-}): EventResultInsert[] {
-  const rows: EventResultInsert[] = [];
-
-  opts.plan.forEach(({ pos }, visualIndex) => {
-    const players = opts.plan[visualIndex]?.players ?? [];
-    if (players.length < 4) return; // kun komplette grupper
-
-    const runder = opts.roundsPerPos[pos] ?? 3;
-    const mt = opts.matchTimes[pos] ?? { start: "17:00", end: "18:30" };
-    const court = opts.courtsOrder[visualIndex] ?? pos + 1;
-
-    for (let si = 0; si < runder; si++) {
-      const rot = ROTATIONS[si % ROTATIONS.length];
-
-      const a1 = players[rot[0][0]]?.visningsnavn || null;
-      const a2 = players[rot[0][1]]?.visningsnavn || null;
-      const b1 = players[rot[1][0]]?.visningsnavn || null;
-      const b2 = players[rot[1][1]]?.visningsnavn || null;
-
-      const sc = opts.scores[`${visualIndex}-${si}`] ?? { a: 0, b: 0 };
-      const done = sc.a !== 0 || sc.b !== 0 ? erFærdigtSæt(sc.a, sc.b) : false;
-
-      rows.push({
-        event_id: eventId,
-        group_index: pos,      // vi bruger den VISUELLE position som "gi" (som i resten af koden)
-        set_index: si,
-        court_label: String(court),
-        start_time: hhmmToDb(mt.start),
-        end_time: hhmmToDb(mt.end),
-        holdA1: a1,
-        holdA2: a2,
-        holdB1: b1,
-        holdB2: b2,
-        scoreA: sc.a,
-        scoreB: sc.b,
-        tiebreak: false,
-      });
-    }
-  });
-
-  return rows;
-}
-
-
-/* ======================== Hovedkomponent ======================== */
 export default function EventAdminTorsdagClient({ eventId }: { eventId: string }) {
   const router = useRouter();
 
+  // ===== STATE =====
   const [event, setEvent] = useState<EventRow | null>(null);
   const [eventsList, setEventsList] = useState<EventRow[]>([]);
+
+  // dagens Elo (bruges både til visning og som start for simulering)
+  const [eloMapNow, setEloMapNow] = useState<Record<string, number>>({});
+
+  // alle profiler til søg/tilføj/swap
+  const [allProfiles, setAllProfiles] = useState<Profile[]>([]);
+
+  // spillerliste venstre kolonne
   const [players, setPlayers] = useState<EventPlayer[]>([]);
   const [orderIds, setOrderIds] = useState<string[]>([]);
-  const [eloMap, setEloMap] = useState<Record<string, number>>({});
-  const [loadingPlayers, setLoadingPlayers] = useState(true);
+  const [loadingPlayers, setLoadingPlayers] = useState(false); // manuelt hent signups
 
-  // Swap/search
-  const [allProfiles, setAllProfiles] = useState<Profile[]>([]);
+  // søg/swap
   const [loadingProfiles, setLoadingProfiles] = useState(true);
   const [search, setSearch] = useState("");
-  const [swapIndex, setSwapIndex] = useState<number | null>(null);
   const [swapOpen, setSwapOpen] = useState(false);
+  const [swapIndex, setSwapIndex] = useState<number | null>(null);
 
-  // NYT: Visuel kamp-rækkefølge (liste af gruppe-indekser i den rækkefølge de vises)
-  const [matchOrder, setMatchOrder] = useState<number[]>([]);
+  // kampopsætning
+  const [matchNoByGroup, setMatchNoByGroup] = useState<MatchNoMap>({});
+  const [roundsPerGi, setRoundsPerGi] = useState<RoundsMap>({});
+  const [scores, setScores] = useState<ScoreMap>({});
+  const [slots, setSlots] = useState<{ court: string; start: string; end: string }[]>([]);
+  const [showSlots, setShowSlots] = useState(false);
 
-  // pr. kamp-position (0..N-1)
-  const [courtsOrder, setCourtsOrder] = useState<(string | number)[]>([]);
-  const [roundsPerPos, setRoundsPerPos] = useState<Record<number, number>>({});
-  const [matchTimes, setMatchTimes] = useState<Record<number, { start: string; end: string }>>({});
-  const [scores, setScores] = useState<Record<string, Score>>({});
+  // submit
+  const [submitting, setSubmitting] = useState(false);
 
   const locked = event?.status === "published";
 
-  /* --- fetch event + liste --- */
+  // ============================================================
+  // 1) Hent torsdags-events og nuværende event
+  // ============================================================
   useEffect(() => {
     if (!eventId) return;
     (async () => {
+      const { data: raw } = await supabase
+        .from("events")
+        .select("*")
+        .ilike("name", "%torsdags%");
+
+      // filtrer fx "torsdagstøserne" fra
+      const filtered = (raw ?? []).filter((ev: any) => {
+        const n = (ev.name || "").toLowerCase();
+        return n.includes("torsdags") && !n.includes("tøser") && !n.includes("tøs");
+      }) as EventRow[];
+
+      function statusRank(s: EventRow["status"]) {
+        if (s === "done" || s === "canceled") return 2; // nederst
+        return 1; // planned/published/ongoing øverst
+      }
+
+      const torsSorted = [...filtered].sort((a, b) => {
+        const ra = statusRank(a.status);
+        const rb = statusRank(b.status);
+        if (ra !== rb) return ra - rb;
+        if (a.date === b.date) {
+          return String(a.start_time) < String(b.start_time) ? -1 : 1;
+        }
+        return a.date < b.date ? -1 : 1;
+      });
+
+      setEventsList(torsSorted);
+
       const { data: ev } = await supabase
         .from("events")
         .select("*")
         .eq("id", eventId)
         .maybeSingle<EventRow>();
       setEvent(ev ?? null);
-
-      const res = await fetch("/api/events?all=1", { cache: "no-store" });
-      const json = await res.json();
-      setEventsList((json?.data ?? []) as EventRow[]);
     })();
   }, [eventId]);
 
-  /* --- Elo map (som din rangliste-side) --- */
+  // ============================================================
+  // 2) Hent dagens Elo fra /api/rangliste
+  // ============================================================
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch("/api/rangliste", { cache: "no-store" });
-        const rang = await res.json();
-        const arr = Array.isArray(rang) ? rang : rang?.data ?? [];
+        const r = await fetch("/api/rangliste", { cache: "no-store" });
+        const j = await r.json();
+        const arr = Array.isArray(j) ? j : j?.data ?? [];
         const map: Record<string, number> = {};
-        arr.forEach((s: any) => {
-          const vn = (s?.visningsnavn || "").trim();
-          if (vn) map[vn] = Math.round(s.elo);
+        arr.forEach((row: any) => {
+          const vn = (row?.visningsnavn || "").trim();
+          if (vn) map[vn] = Math.round(row.elo);
         });
-        setEloMap(map);
+        setEloMapNow(map);
       } catch {
-        setEloMap({});
+        setEloMapNow({});
       }
     })();
   }, []);
 
-  /* --- Alle profiler til swap-søgning --- */
+  // ============================================================
+  // 3) Hent alle profiler til søg/swap
+  // ============================================================
   useEffect(() => {
     (async () => {
       setLoadingProfiles(true);
       const { data } = await supabase
         .from("profiles")
-        .select("id, visningsnavn")
+        .select("id,visningsnavn")
         .not("visningsnavn", "is", null);
+
       setAllProfiles(((data ?? []) as Profile[]).filter((p) => !!p.visningsnavn));
       setLoadingProfiles(false);
     })();
   }, []);
 
-  /* --- Load players fra event_signups (kun dato, kun visningsnavn) --- */
+  // ============================================================
+  // 4) Hydrér state fra event_result hvis det findes
+  // ============================================================
   useEffect(() => {
-    if (!event?.date) return;
-    void loadPlayersFromSignups();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [event?.date, eloMap]);
+    if (!event?.id) return;
 
-  async function loadPlayersFromSignups() {
-    setLoadingPlayers(true);
-    try {
-      const { data, error } = await supabase
-        .from("event_signups")
-        .select("visningsnavn, tidligste_tid, kan_spille, event_dato")
-        .eq("event_dato", event!.date); // kun dato
+    (async () => {
+      const { data: rows, error } = await supabase
+        .from("event_result")
+        .select("*")
+        .eq("event_id", event.id)
+        .order("group_index", { ascending: true })
+        .order("set_index", { ascending: true });
 
       if (error) {
-        console.error("event_signups (dato)", error);
-        alert("Kunne ikke hente tilmeldinger fra event_signups.\n\n" + error.message);
-        setPlayers([]);
-        setOrderIds([]);
+        console.error("event_result load error", error);
+        return;
+      }
+      if (!rows || rows.length === 0) {
         return;
       }
 
-      const rows = (data ?? []) as EventSignup[];
-
-      // kun dem med navn + kan_spille = true
-      const valid = rows.filter((r) => !!normName(r.visningsnavn) && r.kan_spille === true);
-
-      // dedupe pr. navn (behold den med tidligst mødetid)
-      const bestByName = new Map<string, EventSignup>();
-      for (const r of valid) {
-        const key = normName(r.visningsnavn);
-        const prev = bestByName.get(key);
-        if (!prev) bestByName.set(key, r);
-        else if (toMinutes(r.tidligste_tid) < toMinutes(prev.tidligste_tid)) bestByName.set(key, r);
+      // groupér pr gruppe
+      const byGroup = new Map<number, any[]>();
+      for (const r of rows) {
+        if (!byGroup.has(r.group_index)) byGroup.set(r.group_index, []);
+        byGroup.get(r.group_index)!.push(r);
       }
+      const sortedGroups = [...byGroup.keys()].sort((a, b) => a - b);
 
-      const list: EventPlayer[] = Array.from(bestByName.values()).map((x) => {
-        const vn = (x.visningsnavn || "").trim();
-        return {
-          user_id: `name:${normName(vn)}`, // stabil UI-id
-          visningsnavn: vn,
-          elo: vn ? eloMap[vn] ?? 1000 : 1000,
-          tidligste_tid: toHHMM(x.tidligste_tid),
-        };
+      // genskab spillere og rækkefølge
+      const newPlayersMap = new Map<
+        string,
+        {
+          user_id: string;
+          visningsnavn: string | null;
+          elo: number;
+          tidligste_tid: string | null;
+        }
+      >();
+      const newOrder: string[] = [];
+
+      sortedGroups.forEach((gi) => {
+        const setsForGroup = byGroup.get(gi) || [];
+        const firstSet = setsForGroup.find((s: any) => s.set_index === 0);
+        if (!firstSet) return;
+
+        const groupNames = [firstSet.holdA1, firstSet.holdA2, firstSet.holdB1, firstSet.holdB2].filter(Boolean) as string[];
+
+        groupNames.forEach((navn) => {
+          const displayName = (navn || "").trim();
+          const uid = `name:${displayName.toLowerCase()}`;
+          if (!newPlayersMap.has(uid)) {
+            newPlayersMap.set(uid, {
+              user_id: uid,
+              visningsnavn: displayName,
+              // ved hydration bruger vi nutidsElo til visning
+              elo: eloMapNow[displayName] ?? 1000,
+              tidligste_tid: null,
+            });
+            newOrder.push(uid);
+          }
+        });
       });
 
-      // sortér efter ELO (DESC)
-      list.sort((a, b) => (b.elo ?? 0) - (a.elo ?? 0));
+      // rounds/scorer
+      const newRounds: Record<number, number> = {};
+      const newScores: Record<string, { a: number; b: number }> = {};
 
-      setPlayers(list);
-      setOrderIds(list.map((p) => p.user_id));
-    } catch (e: any) {
-      console.error("loadPlayersFromSignups (catch)", e?.message || e);
-      alert("Kunne ikke hente tilmeldinger fra event_signups.\n\n" + (e?.message || e));
-      setPlayers([]);
-      setOrderIds([]);
-    } finally {
-      setLoadingPlayers(false);
-    }
-  }
+      byGroup.forEach((setsForGroup, gi) => {
+        let maxSi = -1;
+        setsForGroup.forEach((s: any) => {
+          maxSi = Math.max(maxSi, s.set_index);
+          newScores[`${gi}-${s.set_index}`] = { a: s.scoreA ?? 0, b: s.scoreB ?? 0 };
+        });
+        newRounds[gi] = maxSi + 1;
+      });
 
-  /* --- reconcile orderIds hvis players ændres --- */
-  useEffect(() => {
-    if (!players.length) {
-      setOrderIds([]);
-      return;
-    }
-    const valid = new Set(players.map((p) => p.user_id));
-    setOrderIds((prev) => {
-      const kept = prev.filter((id) => valid.has(id));
-      const missing = players.map((p) => p.user_id).filter((id) => !kept.includes(id));
-      return [...kept, ...missing];
-    });
-  }, [players]);
+      // slots (bane/tid) fra første sæt
+      const newSlots: { court: string; start: string; end: string }[] = [];
+      sortedGroups.forEach((gi) => {
+        const fs = byGroup.get(gi)?.find((s: any) => s.set_index === 0);
+        if (!fs) return;
+        newSlots.push({
+          court: fs.court_label || "CC",
+          start: (fs.start_time || "17:00").slice(0, 5),
+          end: (fs.end_time || "18:40").slice(0, 5),
+        });
+      });
 
-  /* --- ordered players + grupper --- */
-  const orderedPlayers: EventPlayer[] = useMemo(() => {
-    const byId = new Map(players.map((p) => [p.user_id, p]));
-    return orderIds.map((id) => byId.get(id)).filter((p): p is EventPlayer => !!p);
+      // kamp rækkefølge (fallback gi+1)
+      const newMatchNo: Record<number, number> = {};
+      sortedGroups.forEach((gi) => {
+        newMatchNo[gi] = gi + 1;
+      });
+
+      setPlayers(Array.from(newPlayersMap.values()));
+      setOrderIds(newOrder);
+      setRoundsPerGi(newRounds);
+      setScores(newScores);
+      setSlots(newSlots);
+      setMatchNoByGroup(newMatchNo);
+    })();
+  }, [event?.id, eloMapNow]);
+
+  /** ======================== Derived ======================== */
+  const orderedPlayers = useMemo(() => {
+    const map = new Map(players.map((p) => [p.user_id, p] as const));
+    return orderIds.map((id) => map.get(id)).filter(Boolean) as EventPlayer[];
   }, [players, orderIds]);
 
-  const groups = useMemo(() => chunk4(orderedPlayers), [orderedPlayers]);
+  const groups = useMemo(() => grupperAf4(orderedPlayers), [orderedPlayers]);
 
-  /* --- init visuel kamp-rækkefølge & per-position data når antal grupper ændres --- */
   useEffect(() => {
     const N = groups.length;
 
-    // init matchOrder som 0..N-1 hvis tom eller længde mismatch
-    setMatchOrder((prev) => {
-      if (prev.length !== N) return Array.from({ length: N }, (_, i) => i);
-      return prev;
-    });
-
-    // Baner: CC/1/2/3 cykles efter antal kampe (positioner)
-    setCourtsOrder((prev) => {
-      const need = N;
-      const next: (string | number)[] = [];
-      for (let i = 0; i < need; i++) next.push(prev[i] ?? thursdayCourts[i % thursdayCourts.length]);
-      return next.slice(0, need);
-    });
-
-    // Antal sæt pr. kamp-position
-    setRoundsPerPos((prev) => {
-      const n: Record<number, number> = {};
-      for (let i = 0; i < N; i++) n[i] = prev[i] && prev[i] >= 1 ? prev[i] : 3;
-      return n;
-    });
-
-    // Standard tider pr. kamp-position
-    setMatchTimes((prev) => {
-      const next: Record<number, { start: string; end: string }> = {};
-      for (let i = 0; i < N; i++) {
-        next[i] = prev[i] ?? thursdayTime(i);
-      }
+    setRoundsPerGi((prev) => {
+      const next = { ...prev };
+      for (let gi = 0; gi < N; gi++) if (!next[gi]) next[gi] = 3;
+      Object.keys(next).forEach((key) => {
+        if (parseInt(key, 10) >= N) delete next[key as any];
+      });
       return next;
     });
 
-    // Trim scores til kun gyldige positioner
+    setMatchNoByGroup((prev) => {
+      const next = { ...prev };
+      for (let gi = 0; gi < N; gi++) if (!next[gi]) next[gi] = gi + 1;
+      Object.keys(next).forEach((key) => {
+        if (parseInt(key, 10) >= N) delete next[key as any];
+      });
+      return next;
+    });
+
     setScores((prev) => {
-      const next: Record<string, Score> = {};
-      for (let i = 0; i < N; i++) {
-        // beholder eksisterende set-scores for denne pos hvis findes
+      const keep: ScoreMap = {};
+      for (let gi = 0; gi < N; gi++) {
         Object.keys(prev).forEach((k) => {
-          if (k.startsWith(`${i}-`)) next[k] = prev[k];
+          if (k.startsWith(`${gi}-`)) keep[k] = prev[k];
         });
       }
-      return next;
+      return keep;
+    });
+
+    setSlots((prev) => {
+      if (prev.length >= N) return prev.slice(0, N);
+      const def = makeDefaultThursdaySlots(N);
+      return def.slice(0, N);
     });
   }, [groups.length]);
 
-  /* --- Søgning/swap spillere --- */
+  const plan = useMemo(() => {
+    const withOrder = groups.map((playersInGroup, gi) => ({
+      gi,
+      matchNo: matchNoByGroup[gi] ?? gi + 1,
+      players: playersInGroup,
+    }));
+
+    withOrder.sort((a, b) => (a.matchNo === b.matchNo ? a.gi - b.gi : a.matchNo - b.matchNo));
+
+    return withOrder.map((g, idx) => ({
+      gi: g.gi,
+      players: g.players,
+      court: slots[idx]?.court ?? "CC",
+      start: slots[idx]?.start ?? "17:00",
+      end: slots[idx]?.end ?? "18:40",
+    }));
+  }, [groups, matchNoByGroup, slots]);
+
   const searchResults = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return [] as Array<Profile & { elo?: number }>;
+
     const already = new Set(orderIds.map((id) => id.replace(/^name:/, "")));
-    return (allProfiles || [])
-      .filter((p) => !!p.visningsnavn && p.visningsnavn.toLowerCase().includes(q))
-      .filter((p) => !already.has(normName(p.visningsnavn)))
+
+    return allProfiles
+      .filter((p) => p.visningsnavn && p.visningsnavn.toLowerCase().includes(q) && !already.has(normName(p.visningsnavn)))
       .slice(0, 50)
-      .map((p) => ({ ...p, elo: eloMap[(p.visningsnavn || "").trim()] ?? 1000 }));
-  }, [search, allProfiles, orderIds, eloMap]);
+      .map((p) => ({ ...p, elo: eloMapNow[(p.visningsnavn || "").trim()] ?? 1000 }));
+  }, [search, allProfiles, orderIds, eloMapNow]);
 
-  function replacePlayerAt(index: number, np: Profile & { elo?: number }) {
-    const vn = (np.visningsnavn || "").trim();
-    if (!vn) return;
+  // Til visning i venstre/højre kolonne
+  const displayEloMap = eloMapNow;
 
-    const newId = `name:${normName(vn)}`;
-    const exists = orderIds.includes(newId);
-    if (exists) {
-      alert("Spilleren er allerede i listen.");
-      return;
+  // ============================================================
+  // Simulation af aftenen (identisk strategi som “den der virker”)
+  // – Start fra dagens Elo, genberegn for hvert sæt ud fra forudgående sæt
+  // – Fallback for ukendt Elo = 0 (og *ikke* 1500)
+  // – Hvis én af de 4 Elo = 0 → vis 0% / 100% (tydelig fejlindikator)
+  // ============================================================
+  const { perSetInfoMap, dagensEloDiffs, eloAtStartMapForUI } = useMemo(() => {
+    const startMap: Record<string, number> = { ...eloMapNow };
+
+    // Elo ved “dagens start” på UI = dagens Elo (fallback 0)
+    const eloAtStartMapForUI: Record<string, number> = {};
+    Object.keys(startMap).forEach((n) => (eloAtStartMapForUI[n] = startMap[n]));
+
+    const setKey = (gi: number, si: number) => `${gi}-${si}`;
+    const perSetInfoMap: SetInfoMap = {};
+
+    // Helper til at bygge alle forudgående sæt op til et givet sæt
+    function buildPrevSets(uptoGi: number, uptoSi: number) {
+      const prevSets: any[] = [];
+      for (let gi = 0; gi <= uptoGi; gi++) {
+        const total = roundsPerGi[gi] ?? 3;
+        const lastSi = gi === uptoGi ? uptoSi - 1 : total - 1;
+        if (lastSi < 0) continue;
+
+        // find gruppens players i samme plan-orden
+        const g = plan.find((x) => x.gi === gi);
+        const playersInGroup = g?.players ?? [];
+
+        for (let si = 0; si <= lastSi; si++) {
+          const rot = ROT[si % ROT.length];
+          const A1 = playersInGroup[rot[0][0]]?.visningsnavn || "?";
+          const A2 = playersInGroup[rot[0][1]]?.visningsnavn || "?";
+          const B1 = playersInGroup[rot[1][0]]?.visningsnavn || "?";
+          const B2 = playersInGroup[rot[1][1]]?.visningsnavn || "?";
+          const sc = scores[setKey(gi, si)] ?? { a: 0, b: 0 };
+          const done = sc.a !== 0 || sc.b !== 0 ? erFærdigtSæt(sc.a, sc.b) : false;
+
+          prevSets.push({
+            id: 2_000_000 + gi * 100 + si,
+            kampid: 800_000 + gi,
+            date: event?.date ?? "1970-01-01",
+            holdA1: A1,
+            holdA2: A2,
+            holdB1: B1,
+            holdB2: B2,
+            scoreA: sc.a,
+            scoreB: sc.b,
+            finish: done,
+            event: true,
+            tiebreak: "false",
+          });
+
+          [A1, A2, B1, B2].forEach((nm) => {
+            const k = (nm || "").trim();
+            if (!k || k === "?") return;
+            if (!(k in eloAtStartMapForUI)) eloAtStartMapForUI[k] = startMap[k] ?? 0;
+          });
+        }
+      }
+      return prevSets;
     }
 
-    setOrderIds((prev) => {
-      const next = [...prev];
-      next[index] = newId;
-      return next;
+    // Per sæt: beregn pctA/pctB ud fra Elo lige før sættet,
+    // og plusTxt ud fra eloChanges hvis sc ≠ 0–0
+    plan.forEach((g) => {
+      const sets = roundsPerGi[g.gi] ?? 3;
+
+      for (let si = 0; si < sets; si++) {
+        const prevSets = buildPrevSets(g.gi, si);
+        const { nyEloMap } = beregnEloForKampe(prevSets as any, startMap as any);
+
+        const rot = ROT[si % ROT.length];
+        const a1 = g.players[rot[0][0]]?.visningsnavn || "?";
+        const a2 = g.players[rot[0][1]]?.visningsnavn || "?";
+        const b1 = g.players[rot[1][0]]?.visningsnavn || "?";
+        const b2 = g.players[rot[1][1]]?.visningsnavn || "?";
+
+        const rA1 = nyEloMap[a1] ?? 0;
+        const rA2 = nyEloMap[a2] ?? 0;
+        const rB1 = nyEloMap[b1] ?? 0;
+        const rB2 = nyEloMap[b2] ?? 0;
+
+        let pctA = 0;
+        let pctB = 100;
+
+        // Hvis alle fire Elo er non-zero → brug klassisk Elo-forventning
+        if (rA1 && rA2 && rB1 && rB2) {
+          const rA = (rA1 + rA2) / 2;
+          const rB = (rB1 + rB2) / 2;
+          const qa = Math.pow(10, rA / 400);
+          const qb = Math.pow(10, rB / 400);
+          const pA = qa / (qa + qb);
+          pctA = Math.max(0, Math.min(100, Math.round(100 * pA)));
+          pctB = 100 - pctA;
+        }
+        // ellers: behold 0 / 100 for tydelig fejl
+
+        // plusTxt: kun når dette sæt har sc ≠ 0–0
+        const sc = scores[`${g.gi}-${si}`] ?? { a: 0, b: 0 };
+        let plusTxt = "";
+        if (sc.a !== 0 || sc.b !== 0) {
+          const currentSet = {
+            id: 3_000_000 + g.gi * 100 + si,
+            kampid: 700_000 + g.gi,
+            date: event?.date ?? "1970-01-01",
+            holdA1: a1,
+            holdA2: a2,
+            holdB1: b1,
+            holdB2: b2,
+            scoreA: sc.a,
+            scoreB: sc.b,
+            finish: erFærdigtSæt(sc.a, sc.b),
+            event: true,
+            tiebreak: "false",
+          };
+          const { eloChanges } = beregnEloForKampe([...prevSets, currentSet] as any, startMap as any);
+          const ch = eloChanges?.[currentSet.id];
+          if (ch) {
+            const diffs = Object.values(ch).map((x: any) => (typeof x?.diff === "number" ? x.diff : 0));
+            const maxPos = Math.max(...diffs.filter((d: number) => d > 0));
+            if (Number.isFinite(maxPos)) plusTxt = `+${maxPos.toFixed(1)}`;
+          }
+        }
+
+        perSetInfoMap[`${g.gi}-${si}`] = { pctA, pctB, plusTxt };
+      }
     });
 
-    setPlayers((prev) => {
-      const map = new Map(prev.map((p) => [p.user_id, p]));
-      map.set(newId, {
-        user_id: newId,
-        visningsnavn: vn,
-        elo: eloMap[vn] ?? 1000,
-        tidligste_tid: null,
-      });
-      return Array.from(map.values());
-    });
-
-    setSwapIndex(null);
-    setSwapOpen(false);
-    setSearch("");
-  }
-
-  function removePlayer(id: string) {
-    setOrderIds((prev) => prev.filter((x) => x !== id));
-    setPlayers((prev) => prev.filter((p) => p.user_id !== id));
-  }
-
-  function movePlayerUp(id: string) {
-    setOrderIds((prev) => {
-      const i = prev.indexOf(id);
-      if (i <= 0) return prev;
-      const copy = [...prev];
-      [copy[i - 1], copy[i]] = [copy[i], copy[i - 1]];
-      return copy;
-    });
-  }
-
-  /* --- Plan (visuel rækkefølge) --- */
-  const plan = useMemo(() => {
-    // kamp-positioner i den visuelle rækkefølge: [0..N-1], og hvilke spillere (gruppe) de viser
-    return matchOrder.map((groupIdx, pos) => ({
-      pos, // visuel position (bruges som gi for DB)
-      groupIdx,
-      court: courtsOrder[pos] ?? pos + 1,
-      players: groups[groupIdx] ?? [],
-    }));
-  }, [groups, matchOrder, courtsOrder]);
-
-  /* --- Flyt kamp op (bytter position 'pos' med 'pos-1') --- */
-  const moveMatchUp = (pos: number) => {
-    if (pos <= 0 || locked) return;
-
-    // 1) Byt matchOrder (visuel rækkefølge af grupper)
-    setMatchOrder((prev) => {
-      const next = [...prev];
-      [next[pos - 1], next[pos]] = [next[pos], next[pos - 1]];
-      return next;
-    });
-
-    // 2) Byt courtsOrder (baner pr. position)
-    setCourtsOrder((prev) => {
-      const next = [...prev];
-      [next[pos - 1], next[pos]] = [next[pos], next[pos - 1]];
-      return next;
-    });
-
-    // 3) Byt matchTimes
-    setMatchTimes((prev) => {
-      const next = { ...prev };
-      [next[pos - 1], next[pos]] = [next[pos], next[pos - 1]];
-      return next;
-    });
-
-    // 4) Byt roundsPerPos
-    setRoundsPerPos((prev) => {
-      const next = { ...prev };
-      [next[pos - 1], next[pos]] = [next[pos], next[pos - 1]];
-      return next;
-    });
-
-    // 5) Byt scores for alle sæt under de to positioner
-    setScores((prev) => {
-      const next: Record<string, Score> = { ...prev };
-
-      const swapKeys = (aPos: number, bPos: number) => {
-        // find alle set-index vi kender for a og b
-        const aKeys = Object.keys(prev).filter((k) => k.startsWith(`${aPos}-`));
-        const bKeys = Object.keys(prev).filter((k) => k.startsWith(`${bPos}-`));
-
-        // midlertidige kopier
-        const aVals: Record<number, Score> = {};
-        const bVals: Record<number, Score> = {};
-
-        aKeys.forEach((k) => {
-          const si = parseInt(k.split("-")[1], 10);
-          aVals[si] = prev[k];
-          delete next[k];
-        });
-        bKeys.forEach((k) => {
-          const si = parseInt(k.split("-")[1], 10);
-          bVals[si] = prev[k];
-          delete next[k];
-        });
-
-        // skriv tilbage “byttet”
-        Object.entries(aVals).forEach(([siStr, val]) => {
-          const si = parseInt(siStr, 10);
-          next[`${bPos}-${si}`] = val;
-        });
-        Object.entries(bVals).forEach(([siStr, val]) => {
-          const si = parseInt(siStr, 10);
-          next[`${aPos}-${si}`] = val;
-        });
-      };
-
-      swapKeys(pos, pos - 1);
-      return next;
-    });
-  };
-
-  /* --- Elo-siden (samlet diff) --- */
-  const dayDiffSorted = useMemo(() => {
-    const sets: any[] = [];
-    plan.forEach(({ pos, players }, visualPos) => {
-      const r = roundsPerPos[pos] ?? 3;
-      for (let si = 0; si < r; si++) {
-        const rot = ROTATIONS[si % ROTATIONS.length];
-        const a1 = players[rot[0][0]]?.visningsnavn || "?";
-        const a2 = players[rot[0][1]]?.visningsnavn || "?";
-        const b1 = players[rot[1][0]]?.visningsnavn || "?";
-        const b2 = players[rot[1][1]]?.visningsnavn || "?";
-        const sc = scores[`${visualPos}-${si}`] ?? { a: 0, b: 0 }; // NB: bruger visuel pos i UI
-        const done = sc.a !== 0 || sc.b !== 0 ? erFærdigtSæt(sc.a, sc.b) : false;
-        sets.push({
-          id: 1_000_000 + visualPos * 100 + si,
-          kampid: 900_000 + visualPos,
+    // Dagens Elo-diffs: sum af eloChanges for alle sæt med score ≠ 0–0
+    const allSets: any[] = [];
+    plan.forEach((g) => {
+      const sets = roundsPerGi[g.gi] ?? 3;
+      for (let si = 0; si < sets; si++) {
+        const rot = ROT[si % ROT.length];
+        const A1 = g.players[rot[0][0]]?.visningsnavn || "?";
+        const A2 = g.players[rot[0][1]]?.visningsnavn || "?";
+        const B1 = g.players[rot[1][0]]?.visningsnavn || "?";
+        const B2 = g.players[rot[1][1]]?.visningsnavn || "?";
+        const sc = scores[`${g.gi}-${si}`] ?? { a: 0, b: 0 };
+        if (sc.a === 0 && sc.b === 0) continue;
+        allSets.push({
+          id: 1_000_000 + g.gi * 100 + si,
+          kampid: 900_000 + g.gi,
           date: event?.date ?? "1970-01-01",
-          holdA1: a1,
-          holdA2: a2,
-          holdB1: b1,
-          holdB2: b2,
+          holdA1: A1,
+          holdA2: A2,
+          holdB1: B1,
+          holdB2: B2,
           scoreA: sc.a,
           scoreB: sc.b,
-          finish: done,
+          finish: erFærdigtSæt(sc.a, sc.b),
           event: true,
           tiebreak: "false",
         });
       }
     });
-    const { eloChanges } = beregnEloForKampe(sets as any, eloMap);
+
     const totals: Record<string, number> = {};
-    for (const s of sets) {
-      if (s.scoreA === 0 && s.scoreB === 0) continue;
-      const ch = eloChanges?.[s.id];
-      if (!ch) continue;
-      Object.entries(ch).forEach(([navn, e]: any) => {
-        const diff = typeof (e as any)?.diff === "number" ? (e as any).diff : 0;
-        totals[navn] = (totals[navn] ?? 0) + diff;
-      });
+    if (allSets.length) {
+      const { eloChanges } = beregnEloForKampe(allSets as any, startMap as any);
+      for (const s of allSets) {
+        const ch = eloChanges?.[s.id];
+        if (!ch) continue;
+        Object.entries(ch).forEach(([navn, v]: any) => {
+          const d = typeof v?.diff === "number" ? v.diff : 0;
+          totals[navn] = (totals[navn] ?? 0) + d;
+        });
+      }
     }
-    return Object.entries(totals)
+
+    const dagensEloDiffs = Object.entries(totals)
       .map(([navn, diff]) => ({ navn, diff }))
       .sort((a, b) => b.diff - a.diff);
-  }, [plan, roundsPerPos, scores, eloMap, event?.date]);
 
-  const header = useMemo(() => ({ emojiLeft: "🍺", emojiRight: "🍺" }), []);
+    return { perSetInfoMap, dagensEloDiffs, eloAtStartMapForUI };
+  }, [plan, roundsPerGi, scores, eloMapNow, event?.date]);
 
-  if (!event) return <div className="p-4">Indlæser…</div>;
-
-async function handlePublishToggle(checked: boolean) {
-  if (!event) return;
-
-  // 1) Opdater event-status
-  const { data, error } = await (supabase.from("events") as any)
-    .update({ status: checked ? "published" : "planned" })
-    .eq("id", event.id)
-    .select("*")
-    .maybeSingle();
-
-  if (error) {
-    alert("Kunne ikke opdatere status: " + error.message);
-    return;
+  /** ======================== Handlers ======================== */
+  function movePlayerUp(uid: string) {
+    if (locked) return;
+    setOrderIds((prev) => {
+      const i = prev.indexOf(uid);
+      if (i <= 0) return prev;
+      const n = [...prev];
+      [n[i - 1], n[i]] = [n[i], n[i - 1]];
+      return n;
+    });
   }
-  if (!data) return;
-  setEvent(data as EventRow);
 
-  // 2) Synkroniser event_result
-  if (checked) {
-    // Opret/overstyr alle rækker for hele programmet (idempotent via onConflict)
-    const payloads = buildEventResultRows(event.id, {
-      plan,
-      roundsPerPos,
-      matchTimes,
-      courtsOrder,
-      scores,
-      date: event.date,
+  function removePlayer(uid: string) {
+    if (locked) return;
+    setOrderIds((prev) => prev.filter((x) => x !== uid));
+    setPlayers((prev) => prev.filter((p) => p.user_id !== uid));
+  }
+
+  // Helper: re-sorter efter nutidsElo
+  function resortByEloNow(nextOrderIds: string[], nextPlayers: EventPlayer[]) {
+    const idToName = new Map(nextPlayers.map((p) => [p.user_id, (p.visningsnavn || "").trim()]));
+    const scored = nextOrderIds.map((id, idx) => {
+      const navn = idToName.get(id) || "";
+      const elo = eloMapNow[navn] ?? 0;
+      return { id, elo, idx };
+    });
+    scored.sort((a, b) => (b.elo - a.elo) || (a.idx - b.idx));
+    return scored.map((x) => x.id);
+  }
+
+  // Tilføj fra søg: brug nutidsElo + autosortering
+  function addPlayerFromSearch(p: Profile & { elo?: number }) {
+    if (locked) return;
+    const vn = (p.visningsnavn || "").trim();
+    const fakeId = `name:${vn.toLowerCase()}`;
+    if (!vn) return;
+    if (orderIds.includes(fakeId)) {
+      alert("Spilleren er allerede på listen");
+      return;
+    }
+
+    setPlayers((prev) => {
+      const next = [
+        ...prev,
+        { user_id: fakeId, visningsnavn: vn, elo: eloMapNow[vn] ?? 0, tidligste_tid: null },
+      ];
+      setOrderIds(resortByEloNow([...orderIds, fakeId], next));
+      return next;
+    });
+    setSearch("");
+  }
+
+  function startSwap(index: number) {
+    if (locked) return;
+    setSwapIndex(index);
+    setSwapOpen(true);
+    setSearch("");
+  }
+
+  function replacePlayerAt(index: number, prof: Profile & { elo?: number }) {
+    if (locked) return;
+    const vn = (prof.visningsnavn || "").trim();
+    const newId = `name:${vn.toLowerCase()}`;
+    if (!vn) return;
+    if (orderIds.includes(newId)) {
+      alert("Allerede i listen");
+      return;
+    }
+
+    setPlayers((prev) => {
+      const map = new Map(prev.map((pp) => [pp.user_id, pp] as const));
+      map.set(newId, {
+        user_id: newId,
+        visningsnavn: vn,
+        elo: eloMapNow[vn] ?? 0,
+        tidligste_tid: null,
+      });
+
+      const nextPlayers = Array.from(map.values());
+      setOrderIds((prevIds) => {
+        const ids = [...prevIds];
+        ids[index] = newId;
+        return resortByEloNow(ids, nextPlayers);
+      });
+
+      return nextPlayers;
     });
 
-    if (payloads.length === 0) return;
+    setSwapOpen(false);
+    setSwapIndex(null);
+    setSearch("");
+  }
 
-    const { error: upErr } = await (supabase.from("event_result") as any).upsert(payloads, {
-      onConflict: "event_id,group_index,set_index",
-    });
-    if (upErr) {
-      alert("Kunne ikke oprette rækker i event_result: " + upErr.message);
+  // Opdater deltagere (nutidsElo til sortering/visning)
+  async function fetchSignups() {
+    if (!event?.date) return;
+    if (locked) return;
+    setLoadingPlayers(true);
+
+    const { data, error } = await supabase
+      .from("event_signups")
+      .select("visningsnavn,tidligste_tid,kan_spille,event_dato")
+      .eq("event_dato", event.date);
+
+    if (error) {
+      console.error(error);
+      alert("Kunne ikke hente tilmeldinger");
+      setLoadingPlayers(false);
+      return;
     }
-  } else {
-    // Slet ALT for dette event (du kan nøjes med planned->clear)
-    const { error: delErr } = await (supabase.from("event_result") as any)
-      .delete()
-      .eq("event_id", event.id);
-    if (delErr) {
-      alert("Kunne ikke slette rækker i event_result: " + delErr.message);
+
+    const best = new Map<string, { visningsnavn: string | null; tidligste_tid: string | null }>();
+
+    for (const row of data ?? []) {
+      if (!row.visningsnavn || row.kan_spille !== true) continue;
+      const key = (row.visningsnavn || "").trim().toLowerCase();
+      const prev = best.get(key);
+      if (!prev || toMinutes(row.tidligste_tid) < toMinutes(prev.tidligste_tid)) {
+        best.set(key, { visningsnavn: row.visningsnavn, tidligste_tid: row.tidligste_tid });
+      }
+    }
+
+    const list: EventPlayer[] = Array.from(best.values()).map((x) => {
+      const vn = (x.visningsnavn || "").trim();
+      return {
+        user_id: `name:${vn.toLowerCase()}`,
+        visningsnavn: vn,
+        elo: eloMapNow[vn] ?? 0, // nutidsElo (fallback 0)
+        tidligste_tid: toHHMM(x.tidligste_tid),
+      };
+    });
+
+    list.sort((a, b) => (eloMapNow[b.visningsnavn || ""] ?? 0) - (eloMapNow[a.visningsnavn || ""] ?? 0));
+
+    setPlayers(list);
+    setOrderIds(list.map((p) => p.user_id));
+    setLoadingPlayers(false);
+  }
+
+  function setMatchNo(gi: number, v: number) {
+    if (v < 1) v = 1;
+    setMatchNoByGroup((prev) => ({ ...prev, [gi]: v }));
+  }
+
+  function setScoreHandler(gi: number, si: number, side: "a" | "b", raw: string) {
+    const digits = raw.replace(/\D/g, "");
+    const val = digits === "" ? 0 : Math.min(7, Math.max(0, parseInt(digits, 10)));
+    const key = `${gi}-${si}`;
+
+    setScores((prev) => {
+      const nextSet = { ...(prev[key] ?? { a: 0, b: 0 }), [side]: val };
+      const nextAll = { ...prev, [key]: nextSet };
+
+      const g = plan.find((x) => x.gi === gi);
+      const rot = ROT[si % ROT.length];
+      const a1 = g?.players[rot[0][0]]?.visningsnavn || "";
+      const a2 = g?.players[rot[0][1]]?.visningsnavn || "";
+      const b1 = g?.players[rot[1][0]]?.visningsnavn || "";
+      const b2 = g?.players[rot[1][1]]?.visningsnavn || "";
+
+      void upsertEventResultRow({
+        eventId: event?.id ?? "",
+        gi,
+        si,
+        courtLabel: g?.court,
+        start: g?.start,
+        end: g?.end,
+        a1,
+        a2,
+        b1,
+        b2,
+        scoreA: nextSet.a,
+        scoreB: nextSet.b,
+        tiebreak: false,
+      });
+
+      return nextAll;
+    });
+  }
+
+  function addRoundForMatch(gi: number) {
+    if (locked) return;
+    setRoundsPerGi((prev) => {
+      const newCount = (prev[gi] ?? 3) + 1;
+      void upsertEventResultRow({ eventId: event?.id ?? "", gi, si: newCount - 1, scoreA: 0, scoreB: 0 });
+      return { ...prev, [gi]: newCount };
+    });
+  }
+
+  async function togglePublished(nextChecked: boolean) {
+    if (!event) return;
+    try {
+      if (nextChecked) {
+        await persistProgramToEventResult({ eventId: event.id, plan, rounds: roundsPerGi, scores });
+      }
+
+      const { data, error } = await (supabase.from("events") as any)
+        .update({ status: nextChecked ? "published" : "planned" })
+        .eq("id", event.id)
+        .select("*")
+        .maybeSingle();
+
+      if (error) throw error;
+      if (data) setEvent(data);
+
+      alert(nextChecked ? "Program publiceret ✔️" : "Event sat til planned (ikke offentlig)");
+    } catch (e: any) {
+      alert("Fejl ved publicering: " + (e?.message || e));
     }
   }
-}
 
+  async function handleSubmitResults() {
+    if (!event) return;
+    try {
+      setSubmitting(true);
 
-  // Helper: præcis match – udeluk fx "TorsdagsTøserne"
-  const isThursdayBeer = (name?: string | null) => {
-    if (!name) return false;
-    const s = name
-      .normalize("NFKD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase();
-    return /\btorsdags\s*bold\b/.test(s) || /\bbajer(e)?\b/.test(s);
-  };
+      const rows = buildAllRows({ eventId: event.id, plan, rounds: roundsPerGi, scores });
+      if (rows.length) {
+        const { error } = await (supabase.from("event_result") as any).upsert(rows, {
+          onConflict: "event_id,group_index,set_index",
+        });
+        if (error) throw error;
+      }
 
-  /* ======================== RENDER ======================== */
+      const { data: auth } = await supabase.auth.getUser();
+      const reporter = (auth?.user?.user_metadata as any)?.visningsnavn ?? auth?.user?.email ?? "TorsdagsAdmin";
+
+      let nextKampId = await getNextKampId();
+      const kampidByGi: Record<number, number> = {};
+
+      plan.forEach((g) => {
+        const cnt = roundsPerGi[g.gi] ?? 3;
+        for (let si = 0; si < cnt; si++) {
+          const sc = scores[`${g.gi}-${si}`] ?? { a: 0, b: 0 };
+          if (sc.a || sc.b) {
+            if (!kampidByGi[g.gi]) kampidByGi[g.gi] = nextKampId++;
+            break;
+          }
+        }
+      });
+
+      const inserts: any[] = [];
+      plan.forEach((g) => {
+        const cnt = roundsPerGi[g.gi] ?? 3;
+        for (let si = 0; si < cnt; si++) {
+          const sc = scores[`${g.gi}-${si}`] ?? { a: 0, b: 0 };
+          if (sc.a === 0 && sc.b === 0) continue;
+          const rot = ROT[si % ROT.length];
+          inserts.push({
+            date: event.date,
+            finish: erFærdigtSæt(sc.a, sc.b),
+            tiebreak: false,
+            event: true,
+            kampid: kampidByGi[g.gi],
+            holdA1: g.players[rot[0][0]]?.visningsnavn || "",
+            holdA2: g.players[rot[0][1]]?.visningsnavn || "",
+            holdB1: g.players[rot[1][0]]?.visningsnavn || "",
+            holdB2: g.players[rot[1][1]]?.visningsnavn || "",
+            scoreA: sc.a,
+            scoreB: sc.b,
+            indberettet_af: reporter,
+          });
+        }
+      });
+
+      if (inserts.length) {
+        const { error } = await (supabase.from("newresults") as any).insert(inserts);
+        if (error) throw error;
+      }
+
+      const { data, error: stErr } = await (supabase.from("events") as any)
+        .update({ status: "done" })
+        .eq("id", event.id)
+        .select("*")
+        .maybeSingle();
+      if (stErr) throw stErr;
+      if (data) setEvent(data);
+
+      alert(`Indsendt ✔️ ${inserts.length} sæt til newresults`);
+    } catch (e: any) {
+      alert("Fejl ved indsendelse: " + (e?.message || e));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  /** ======================== Render ======================== */
+  if (!event) return <div className="p-4">Indlæser TorsdagsBold & Bajere…</div>;
+
   return (
-    <div className="mx-auto px-2 sm:px-3 lg:px-4 max-w-[1600px] text-gray-900 dark:text-gray-100">
-      <style jsx global>{`
-        input[type="number"]::-webkit-outer-spin-button,
-        input[type="number"]::-webkit-inner-spin-button {
-          -webkit-appearance: none;
-          margin: 0;
-        }
-        input[type="number"] {
-          -moz-appearance: textfield;
-          appearance: textfield;
-        }
-        .tabnums {
-          font-variant-numeric: tabular-nums;
-        }
-      `}</style>
-
-      {/* Header */}
-      <div className="mt-1 mb-2 text-center">
-        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-green-600">
-          {header.emojiLeft} {event.name} {header.emojiRight}{" "}
-          {locked && (
+    <div className="mx-auto max-w-[1600px] px-2 sm:px-3 lg:px-4 text-gray-900 dark:text-gray-100">
+      {/* HEADER */}
+      <header className="mt-1 mb-2 text-center">
+        <h1 className={`text-2xl sm:text-3xl font-extrabold tracking-tight ${bentleyGreen.text}`}>
+          🍺 {event.name} 🍺{" "}
+          {event.status === "published" && (
             <span className="ml-2 text-xs align-middle px-2 py-0.5 rounded-full bg-green-600 text-white">
               🔒 Offentliggjort
             </span>
           )}
+          {event.status === "done" && (
+            <span className="ml-2 text-xs align-middle px-2 py-0.5 rounded-full bg-green-700 text-white">
+              ✅ Afsluttet
+            </span>
+          )}
         </h1>
+
         <div className="text-xs opacity-70 mt-1">
           {event.date} · {fmtTime(event.start_time)}–{fmtTime(event.end_time)} · {event.location}
         </div>
 
-        {/* Top controls: vælg kun TorsdagsBold & Bajere */}
         <div className="flex flex-wrap items-center justify-center gap-2 mt-2">
-          <label className="text-sm">
-            <span className="opacity-80 mr-2">Skift event</span>
-            {(() => {
-              const tbEvents = (eventsList || [])
-                .filter((ev) => isThursdayBeer(ev.name))
-                .sort((a, b) =>
-                  a.date === b.date ? (String(a.start_time) < String(b.start_time) ? -1 : 1) : a.date < b.date ? -1 : 1
-                );
-              const currentIsTB = isThursdayBeer(event?.name);
-              return (
-                <select
-                  className="border rounded px-2 py-1 text-sm bg-white dark:bg-zinc-900 border-green-400/70 dark:border-green-800/70"
-                  value={currentIsTB ? event!.id : ""}
-                  onChange={(e) => {
-                    const id = e.target.value;
-                    if (!id) return;
-                    router.push(`/admin/torsdagspadel/event/${id}`);
-                  }}
-                >
-                  {!currentIsTB && (
-                    <option value="" disabled>
-                      Vælg et TorsdagsBold & Bajere-event…
-                    </option>
-                  )}
-                  {tbEvents.map((ev) => (
-                    <option key={ev.id} value={ev.id}>
-                      {ev.date} · {fmtTime(ev.start_time)} – {ev.location} · {ev.name}
-                    </option>
-                  ))}
-                </select>
-              );
-            })()}
+          {/* Skift event */}
+          <label className="text-sm flex items-center gap-2">
+            <span className="opacity-80">Skift event</span>
+            <select
+              className="border rounded px-2 py-1 text-sm bg-white dark:bg-zinc-900 border-green-400/70 dark:border-green-800/70"
+              value={event.id}
+              onChange={(e) => router.push(`/admin/torsdagspadel/event/${e.target.value}`)}
+            >
+              {eventsList.map((ev) => (
+                <option key={ev.id} value={ev.id}>
+                  {ev.date} · {fmtTime(ev.start_time)} – {ev.location} · {ev.name}
+                </option>
+              ))}
+            </select>
           </label>
 
+          {/* Baner/Tider modal */}
+          <button
+            type="button"
+            onClick={() => setShowSlots(true)}
+            className="px-3 py-1 rounded-md border text-sm bg-white hover:bg-green-50 dark:bg-zinc-900 dark:border-green-700 border-green-300"
+          >
+            🗺️ Baner
+          </button>
+
+          {/* Publish toggle */}
           <label className="text-sm flex items-center gap-2 px-2 py-1 rounded-md border bg-white dark:bg-zinc-900 border-green-300 dark:border-green-700">
-            <input
-  type="checkbox"
-  checked={locked}
-  onChange={(e) => handlePublishToggle(e.target.checked)}
-/>
+            <input type="checkbox" checked={locked || false} onChange={(e) => void togglePublished(e.target.checked)} />
             <span>Programmet offentliggøres</span>
           </label>
+
+          {/* Submit results */}
+          <button
+            type="button"
+            onClick={handleSubmitResults}
+            disabled={submitting || !plan.length}
+            className="text-sm px-3 py-1.5 rounded-md border bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
+          >
+            {submitting ? "Indsender…" : "✅ Indsend & afslut (done)"}
+          </button>
         </div>
-      </div>
+      </header>
 
-      {/* Grid */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-3 sm:gap-4">
-        {/* Venstre */}
-        <section className="md:col-span-3 rounded-xl p-3 bg-green-50/70 dark:bg-green-900/10 border border-green-400/80 dark:border-green-800">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="font-semibold text-green-900 dark:text-green-200">Spillere ({orderedPlayers.length})</h2>
-            <button
-              type="button"
-              className="text-xs underline text-green-700 dark:text-green-300"
-              onClick={() => loadPlayersFromSignups()}
-            >
-              Opdater
-            </button>
-          </div>
+        {/* VENSTRE */}
+        <PlayerListColumn
+          orderedPlayers={orderedPlayers}
+          orderIds={orderIds}
+          loadingPlayers={loadingPlayers}
+          locked={locked || false}
+          bentleyGreen={bentleyGreen}
+          groups={groups}
+          matchNoByGroup={matchNoByGroup}
+          setMatchNo={setMatchNo}
+          movePlayerUp={movePlayerUp}
+          removePlayer={removePlayer}
+          startSwap={startSwap}
+          search={search}
+          setSearch={setSearch}
+          searchResults={searchResults}
+          loadingProfiles={loadingProfiles}
+          addPlayerFromSearch={addPlayerFromSearch}
+          onFetchSignups={fetchSignups}
+          // Elo som vises ved dagens start + nuværende
+          eloAtStartMapForUI={eloAtStartMapForUI}
+          displayEloMap={displayEloMap}
+        />
 
-          {/* Spillerliste (ELO-sorteret) */}
-          <div className="mt-1 space-y-2">
-            {loadingPlayers ? (
-              <div>Indlæser…</div>
-            ) : orderedPlayers.length === 0 ? (
-              <div className="text-sm opacity-70">Ingen tilmeldte endnu.</div>
-            ) : (
-              chunk4(orderedPlayers).map((block, bi) => (
-                <div
-                  key={`block-${bi}`}
-                  className="rounded-lg border border-green-500/80 dark:border-green-700/80 bg-white/95 dark:bg-zinc-900 shadow-sm"
-                >
-                  <div className="flex items-center justify-between px-3 py-2 bg-green-100/60 dark:bg-green-900/30">
-                    <div className="font-semibold text-green-900 dark:text-green-200">Gruppe {bi + 1}</div>
-                  </div>
+        {/* MIDTEN */}
+        <CenterMatches
+          plan={plan}
+          roundsPerGi={roundsPerGi}
+          scores={scores}
+          setScore={setScoreHandler}
+          addRoundForMatch={addRoundForMatch}
+          eventDate={event.date}
+          locked={locked || false}
+          bentleyGreen={bentleyGreen}
+          perSetInfoMap={perSetInfoMap}
+          ROT={ROT}
+        />
 
-                  <ul className="px-3 py-2 divide-y divide-green-100 dark:divide-green-900/30">
-                    {block.map((p, idx) => {
-                      const i = bi * 4 + idx;
-                      const uid = orderIds[i];
-                      return (
-                        <li key={`${uid}-${i}`} className="py-1.5 flex items-center justify-between gap-2">
-                          <div className="min-w-0">
-                            <div className="text-sm font-medium truncate">
-                              {i + 1}. {p?.visningsnavn || "(ukendt)"}
-                            </div>
-                            <div className="text-[11px] opacity-70">
-                              ELO {p?.elo ?? 1000}
-                              {p?.tidligste_tid ? <> · {p.tidligste_tid}</> : null}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => movePlayerUp(uid)}
-                              disabled={locked}
-                              className={`p-1.5 rounded-md border text-xs hover:bg-green-50 dark:hover:bg-green-900/30 border-green-300 dark:border-green-700 text-green-700 dark:text-green-300 ${
-                                locked ? "opacity-50 cursor-not-allowed" : ""
-                              }`}
-                              title={locked ? "Låst" : "Ryk spiller op"}
-                            >
-                              ⬆️
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (locked) return;
-                                setSwapIndex(i);
-                                setSwapOpen(true);
-                                setSearch("");
-                              }}
-                              disabled={locked}
-                              className={`p-1.5 rounded-md border text-xs hover:bg-blue-50 border-blue-300 text-blue-700 dark:hover:bg-blue-900/30 dark:border-blue-700 dark:text-blue-200 ${
-                                locked ? "opacity-50 cursor-not-allowed" : ""
-                              }`}
-                              title={locked ? "Låst" : "Skift spiller"}
-                            >
-                              🔁
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => removePlayer(uid)}
-                              disabled={locked}
-                              className={`p-1.5 rounded-md border text-xs hover:bg-red-50 dark:hover:bg-red-900/30 border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 ${
-                                locked ? "opacity-50 cursor-not-allowed" : ""
-                              }`}
-                              title={locked ? "Låst" : "Fjern spiller"}
-                            >
-                              🗑️
-                            </button>
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              ))
-            )}
-          </div>
-        </section>
-
-        {/* Midten */}
-        <section className="md:col-span-7 border rounded-xl p-3 bg-white/80 dark:bg-zinc-900/60 border-green-400 dark:border-green-800">
-          {!plan.length ? (
-            <div className="text-sm opacity-70">Tilmeldinger hentes fra event_signups.</div>
-          ) : (
-            <CenterMatches
-              plan={plan}
-              moveMatchUp={moveMatchUp}
-              courtsOrder={courtsOrder}
-              setCourtsOrder={setCourtsOrder}
-              setCourtLabel={(pos, value) => {
-                setCourtsOrder((prev) => {
-                  const next = [...prev];
-                  next[pos] = (value || "").trim() || pos + 1;
-                  return next;
-                });
-                const sets = roundsPerPos[pos] ?? 3;
-                for (let si = 0; si < sets; si++)
-                  void upsertEventResultRow({
-                    eventId: event!.id,
-                    gi: pos,
-                    si,
-                    courtLabel: value,
-                    start: matchTimes[pos]?.start,
-                    end: matchTimes[pos]?.end,
-                  });
-              }}
-              matchTimes={matchTimes}
-              setMatchTimes={setMatchTimes}
-              roundsPerPos={roundsPerPos}
-              addRoundForPos={(pos) => {
-                setRoundsPerPos((prev) => {
-                  const nextCnt = (prev[pos] ?? 3) + 1;
-                  void upsertEventResultRow({
-                    eventId: event!.id,
-                    gi: pos,
-                    si: nextCnt - 1,
-                    scoreA: 0,
-                    scoreB: 0,
-                  });
-                  return { ...prev, [pos]: nextCnt };
-                });
-              }}
-              scores={scores}
-              setScore={(pos, si, side, raw, gPlayers) => {
-                const n = (() => {
-                  const t = raw.replace(/\D/g, "");
-                  return t === "" ? 0 : Math.min(7, Math.max(0, parseInt(t, 10)));
-                })();
-                const key = `${pos}-${si}`;
-                setScores((s) => {
-                  const prev = s[key] ?? { a: 0, b: 0 };
-                  const next = { ...prev, [side]: n };
-
-                  const rot = ROTATIONS[si % ROTATIONS.length];
-                  void upsertEventResultRow({
-                    eventId: event!.id,
-                    gi: pos,
-                    si,
-                    courtLabel: courtsOrder[pos],
-                    start: matchTimes[pos]?.start,
-                    end: matchTimes[pos]?.end,
-                    a1: gPlayers[rot[0][0]]?.visningsnavn || "",
-                    a2: gPlayers[rot[0][1]]?.visningsnavn || "",
-                    b1: gPlayers[rot[1][0]]?.visningsnavn || "",
-                    b2: gPlayers[rot[1][1]]?.visningsnavn || "",
-                    scoreA: next.a,
-                    scoreB: next.b,
-                    tiebreak: false,
-                  });
-
-                  return { ...s, [key]: next };
-                });
-              }}
-              eloMap={eloMap}
-              event={event}
-              courtSuggestions={["CC", "1", "2", "3"]}
-            />
-          )}
-        </section>
-
-        {/* Højre */}
-        <section className="md:col-span-2 border rounded-xl p-3 bg-white/90 dark:bg-zinc-900/60 border-green-400 dark:border-green-800 flex flex-col md:sticky md:top-2 h-fit">
-          <h2 className="font-semibold mb-2 text-green-900 dark:text-green-200">📈 Dagens Elo</h2>
-          {dayDiffSorted.length === 0 ? (
-            <div className="text-sm opacity-70">Ingen udfyldte sæt endnu.</div>
-          ) : (
-            <div className="space-y-1 max-h-[480px] overflow-auto pr-1">
-              {dayDiffSorted.map(({ navn, diff }) => (
-                <div key={navn} className="flex items-center justify-between text-sm">
-                  <span className="truncate max-w-[60%]">{navn}</span>
-                  <span className={diff >= 0 ? "text-green-600 tabnums" : "text-red-500 tabnums"}>
-                    {emojiForPluspoint(diff)} {diff >= 0 ? "+" : ""}
-                    {diff.toFixed(1)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
+        {/* HØJRE */}
+        <EloSidebar
+          dagensEloDiffs={dagensEloDiffs}
+          emojiForPluspoint={emojiForPluspoint}
+          bentleyGreen={bentleyGreen}
+        />
       </div>
 
-      {/* Swap modal */}
+      {/* Modals */}
+      {showSlots && (
+        <SlotsModal
+          slots={slots}
+          onClose={() => setShowSlots(false)}
+          onSave={(next) => {
+            setSlots(next);
+            setShowSlots(false);
+          }}
+        />
+      )}
+
       <SwapModal
         open={swapOpen && !locked}
         onClose={() => {
           setSwapOpen(false);
           setSwapIndex(null);
         }}
-        searchResults={searchResults}
         search={search}
         setSearch={setSearch}
         loadingProfiles={loadingProfiles}
+        searchResults={searchResults}
         onPick={(p) => {
           if (swapIndex == null) return;
-          replacePlayerAt(swapIndex, p as any);
+          replacePlayerAt(swapIndex, p);
         }}
       />
     </div>
   );
 }
-
-/* ===================== Midterkolonnen ===================== */
-function CenterMatches({
-  plan,
-  moveMatchUp,
-  courtsOrder,
-  setCourtsOrder,
-  setCourtLabel,
-  matchTimes,
-  setMatchTimes,
-  roundsPerPos,
-  addRoundForPos,
-  scores,
-  setScore,
-  eloMap,
-  event,
-  courtSuggestions,
-}: {
-  plan: Array<{ pos: number; groupIdx: number; court: string | number; players: EventPlayer[] }>;
-  moveMatchUp: (pos: number) => void;
-  courtsOrder: (string | number)[];
-  setCourtsOrder: React.Dispatch<React.SetStateAction<(string | number)[]>>;
-  setCourtLabel: (pos: number, value: string) => void;
-  matchTimes: Record<number, { start: string; end: string }>;
-  setMatchTimes: React.Dispatch<React.SetStateAction<Record<number, { start: string; end: string }>>>;
-  roundsPerPos: Record<number, number>;
-  addRoundForPos: (pos: number) => void;
-  scores: Record<string, { a: number; b: number }>;
-  setScore: (pos: number, si: number, side: "a" | "b", raw: string, gPlayers: EventPlayer[]) => void;
-  eloMap: Record<string, number>;
-  event: EventRow;
-  courtSuggestions: string[];
-}) {
-  const setKey = (pos: number, si: number) => `${pos}-${si}`;
-  const scoreOf = (s?: { a: number; b: number }) => ({ a: s?.a ?? 0, b: s?.b ?? 0 });
-
-  const ScoreBox = ({
-    value,
-    onChange,
-    title,
-  }: {
-    value: number;
-    onChange: (val: string) => void;
-    title: string;
-  }) => (
-    <input
-      type="text"
-      inputMode="numeric"
-      pattern="[0-7]"
-      maxLength={1}
-      value={String(value)}
-      onFocus={(e) => e.currentTarget.select()}
-      onChange={(e) => onChange(e.target.value)}
-      className="w-7 border rounded px-0.5 py-0.5 text-center text-sm tabnums bg-white dark:bg-zinc-900 border-green-300 dark:border-green-700"
-      title={title}
-    />
-  );
-
-  return (
-    <div className="space-y-3">
-      {plan.map(({ pos, players }, visualIndex) => {
-        const kampNr = visualIndex + 1; // vises i UI
-        const runder = roundsPerPos[pos] ?? 3;
-        const mt = matchTimes[pos] ?? {
-          start: (event.start_time || "17:00").slice(0, 5),
-          end: (event.end_time || "18:30").slice(0, 5),
-        };
-
-        return (
-          <div key={`kamp-${pos}`} className="rounded-lg border dark:border-zinc-800 overflow-hidden">
-            {/* Header linje */}
-            <div className="px-3 py-2 bg-green-100/70 dark:bg-green-900/30 flex flex-wrap items-center gap-2 justify-between">
-              <div className="font-semibold text-green-900 dark:text-green-200">Kamp #{kampNr}</div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => moveMatchUp(visualIndex)}
-                  disabled={visualIndex === 0}
-                  className={`text-xs px-2 py-1 rounded border bg-white/80 hover:bg-green-50 border-green-300 dark:border-green-700 dark:bg-zinc-900 ${
-                    visualIndex === 0 ? "opacity-50 cursor-not-allowed" : ""
-                  }`}
-                  title="Flyt kampen én op"
-                >
-                  ⬆️ Flyt op
-                </button>
-
-                <label className="text-sm flex items-center gap-1">
-                  Bane
-                  <select
-                    className="border rounded px-2 py-1 text-sm bg-white dark:bg-zinc-900 border-green-300 dark:border-green-700"
-                    value={String(courtsOrder[visualIndex] ?? "")}
-                    onChange={(e) => {
-                      // vi gemmer på positionen (visualIndex == pos i plan-arrayen)
-                      setCourtLabel(pos, e.target.value);
-                    }}
-                  >
-                    {courtSuggestions.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="text-sm flex items-center gap-1">
-                  <input
-                    type="time"
-                    name="start"
-                    value={mt.start}
-                    onChange={(e) => {
-                      const nv = e.target.value;
-                      setMatchTimes((p) => ({ ...p, [pos]: { ...mt, start: nv } }));
-                      for (let i = 0; i < runder; i++)
-                        upsertEventResultRow({
-                          eventId: event.id,
-                          gi: pos,
-                          si: i,
-                          courtLabel: courtsOrder[visualIndex],
-                          start: nv,
-                          end: matchTimes[pos]?.end ?? mt.end,
-                        });
-                    }}
-                    className="border rounded px-2 py-1 text-sm bg-white dark:bg-zinc-900 border-green-300 dark:border-green-700"
-                    title="Start"
-                  />
-                  –
-                  <input
-                    type="time"
-                    name="end"
-                    value={mt.end}
-                    onChange={(e) => {
-                      const nv = e.target.value;
-                      setMatchTimes((p) => ({ ...p, [pos]: { ...mt, end: nv } }));
-                      for (let i = 0; i < runder; i++)
-                        upsertEventResultRow({
-                          eventId: event.id,
-                          gi: pos,
-                          si: i,
-                          courtLabel: courtsOrder[visualIndex],
-                          start: matchTimes[pos]?.start ?? mt.start,
-                          end: nv,
-                        });
-                    }}
-                    className="border rounded px-2 py-1 text-sm bg-white dark:bg-zinc-900 border-green-300 dark:border-green-700"
-                    title="Slut"
-                  />
-                </label>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => addRoundForPos(pos)}
-                  className="text-xs px-2 py-1 rounded border bg-white/80 hover:bg-green-50 border-green-300 dark:border-green-700 dark:bg-zinc-900"
-                  title="Tilføj sæt"
-                >
-                  + Tilføj sæt
-                </button>
-              </div>
-            </div>
-
-            {/* Sætlinjer */}
-            <div className="px-3 py-2 space-y-1">
-              {Array.from({ length: runder }).map((_, si) => {
-                const rot = ROTATIONS[si % ROTATIONS.length];
-                const a1 = players[rot[0][0]];
-                const a2 = players[rot[0][1]];
-                const b1 = players[rot[1][0]];
-                const b2 = players[rot[1][1]];
-                const key = setKey(visualIndex, si); // NB: score pr. VISUEL position
-                const sc = scoreOf(scores[key]);
-
-                // Forventningspct baseret på tidligere sæt (inden dette)
-                const prevSets: any[] = [];
-                for (let vi = 0; vi <= visualIndex; vi++) {
-                  const rMax = roundsPerPos[plan[vi].pos] ?? 3;
-                  const lastSi = vi === visualIndex ? si - 1 : rMax - 1;
-                  if (lastSi < 0) continue;
-                  const playersPrev = plan[vi]?.players ?? [];
-                  for (let s = 0; s <= lastSi; s++) {
-                    const r = ROTATIONS[s % ROTATIONS.length];
-                    const A1 = playersPrev[r[0][0]]?.visningsnavn || "?";
-                    const A2 = playersPrev[r[0][1]]?.visningsnavn || "?";
-                    const B1 = playersPrev[r[1][0]]?.visningsnavn || "?";
-                    const B2 = playersPrev[r[1][1]]?.visningsnavn || "?";
-                    const SS = scoreOf(scores[`${vi}-${s}`]);
-                    const done = SS.a !== 0 || SS.b !== 0 ? erFærdigtSæt(SS.a, SS.b) : false;
-                    prevSets.push({
-                      id: 2_000_000 + vi * 100 + s,
-                      kampid: 800_000 + vi,
-                      date: event.date ?? "1970-01-01",
-                      holdA1: A1,
-                      holdA2: A2,
-                      holdB1: B1,
-                      holdB2: B2,
-                      scoreA: SS.a,
-                      scoreB: SS.b,
-                      finish: done,
-                      event: true,
-                      tiebreak: "false",
-                    });
-                  }
-                }
-                const { nyEloMap } = beregnEloForKampe(prevSets as any, eloMap);
-                const rA1 = a1?.visningsnavn ? nyEloMap[a1.visningsnavn] ?? 1500 : 1500;
-                const rA2 = a2?.visningsnavn ? nyEloMap[a2.visningsnavn] ?? 1500 : 1500;
-                const rB1 = b1?.visningsnavn ? nyEloMap[b1.visningsnavn] ?? 1500 : 1500;
-                const rB2 = b2?.visningsnavn ? nyEloMap[b2.visningsnavn] ?? 1500 : 1500;
-                const rA = (rA1 + rA2) / 2,
-                  rB = (rB1 + rB2) / 2,
-                  qa = Math.pow(10, rA / 400),
-                  qb = Math.pow(10, rB / 400),
-                  pA = qa / (qa + qb),
-                  pctA = Math.round(100 * pA),
-                  pctB = 100 - pctA,
-                  colorA = pctColor(pA),
-                  colorB = pctColor(1 - pA);
-
-                const nonZero = sc.a !== 0 || sc.b !== 0;
-                const currentSet = {
-                  id: 3_000_000 + visualIndex * 100 + si,
-                  kampid: 700_000 + visualIndex,
-                  date: event.date ?? "1970-01-01",
-                  holdA1: a1?.visningsnavn || "?",
-                  holdA2: a2?.visningsnavn || "?",
-                  holdB1: b1?.visningsnavn || "?",
-                  holdB2: b2?.visningsnavn || "?",
-                  scoreA: sc.a,
-                  scoreB: sc.b,
-                  finish: erFærdigtSæt(sc.a, sc.b),
-                  event: true,
-                  tiebreak: "false",
-                };
-                const { eloChanges: chForThis } = beregnEloForKampe([...prevSets, currentSet] as any, eloMap);
-                let plusTxt = "";
-                if (nonZero && chForThis?.[currentSet.id]) {
-                  const diffs = Object.values(chForThis[currentSet.id]).map((x: any) =>
-                    typeof x?.diff === "number" ? x.diff : 0
-                  );
-                  const maxPos = Math.max(...diffs.filter((d: number) => d > 0));
-                  if (Number.isFinite(maxPos)) plusTxt = `+${maxPos.toFixed(1)}`;
-                }
-
-                return (
-                  <div key={key} className="flex items-center justify-between gap-2 text-sm">
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                      <span className="opacity-70 shrink-0">Sæt {si + 1}</span>
-                      <div className="flex-1 flex items-center gap-2 min-w-0">
-                        <span className="truncate basis-0 grow min-w-0">
-                          {a1?.visningsnavn || "?"} &amp; {a2?.visningsnavn || "?"}
-                        </span>
-                        <span className="shrink-0 font-semibold tabnums" style={{ color: colorA }}>
-                          {pctA}%
-                        </span>
-                        <span className="opacity-60 shrink-0">vs</span>
-                        <span className="shrink-0 font-semibold tabnums" style={{ color: colorB }}>
-                          {pctB}%
-                        </span>
-                        <span className="truncate basis-0 grow min-w-0 text-right">
-                          {b1?.visningsnavn || "?"} &amp; {b2?.visningsnavn || "?"}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <div className="flex items-center gap-1">
-                        <ScoreBox
-                          value={sc.a}
-                          onChange={(val) => setScore(plan[visualIndex].pos, si, "a", val, players)}
-                          title="Score A (0–7)"
-                        />
-                        <span className="opacity-60">-</span>
-                        <ScoreBox
-                          value={sc.b}
-                          onChange={(val) => setScore(plan[visualIndex].pos, si, "b", val, players)}
-                          title="Score B (0–7)"
-                        />
-                      </div>
-                      <span className="text-green-700 font-semibold tabnums min-w-[36px] text-right">{plusTxt}</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-/* ===== Modal: Skift spiller ===== */
-function SwapModal({
-  open,
-  onClose,
-  onPick,
-  searchResults,
-  search,
-  setSearch,
-  loadingProfiles,
-}: {
-  open: boolean;
-  onClose: () => void;
-  onPick: (p: Profile & { elo?: number }) => void;
-  searchResults: Array<Profile & { elo?: number }>;
-  search: string;
-  setSearch: (v: string) => void;
-  loadingProfiles: boolean;
-}) {
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-6">
-      <div className="w-full sm:max-w-lg bg-white dark:bg-zinc-900 rounded-t-2xl sm:rounded-2xl shadow-xl border border-green-300 dark:border-green-800">
-        <div className="p-3 sm:p-4 border-b border-green-300 dark:border-green-800 flex items-center justify-between">
-          <div className="font-semibold">Skift spiller</div>
-          <button onClick={onClose} className="text-sm">
-            Luk
-          </button>
-        </div>
-        <div className="p-3 sm:p-4">
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Søg (visningsnavn)…"
-            className="w-full border rounded px-2 py-1 text-sm bg-white/90 dark:bg-zinc-900 border-green-400/70 dark:border-green-800/70"
-          />
-          <div className="mt-2 max-h-72 overflow-auto rounded border bg-white dark:bg-zinc-900 border-green-300 dark:border-green-800">
-            {loadingProfiles && <div className="p-2 text-xs opacity-70">Indlæser…</div>}
-            {!loadingProfiles &&
-              searchResults.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => onPick(p)}
-                  className="w-full text-left flex items-center justify-between px-2 py-1 text-sm hover:bg-green-100/70 dark:hover:bg-green-900/30"
-                >
-                  <div className="truncate">
-                    {p.visningsnavn || "Ukendt"} <span className="opacity-70">· ELO {p.elo}</span>
-                  </div>
-                  <span className="text-xs px-2 py-0.5 rounded border border-green-300 dark:border-green-700 text-green-700 dark:text-green-300">
-                    Skift
-                  </span>
-                </button>
-              ))}
-            {!loadingProfiles && !searchResults.length && <div className="p-2 text-xs opacity-70">Ingen…</div>}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
