@@ -1137,7 +1137,7 @@ export default function EventAdminTorsdagClient({ eventId }: { eventId: string }
             className="border rounded px-2 py-1 text-sm bg-white dark:bg-zinc-900"
             style={{ borderColor: GREEN }}
             value={event.id}
-            onChange={(e) => router.push(`/torsdagspadel/event/${e.target.value}`)}
+            onChange={(e) => router.push(`/admin/torsdagspadel/event/${e.target.value}`)}
           >
             {eventOptions.map((ev) => (
               <option key={ev.id} value={ev.id}>

@@ -176,7 +176,7 @@ export default function AdminTorsdagsPage() {
                         </div>
                         <div className="shrink-0">
                           <Link
-                            href={`/torsdagspadel/event/${ev.id}`}
+                            href={`/admin/torsdagspadel/event/${ev.id}`}
                             className="inline-block px-3 py-2 rounded-md text-white"
                             style={{ backgroundColor: GREEN }}
                           >
@@ -212,7 +212,7 @@ export default function AdminTorsdagsPage() {
                         </div>
                         <div className="shrink-0">
                           <Link
-                            href={`/torsdagspadel/event/${ev.id}`}
+                            href={`/admin/torsdagspadel/event/${ev.id}`}
                             className="inline-block px-3 py-2 rounded-md border"
                             style={{ borderColor: GREEN, color: GREEN }}
                           >
