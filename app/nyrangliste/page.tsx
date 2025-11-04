@@ -18,7 +18,7 @@ export default function NyRanglisteSide() {
   const [myName, setMyName] = useState<string | null>(null);
   const [myElo, setMyElo] = useState<number | null>(null);
 
-  // Hent ranglisten (via din eksisterende API)
+  // Hent ranglisten (via din eksisterende API) + filtrér på profiles.active = true
   useEffect(() => {
     let cancelled = false;
 
@@ -28,13 +28,28 @@ export default function NyRanglisteSide() {
         const data = (await res.json()) as any[];
         if (cancelled) return;
 
-        const list: Spiller[] = (data ?? [])
+        let list: Spiller[] = (data ?? [])
           .map((r) => ({
             visningsnavn: (r?.visningsnavn ?? '').toString().trim(),
             elo: Number(r?.elo ?? 0),
             koen: r?.koen ?? null,
           }))
           .filter((r) => !!r.visningsnavn && Number.isFinite(r.elo));
+
+        // Hent aktive profiler og filtrér
+        const { data: activeProfiles, error: activeErr } = await (supabase
+          .from('profiles') as any)
+          .select('visningsnavn')
+          .eq('active', true);
+
+        if (!activeErr && Array.isArray(activeProfiles)) {
+          const activeSet = new Set(
+            activeProfiles
+              .map((p: any) => (p?.visningsnavn ?? '').toString().trim().toLowerCase())
+              .filter(Boolean)
+          );
+          list = list.filter((r) => activeSet.has(r.visningsnavn.toLowerCase()));
+        }
 
         setRows(list);
 
@@ -76,7 +91,7 @@ export default function NyRanglisteSide() {
         .from('profiles') as any)
         .select('visningsnavn')
         .eq('id', user.id)
-        .maybeSingle(); // <- ingen generics
+        .maybeSingle();
 
       const visningsnavn =
         (prof?.visningsnavn ?? (user.user_metadata as any)?.visningsnavn ?? '')?.toString().trim() ||
@@ -125,18 +140,18 @@ export default function NyRanglisteSide() {
   );
 }
 
-/* ───────── UI: top venstre – søg + tilbage ───────── */
+/* ───────── UI: top HØJRE – tilbage ───────── */
 
 function TopBar() {
   return (
-    <div className="fixed top-4 left-4 z-50 flex flex-col items-start gap-2">
+    <div className="fixed top-4 right-4 z-50 flex flex-col items-end gap-2">
       <Link
         href="/startside"
         aria-label="Tilbage"
         title="Tilbage"
         className="px-3 py-1.5 rounded-full border-2 border-pink-500 text-pink-600 bg-white/90 dark:bg-[#2a2a2a]/90 shadow hover:bg-pink-50 dark:hover:bg-pink-900/20 transition"
       >
-        ← Tilbage
+        Tilbage →
       </Link>
     </div>
   );
@@ -194,7 +209,7 @@ function RanglisteList({
 
   return (
     <>
-      {/* Toggle søgning */}
+      {/* Toggle søgning (kan blive til højre senere hvis du ønsker) */}
       <button
         type="button"
         onClick={() => setSearchOpen((v) => !v)}
@@ -357,12 +372,11 @@ function Udfordring({
         return;
       }
 
-      // ⬇️ VIGTIGT: cast .from(...) til any og fjern generics på maybeSingle
       const { data: rec, error: recErr } = await (supabase
         .from('profiles') as any)
         .select('id, visningsnavn')
         .eq('visningsnavn', recipient)
-        .maybeSingle(); // <- ingen <{ id: string; visningsnavn: string }>
+        .maybeSingle();
 
       if (recErr || !rec) {
         alert('Kunne ikke finde spilleren.');
@@ -380,7 +394,6 @@ function Udfordring({
         body: body.trim(),
       };
 
-      // ⬇️ Cast til any ved insert for at undgå TS-konflikter
       const { error: insErr } = await (supabase.from('beskeder') as any).insert(row);
       if (insErr) throw insErr;
 
@@ -477,3 +490,4 @@ function Udfordring({
     </>
   );
 }
+

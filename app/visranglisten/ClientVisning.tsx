@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import QRCode from "react-qr-code"
+import { supabase } from "@/lib/supabaseClient"
 
 type Spiller = {
   visningsnavn: string
@@ -49,14 +50,46 @@ export default function ClientVisning() {
 
   useEffect(() => {
     ;(async () => {
+      // 1) Hent alle tre feeds parallelt
       const [r, m, a] = await Promise.all([
         getArray("/api/rangliste"),
         getArray("/api/monthly"), // indeværende måned
         getArray("/api/active"),
       ])
-      setRangliste(r as Spiller[])
-      setMaanedens(m as MaanedItem[])
-      setMestAktive(a as AktivItem[])
+
+      // 2) Hent aktive profiler (visningsnavn) fra Supabase
+      const { data: activeProfiles, error: activeErr } = await (supabase
+        .from("profiles") as any)
+        .select("visningsnavn")
+        .eq("active", true)
+
+      // 3) Byg et set af aktive navne (case-insensitive)
+      const activeSet = (!activeErr && Array.isArray(activeProfiles))
+        ? new Set(
+            activeProfiles
+              .map((p: any) => (p?.visningsnavn ?? "").toString().trim().toLowerCase())
+              .filter(Boolean)
+          )
+        : null
+
+      // 4) Helper til at filtrere arrays efter activeSet
+      const filterByActive = <T extends { visningsnavn?: string }>(arr: T[]): T[] => {
+        if (!activeSet) return arr // hvis vi ikke kan slå aktive op, så viser vi alt som fallback
+        return (arr ?? []).filter((row) =>
+          typeof row?.visningsnavn === "string" &&
+          activeSet.has(row.visningsnavn.toString().trim().toLowerCase())
+        )
+      }
+
+      // 5) Filtrér alle tre feeds
+      const rFiltered = filterByActive(r as Spiller[])
+      const mFiltered = filterByActive(m as MaanedItem[])
+      const aFiltered = filterByActive(a as AktivItem[])
+
+      // 6) Gem i state
+      setRangliste(rFiltered as Spiller[])
+      setMaanedens(mFiltered as MaanedItem[])
+      setMestAktive(aFiltered as AktivItem[])
     })()
   }, [])
 
