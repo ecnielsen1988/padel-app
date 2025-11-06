@@ -383,20 +383,24 @@ export default function EventAdminTorsdagClient({ eventId }: { eventId: string }
 
   /* --- fetch event + liste --- */
   useEffect(() => {
-    if (!eventId) return;
-    (async () => {
-      const { data: ev } = await supabase
-        .from("events")
-        .select("*")
-        .eq("id", eventId)
-        .maybeSingle<EventRow>();
-      setEvent(ev ?? null);
+  (async () => {
+    setLoadingProfiles(true);
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id, visningsnavn")
+      .eq("active", true)                         // ⬅️ kun aktive
+      .not("visningsnavn", "is", null)
+      .order("visningsnavn", { ascending: true });
 
-      const res = await fetch("/api/events?all=1", { cache: "no-store" });
-      const json = await res.json();
-      setEventsList((json?.data ?? []) as EventRow[]);
-    })();
-  }, [eventId]);
+    setAllProfiles(((data ?? []) as Profile[])
+      .map(p => ({ id: p.id, visningsnavn: (p.visningsnavn ?? "").trim() }))
+      .filter(p => p.visningsnavn.length > 0)
+    );
+    setLoadingProfiles(false);
+
+    if (error) console.warn("profiles load error:", error.message);
+  })();
+}, []);
 
   /* --- Elo map fra /api/rangliste --- */
   useEffect(() => {

@@ -402,16 +402,25 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
 
   /* --- Alle profiler til søgning/tilføj --- */
   useEffect(() => {
-    (async () => {
-      setLoadingProfiles(true);
-      const { data } = await supabase
-        .from("profiles")
-        .select("id, visningsnavn")
-        .not("visningsnavn", "is", null);
-      setAllProfiles(((data ?? []) as Profile[]).filter((p) => !!p.visningsnavn));
-      setLoadingProfiles(false);
-    })();
-  }, []);
+  (async () => {
+    setLoadingProfiles(true);
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id, visningsnavn, active")
+      .eq("active", true)                    // ⬅️ kun aktive profiler
+      .not("visningsnavn", "is", null)
+      .order("visningsnavn", { ascending: true });
+
+    const rows = (data ?? [])
+      .map((p: any) => ({ id: p.id, visningsnavn: (p.visningsnavn ?? "").toString().trim() }))
+      .filter((p) => p.visningsnavn.length > 0);
+
+    setAllProfiles(rows);
+    setLoadingProfiles(false);
+
+    if (error) console.warn("profiles load error:", error.message);
+  })();
+}, []);
 
   /* --- Load players (event_players) --- */
   useEffect(() => {
