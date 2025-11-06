@@ -381,26 +381,34 @@ export default function EventAdminTorsdagClient({ eventId }: { eventId: string }
 
   const locked = event?.status === "published";
 
+  
+
   /* --- fetch event + liste --- */
-  useEffect(() => {
+useEffect(() => {
+  if (!eventId) return;
+
   (async () => {
-    setLoadingProfiles(true);
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("id, visningsnavn")
-      .eq("active", true)                         // ⬅️ kun aktive
-      .not("visningsnavn", "is", null)
-      .order("visningsnavn", { ascending: true });
+    const { data: ev, error } = await supabase
+      .from("events")
+      .select("*")
+      .eq("id", eventId)
+      .maybeSingle<EventRow>();
 
-    setAllProfiles(((data ?? []) as Profile[])
-      .map(p => ({ id: p.id, visningsnavn: (p.visningsnavn ?? "").trim() }))
-      .filter(p => p.visningsnavn.length > 0)
-    );
-    setLoadingProfiles(false);
+    if (error) console.warn("events load error:", error.message);
+    setEvent(ev ?? null);
 
-    if (error) console.warn("profiles load error:", error.message);
+    // Hent også listen så "Skift event" dropdown virker
+    try {
+      const res = await fetch("/api/events?all=1", { cache: "no-store" });
+      const json = await res.json();
+      setEventsList((json?.data ?? []) as EventRow[]);
+    } catch (e) {
+      console.warn("events list fetch failed:", e);
+      setEventsList([]);
+    }
   })();
-}, []);
+}, [eventId]);
+
 
   /* --- Elo map fra /api/rangliste --- */
   useEffect(() => {
