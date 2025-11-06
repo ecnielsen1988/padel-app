@@ -48,20 +48,28 @@ export default function NewScorePage() {
 
   // Hent spillere (visningsnavn) én gang
   useEffect(() => {
-    (async () => {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('visningsnavn')
-        .order('visningsnavn', { ascending: true })
+  (async () => {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('visningsnavn, active')
+      .eq('active', true)                         // ← kun aktive
+      .not('visningsnavn', 'is', null)            // ← kræv navn
+      .order('visningsnavn', { ascending: true })
 
-      if (!error) {
-        setSpillere((data || []).map((s: any) => {
-          const v = (s?.visningsnavn ?? '').toString()
-          return { value: v, label: v }
-        }))
-      }
-    })()
-  }, [])
+    if (!error) {
+      // defensiv deduplikering + trim
+      const seen = new Set<string>()
+      const options = (data || [])
+        .map((s: any) => (s?.visningsnavn ?? '').toString().trim())
+        .filter(v => v.length > 0 && !seen.has(v) && (seen.add(v), true))
+        .map(v => ({ value: v, label: v }))
+
+      setSpillere(options)
+    }
+  })()
+}, [])
+
+
 
   // Detect dark mode (for læsbar react-select)
   useEffect(() => {
