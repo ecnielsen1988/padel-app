@@ -421,18 +421,6 @@ export default function EventAdminTorsdagClient({ eventId }: { eventId: string }
     })();
   }, []);
 
-  /* --- Alle profiler til søgning/tilføj --- */
-  useEffect(() => {
-    (async () => {
-      setLoadingProfiles(true);
-      const { data } = await supabase
-        .from("profiles")
-        .select("id, visningsnavn")
-        .not("visningsnavn", "is", null);
-      setAllProfiles(((data ?? []) as Profile[]).filter((p) => !!p.visningsnavn));
-      setLoadingProfiles(false);
-    })();
-  }, []);
 
   /* --- Load players (event_players) --- */
   useEffect(() => {
@@ -442,26 +430,46 @@ export default function EventAdminTorsdagClient({ eventId }: { eventId: string }
   }, [eventId, eloMap]);
 
   async function loadPlayers() {
-    setLoadingPlayers(true);
-    try {
-      const { data: ep } = await supabase
-        .from("event_players")
-        .select("user_id, visningsnavn")
-        .eq("event_id", eventId)
-        .eq("status", "registered");
+  setLoadingPlayers(true);
+  try {
+    // 1) Slå aktive profile-IDs op
+    const { data: act, error: actErr } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("active", true);
 
-      const eloed: EventPlayer[] = (ep ?? []).map((x: any) => {
+    if (actErr) console.warn("profiles active error:", actErr.message);
+    const activeIds = new Set((act ?? []).map((r: any) => r.id));
+
+    // 2) Hent event_players og filtrér på aktive IDs
+    const { data: ep, error: epErr } = await supabase
+      .from("event_players")
+      .select("user_id, visningsnavn")
+      .eq("event_id", eventId)
+      .eq("status", "registered");
+
+    if (epErr) console.warn("event_players error:", epErr.message);
+
+    const filtered = (ep ?? [])
+      .filter((x: any) => activeIds.has(x.user_id))
+      .map((x: any) => {
         const vn = (x.visningsnavn || "").trim();
-        return { user_id: x.user_id, visningsnavn: x.visningsnavn, elo: vn ? eloMap[vn] ?? 1000 : 1000 };
+        return {
+          user_id: x.user_id,
+          visningsnavn: vn,
+          elo: vn ? (eloMap[vn] ?? 1000) : 1000,
+        };
       });
 
-      const seeded = sortByElo(eloed) as EventPlayer[];
-      setPlayers(seeded);
-      setOrderIds(seeded.map((p) => p.user_id));
-    } finally {
-      setLoadingPlayers(false);
-    }
+    const seeded = sortByElo(filtered) as EventPlayer[];
+    setPlayers(seeded);
+    setOrderIds(seeded.map((p) => p.user_id));
+  } finally {
+    setLoadingPlayers(false);
   }
+}
+
+
 
   /* --- DB scorer/sæt ved event skift --- */
   useEffect(() => {
