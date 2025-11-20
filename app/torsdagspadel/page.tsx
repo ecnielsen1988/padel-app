@@ -24,7 +24,6 @@ type EventSet = {
 
 // ——— Tidszone-sikre helpers ———
 function nowInCopenhagen(): Date {
-  // Bygger kan mangle full-ICU → catch og fald tilbage til lokal tid
   try {
     return new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Copenhagen' }))
   } catch {
@@ -46,7 +45,9 @@ function getNextThursdayISOFrom(d: Date): string {
 
 function getThisThursdayISOFrom(d: Date): string | null {
   return d.getDay() === 4
-    ? `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+    ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+        d.getDate()
+      ).padStart(2, '0')}`
     : null
 }
 
@@ -59,7 +60,6 @@ function formatDanishDate(isoDate: string): string {
       timeZone: 'Europe/Copenhagen',
     })
   } catch {
-    // fallback uden specificeret timeZone
     return dt.toLocaleDateString('da-DK', { day: '2-digit', month: 'long' })
   }
 }
@@ -80,9 +80,8 @@ export default function TorsdagStartside() {
 
   const [totalDKK, setTotalDKK] = useState<number>(0)
 
-  // ❗️NYT: Beregn datoer efter mount (så server-prerender ikke rammer timeZone-fejl)
   const [signupDato, setSignupDato] = useState<string>('') // næste torsdag
-  const [planDato, setPlanDato] = useState<string>('')     // i dag hvis torsdag, ellers næste
+  const [planDato, setPlanDato] = useState<string>('') // i dag hvis torsdag, ellers næste
 
   useEffect(() => {
     const now = nowInCopenhagen()
@@ -92,15 +91,20 @@ export default function TorsdagStartside() {
     setPlanDato(thisThu ?? nextThu)
   }, [])
 
-  const signupDatoTekst = useMemo(() => (signupDato ? formatDanishDate(signupDato) : ''), [signupDato])
-  const planDatoTekst   = useMemo(() => (planDato   ? formatDanishDate(planDato)   : ''), [planDato])
+  const signupDatoTekst = useMemo(
+    () => (signupDato ? formatDanishDate(signupDato) : ''),
+    [signupDato]
+  )
+  const planDatoTekst = useMemo(
+    () => (planDato ? formatDanishDate(planDato) : ''),
+    [planDato]
+  )
 
   const tider = ['17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00']
 
   useEffect(() => {
     const hentBruger = async () => {
       try {
-        // Vent til datoer er sat (ellers spilder vi kald)
         if (!signupDato || !planDato) return
 
         const { data: auth } = await supabase.auth.getUser()
@@ -111,22 +115,27 @@ export default function TorsdagStartside() {
           return
         }
 
-        // PROFIL (any-shim)
         const profResp = await (supabase.from('profiles') as any)
           .select('visningsnavn, torsdagspadel')
           .eq('id', user.id)
           .maybeSingle()
 
-        const profile = (profResp?.data ?? null) as { visningsnavn?: string; torsdagspadel?: boolean } | null
+        const profile = (profResp?.data ?? null) as {
+          visningsnavn?: string
+          torsdagspadel?: boolean
+        } | null
+
         if (!profile?.torsdagspadel || !profile?.visningsnavn) {
           setLoading(false)
           setLoadingSaet(false)
           return
         }
 
-        setBruger({ visningsnavn: profile.visningsnavn, torsdagspadel: !!profile.torsdagspadel })
+        setBruger({
+          visningsnavn: profile.visningsnavn,
+          torsdagspadel: !!profile.torsdagspadel,
+        })
 
-        // EVT. EKSISTERENDE TILMELDING
         const tilmResp = await (supabase.from('event_signups') as any)
           .select('kan_spille, tidligste_tid')
           .eq('visningsnavn', profile.visningsnavn)
@@ -139,10 +148,12 @@ export default function TorsdagStartside() {
           setStatus('done')
         }
 
-        // HENT DINE SÆT TIL PLAN-DATOEN
+        // Hent dine sæt (selvom vi ikke viser dem direkte længere, gør det ikke noget at logikken kører)
         setLoadingSaet(true)
         const setsResp = await (supabase.from('event_sets') as any)
-          .select('id, event_dato, kamp_nr, saet_nr, bane, starttid, sluttid, holda1, holda2, holdb1, holdb2')
+          .select(
+            'id, event_dato, kamp_nr, saet_nr, bane, starttid, sluttid, holda1, holda2, holdb1, holdb2'
+          )
           .eq('event_dato', planDato)
           .order('kamp_nr', { ascending: true })
           .order('saet_nr', { ascending: true })
@@ -153,7 +164,7 @@ export default function TorsdagStartside() {
         } else {
           const rows = (setsResp?.data ?? []) as EventSet[]
           const mine = rows.filter(
-            r =>
+            (r) =>
               r.holda1 === profile.visningsnavn ||
               r.holda2 === profile.visningsnavn ||
               r.holdb1 === profile.visningsnavn ||
@@ -162,7 +173,6 @@ export default function TorsdagStartside() {
           setMineSaet(mine)
         }
 
-        // HENT BAR-ENTRIES TIL TOTAL
         const barResp = await (supabase.from('bar_entries') as any)
           .select('amount_ore')
           .eq('visningsnavn', profile.visningsnavn)
@@ -199,8 +209,9 @@ export default function TorsdagStartside() {
       tidligste_tid: kanSpille ? (tidligsteTid ?? null) : null,
     }
 
-    const upResp = await (supabase.from('event_signups') as any)
-      .upsert(payload, { onConflict: 'visningsnavn,event_dato' })
+    const upResp = await (supabase.from('event_signups') as any).upsert(payload, {
+      onConflict: 'visningsnavn,event_dato',
+    })
 
     if (!upResp?.error) {
       setTilmelding({ kan_spille: kanSpille, tidligste_tid: payload.tidligste_tid })
@@ -223,23 +234,14 @@ export default function TorsdagStartside() {
     )
   }
 
-  const fmt = (t?: string | null) => (t ? t.slice(0, 5) : t)
-
-  const grupperet = (mineSaet ?? []).reduce<Map<number, EventSet[]>>((m, row) => {
-    const key = row.kamp_nr
-    if (!m.has(key)) m.set(key, [])
-    m.get(key)!.push(row)
-    return m
-  }, new Map())
-
   const totalLabel =
-    totalDKK > 0 ? 'Du har til gode'
-      : totalDKK < 0 ? 'Du skylder'
-      : 'Alt i nul'
+    totalDKK > 0 ? 'Du har til gode' : totalDKK < 0 ? 'Du skylder' : 'Alt i nul'
 
   const totalClass =
-    totalDKK > 0 ? 'text-green-700'
-      : totalDKK < 0 ? 'text-red-600'
+    totalDKK > 0
+      ? 'text-green-700'
+      : totalDKK < 0
+      ? 'text-red-600'
       : 'text-zinc-700 dark:text-zinc-300'
 
   return (
@@ -318,47 +320,18 @@ export default function TorsdagStartside() {
         )}
       </div>
 
-      {/* Din kamp */}
-      <div className="mb-8 border border-zinc-200 dark:border-zinc-700 rounded-xl p-4">
-        <h2 className="text-xl font-semibold mb-3">🎾 Din kamp – {planDatoTekst}</h2>
-
-        {loadingSaet ? (
-          <p className="text-sm text-gray-600 dark:text-gray-300">Henter kampplan...</p>
-        ) : grupperet.size === 0 ? (
-          <div className="text-sm">
-            <p>Ingen kamp fundet for dig den dag.</p>
-            <p className="text-gray-600 dark:text-gray-300">
-              Enten er planen ikke publiceret endnu, eller også er du ikke på næste event.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {Array.from(grupperet.entries()).map(([kampNr, saet]) => {
-              const meta = saet[0]
-              return (
-                <div key={kampNr} className="rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 p-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-semibold">Kamp #{kampNr}</h3>
-                    <div className="text-sm">
-                      🏟 {meta.bane} · ⏱ {fmt(meta.starttid)}–{fmt(meta.sluttid)}
-                    </div>
-                  </div>
-                  <div className="space-y-1 text-sm">
-                    {saet.map((r) => (
-                      <div key={r.saet_nr} className="flex items-start gap-3">
-                        <span className="font-medium shrink-0">Sæt {r.saet_nr}:</span>
-                        <span className="leading-tight break-words text-left">
-                          {r.holda1} & {r.holda2} <span className="opacity-60">vs</span><br />
-                          {r.holdb1} & {r.holdb2}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
+      {/* Se program i stedet for "Din kamp" */}
+      <div className="mb-8 border border-zinc-200 dark:border-zinc-700 rounded-xl p-4 bg-white dark:bg-zinc-900">
+        <h2 className="text-xl font-semibold mb-2">📜 Se program – {planDatoTekst}</h2>
+        <p className="text-sm text-zinc-700 dark:text-zinc-300 mb-3">
+          Her kan du se det fulde torsdagsprogram med alle kampe, baner og tider.
+        </p>
+        <Link
+          href="/kommende"
+          className="inline-flex items-center justify-center gap-2 bg-green-700 hover:bg-green-800 text-white font-semibold py-2 px-4 rounded-xl shadow text-sm"
+        >
+          📅 Gå til programmet
+        </Link>
       </div>
 
       {/* Links */}
@@ -382,11 +355,11 @@ export default function TorsdagStartside() {
           💸 Regnskab
         </Link>
         <Link
-  href="/torsdagspadel/reglement"
-  className="bg-green-700 hover:bg-green-800 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
->
-  § Reglement
-</Link>
+          href="/torsdagspadel/reglement"
+          className="bg-green-700 hover:bg-green-800 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
+        >
+          § Reglement
+        </Link>
       </div>
     </main>
   )

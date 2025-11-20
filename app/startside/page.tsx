@@ -25,7 +25,9 @@ export default function StartSide() {
 
     const håndhævRegelOgHent = async () => {
       // 1) Session
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       const user = session?.user;
 
       // Ikke logget ind → /registrer
@@ -59,7 +61,9 @@ export default function StartSide() {
 
       const rolle = profile?.rolle ?? "bruger";
       const initBruger: Bruger = {
-        visningsnavn: profile?.visningsnavn ?? (user.user_metadata?.visningsnavn || "Ukendt"),
+        visningsnavn:
+          profile?.visningsnavn ??
+          (user.user_metadata?.visningsnavn || "Ukendt"),
         rolle,
         torsdagspadel: !!profile?.torsdagspadel,
       };
@@ -95,7 +99,6 @@ export default function StartSide() {
       if (!user) {
         router.replace("/registrer");
       } else {
-        // Hvis session er der, så hent igen (dækker også lige-opdateret registered-flag)
         håndhævRegelOgHent();
       }
     });
@@ -127,12 +130,12 @@ export default function StartSide() {
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-3xl font-bold">Velkommen, {bruger.visningsnavn} 👋</h1>
+          <h1 className="text-3xl font-bold">
+            Velkommen, {bruger.visningsnavn} 👋
+          </h1>
           <p className="text-sm text-gray-400 mt-1">
             Din rolle:{" "}
-            <span className={rolleClass(bruger.rolle)}>
-              {bruger.rolle}
-            </span>
+            <span className={rolleClass(bruger.rolle)}>{bruger.rolle}</span>
           </p>
         </div>
         <button
@@ -145,6 +148,7 @@ export default function StartSide() {
 
       {/* Knap-grid */}
       <div className="grid gap-4">
+        {/* Beskeder */}
         <Link
           href="/beskeder"
           className="rounded-2xl bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-black font-semibold py-3 px-5 shadow text-center"
@@ -159,6 +163,17 @@ export default function StartSide() {
           </span>
         </Link>
 
+        {/* NY: Profil-link – lilla, under Beskeder */}
+        <Link
+          href={`/profil/${encodeURIComponent(bruger.visningsnavn)}`}
+          className="rounded-2xl bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-5 shadow text-center"
+        >
+          <span className="inline-flex items-center gap-2 justify-center">
+            🧑‍🎾 Min profil
+          </span>
+        </Link>
+
+        {/* Indtast resultater */}
         <Link
           href="/newscore"
           className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
