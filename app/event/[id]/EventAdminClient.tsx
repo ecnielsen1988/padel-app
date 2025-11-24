@@ -139,15 +139,56 @@ const emojiForPluspoint = (p: number) => {
 
 const hhmmToDb = (v?: string) => (v ? (v.length === 5 ? `${v}:00` : v) : null);
 
-function courtOrderFor(loc: EventRow["location"], groups: number): (string | number)[] {
+/**
+ * Banemønster:
+ * Gilleleje:
+ *  - 4 grupper (16 spillere): 1,2,3,6
+ *  - 5 grupper (20 spillere): 1,2,3,5,6
+ */
+function courtOrderFor(
+  loc: EventRow["location"],
+  groups: number
+): (string | number)[] {
   if (loc === "Gilleleje") {
-    const pattern = ["2", "1", "3", "6", "5"] as const;
+    // 8 spillere (2 grupper: 1–4, 5–8)
+    // Kamp #1 (5–8) → bane 1
+    // Kamp #2 (1–4) → bane 2
+    if (groups === 2) {
+      return ["1", "2"];
+    }
+
+    // 16 spillere (4 grupper: 1–4, 5–8, 9–12, 13–16)
+    // Kamp #1 (5–8) → bane 1
+    // Kamp #2 (1–4) → bane 2
+    // Kamp #3 (9–12) → bane 3
+    // Kamp #4 (13–16) → bane 6
+    if (groups === 4) {
+      return ["1", "2", "3", "6"];
+    }
+
+    // 20 spillere (5 grupper: 1–4,5–8,9–12,13–16,17–20)
+    // Matcher det du skrev:
+    // Kamp #1 5–8  → bane 1
+    // Kamp #2 1–4  → bane 2
+    // Kamp #3 9–12 → bane 3
+    // Kamp #4 17–20 → bane 5
+    // Kamp #5 13–16 → bane 6
+    if (groups === 5) {
+      return ["1", "2", "3", "5", "6"];
+    }
+
+    // Generel fallback i Gilleleje: 1,2,3,5,6 i loop
+    const pattern = ["1", "2", "3", "5", "6"] as const;
     return Array.from({ length: groups }, (_, i) => pattern[i % pattern.length]);
   }
+
+  // Helsinge: CC,1,2,3,4,5,6...
   const out: (string | number)[] = ["CC"];
   for (let i = 1; out.length < groups; i++) out.push(i);
   return out;
 }
+
+
 
 /* ====== DB helpers: event_result ====== */
 async function loadEventResultsToState(
@@ -199,9 +240,24 @@ function buildPlannedEventResultRows(params: {
 
   for (let gi = 0; gi < plan.length; gi++) {
     const g = plan[gi];
+
     const sets = Math.max(1, roundsPerCourt[gi] ?? 3);
-    const court = courtsOrder[gi] != null ? String(courtsOrder[gi]) : String(g.court ?? gi + 1);
-    const times = matchTimes[gi] ?? { start: "17:00", end: "18:30" };
+
+    // Brug banen fra kampen, ellers courtsOrder, ellers gi+1
+    const rawCourt =
+      g.court != null && g.court !== ""
+        ? g.court
+        : courtsOrder[gi] != null && courtsOrder[gi] !== ""
+        ? courtsOrder[gi]
+        : gi + 1;
+
+    const court = String(rawCourt);
+
+    const times =
+      matchTimes[gi] ?? {
+        start: "17:00",
+        end: "18:30",
+      };
 
     for (let si = 0; si < sets; si++) {
       const rot = ROTATIONS[si % ROTATIONS.length];
@@ -212,7 +268,7 @@ function buildPlannedEventResultRows(params: {
 
       rows.push({
         event_id: eventId,
-        group_index: gi,
+        group_index: gi, // kamp-index
         set_index: si,
         court_label: court || null,
         start_time: hhmmToDb(times.start),
@@ -227,6 +283,7 @@ function buildPlannedEventResultRows(params: {
       });
     }
   }
+
   return rows;
 }
 
@@ -344,13 +401,14 @@ async function getNextKampId(): Promise<number> {
 export default function EventAdminClient({ eventId }: { eventId: string }) {
   const router = useRouter();
 
+
   const [event, setEvent] = useState<EventRow | null>(null);
   const [eventsList, setEventsList] = useState<EventRow[]>([]);
   const [players, setPlayers] = useState<EventPlayer[]>([]);
   const [orderIds, setOrderIds] = useState<string[]>([]);
   const [allProfiles, setAllProfiles] = useState<Profile[]>([]);
   const [eloMap, setEloMap] = useState<Record<string, number>>({});
-  const [eloReady, setEloReady] = useState(false); // 👈 NY
+  const [eloReady, setEloReady] = useState(false);
   const [loadingPlayers, setLoadingPlayers] = useState(true);
   const [loadingProfiles, setLoadingProfiles] = useState(true);
   const [search, setSearch] = useState("");
@@ -363,6 +421,7 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
   const [matchTimes, setMatchTimes] = useState<Record<number, { start: string; end: string }>>({});
   const [scores, setScores] = useState<Record<string, Score>>({});
   const [groupOrder, setGroupOrder] = useState<number[]>([]);
+  const [dbGroups, setDbGroups] = useState<EventPlayer[][] | null>(null);
 
   // 🔒 Låse-flag når programmet er offentliggjort
   const locked = event?.status === "published";
@@ -440,8 +499,8 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
   async function loadPlayers() {
     setLoadingPlayers(true);
     try {
-      // 🔒 Når eventet er publiceret, henter vi rækkefølgen fra event_result
       if (event?.status === "published") {
+        // Midterkolonnen: byg grupper fra event_result (kamp-rækkefølge)
         const { data, error } = await supabase
           .from("event_result")
           .select("group_index, set_index, holdA1, holdA2, holdB1, holdB2")
@@ -451,46 +510,49 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
 
         if (error) {
           console.warn("event_result load error:", error.message);
-        }
+          setDbGroups(null);
+        } else if (data && data.length) {
+          const byGroup = new Map<number, string[]>();
 
-        const names: string[] = [];
-        const seen = new Set<string>();
-
-        if (data && data.length) {
-          let lastGi = -1;
           for (const r of data as any[]) {
             const gi = Number(r.group_index ?? 0);
-            if (!Number.isFinite(gi)) continue;
+            const si = Number(r.set_index ?? 0);
+            if (!Number.isFinite(gi) || si !== 0) continue; // kun første sæt definerer rækkefølgen
 
-            if (gi !== lastGi) {
-              lastGi = gi;
-              const cand = [r.holdA1, r.holdA2, r.holdB1, r.holdB2]
-                .map((v: string | null) => (v ?? "").trim())
-                .filter(Boolean);
+            const cand = [r.holdA1, r.holdA2, r.holdB1, r.holdB2]
+              .map((v: string | null) => (v ?? "").trim())
+              .filter(Boolean);
 
-              cand.forEach((vn) => {
-                if (!seen.has(vn)) {
-                  seen.add(vn);
-                  names.push(vn);
-                }
-              });
-            }
+            byGroup.set(gi, cand);
           }
+
+          if (byGroup.size > 0) {
+            const maxGi = Math.max(...Array.from(byGroup.keys()));
+            const groups: EventPlayer[][] = [];
+
+            for (let gi = 0; gi <= maxGi; gi++) {
+              const names = byGroup.get(gi) ?? [];
+              const arr: EventPlayer[] = names.map((vn) => ({
+                user_id: vn,          // bruger visningsnavn som id i midterkolonnen
+                visningsnavn: vn,
+                elo: eloMap[vn] ?? 1000,
+              }));
+              if (arr.length) groups.push(arr);
+            }
+
+            setDbGroups(groups);
+          } else {
+            setDbGroups(null);
+          }
+        } else {
+          setDbGroups(null);
         }
-
-        // I locked-mode bruger vi visningsnavn som id (vi ændrer ikke spillere alligevel)
-        const seeded: EventPlayer[] = names.map((vn) => ({
-          user_id: vn,
-          visningsnavn: vn,
-          elo: eloMap[vn] ?? 1000,
-        }));
-
-        setPlayers(seeded);
-        setOrderIds(seeded.map((p) => p.user_id));
-        return;
+      } else {
+        // Ikke publiceret: vi bruger Elo-grupper, så nulstil dbGroups
+        setDbGroups(null);
       }
 
-      // 🔓 Hvis eventet IKKE er publiceret, bruger vi normal event_players + Elo-sortering
+      // Venstre kolonne: ALTID Elo-sorteret event_players
       const { data: ep } = await supabase
         .from("event_players")
         .select("user_id, visningsnavn")
@@ -513,6 +575,7 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
       setLoadingPlayers(false);
     }
   }
+
 
   /* --- Opdater kun Elo-tal (ikke rækkefølge) --- */
   async function refreshEloValues() {
@@ -700,78 +763,89 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
       .filter(Boolean);
   }, [players, orderIds]);
 
-  const groups = useMemo(() => chunk4(orderedPlayers), [orderedPlayers]);
+    const groups = useMemo(() => {
+    if (locked && dbGroups && dbGroups.length) {
+      // Efter publicering: brug grupper fra event_result
+      return dbGroups;
+    }
+    // Før publicering: grupper baseret på Elo-rækkefølge
+    return chunk4(orderedPlayers);
+  }, [orderedPlayers, locked, dbGroups]);
+
 
   /* --- init courts/rounds/groupOrder --- */
-  useEffect(() => {
-    if (!event) return;
+useEffect(() => {
+  if (!event) return;
 
-    setCourtsOrder((prev) => {
-      const need = groups.length;
-      if (isTorsdag(event.name)) {
-        const next: (string | number)[] = [];
-        for (let i = 0; i < need; i++)
-          next.push(thursdayCourts[i % thursdayCourts.length]);
-        return next;
-      }
-      const pattern = courtOrderFor(event.location, need);
-      const next: (string | number)[] = new Array(need);
+  // Baner: altid frisk mønster baseret på antal grupper
+  setCourtsOrder(() => {
+    const need = groups.length;
+    if (need === 0) return [];
+
+    if (isTorsdag(event.name)) {
+      const next: (string | number)[] = [];
       for (let i = 0; i < need; i++) {
-        const had = prev?.[i];
-        next[i] = had != null && had !== "" ? had : pattern[i];
+        next.push(thursdayCourts[i % thursdayCourts.length]);
       }
       return next;
-    });
+    }
 
-    setRoundsPerCourt((prev) => {
-      const n: Record<number, number> = { ...prev };
-      for (let gi = 0; gi < groups.length; gi++)
-        if (!n[gi] || n[gi] < 1) n[gi] = 3;
-      Object.keys(n)
-        .map(Number)
-        .forEach((gi) => {
-          if (gi >= groups.length) delete n[gi];
-        });
-      return n;
-    });
+    return courtOrderFor(event.location, need);
+  });
 
-    setGroupOrder((prev) => {
-      const base = prev.length
-        ? prev.slice(0, groups.length)
-        : Array.from({ length: groups.length }, (_, i) => i);
-      for (let i = base.length; i < groups.length; i++) base[i] = i;
+  // Antal sæt pr. kamp (den del kan du lade være som nu)
+  setRoundsPerCourt((prev) => {
+    const n: Record<number, number> = { ...prev };
+    for (let gi = 0; gi < groups.length; gi++)
+      if (!n[gi] || n[gi] < 1) n[gi] = 3;
+    Object.keys(n)
+      .map(Number)
+      .forEach((gi) => {
+        if (gi >= groups.length) delete n[gi];
+      });
+    return n;
+  });
+
+      // Hvilken gruppe bliver kamp #1, #2, ...
+    setGroupOrder(() => {
+      const len = groups.length;
+      let base: number[];
+
+      if (event.status === "published") {
+        // Når programmet er publiceret, skal midterkolonnen følge DB-rækkefølgen 1:1
+        base = Array.from({ length: len }, (_, i) => i);
+      } else if (event.location === "Gilleleje" && !isTorsdag(event.name)) {
+        if (len === 2) {
+          base = [1, 0];
+        } else if (len === 4) {
+          base = [1, 0, 2, 3];
+        } else if (len === 5) {
+          base = [1, 0, 2, 4, 3];
+        } else {
+          base = Array.from({ length: len }, (_, i) => i);
+        }
+      } else {
+        base = Array.from({ length: len }, (_, i) => i);
+      }
+
       return base;
     });
-  }, [event, groups.length]);
 
-  /* --------- basePlan + display-plan (Gilleleje) --------- */
+}, [event, groups.length]);
+
+
+  /* --------- basePlan (ingen ekstra sortering) --------- */
   const basePlan = useMemo(
     () =>
-      groupOrder.map((gIndex, pos) => ({
-        gi: pos,
-        court: courtsOrder[pos] ?? pos + 1,
+      groupOrder.map((gIndex, kampIndex) => ({
+        gi: kampIndex, // kamp-index (0 = kamp #1)
+        court: courtsOrder[kampIndex] ?? kampIndex + 1,
         players: groups[gIndex] ?? [],
       })),
     [groups, courtsOrder, groupOrder]
   );
 
-  const plan = useMemo(() => {
-    if (!event || event.location !== "Gilleleje") return basePlan;
-    const displayOrder = ["1", "2", "3", "5", "6"];
-    const perCycle = displayOrder.length;
-    const orderIdx = (c: string | number) => {
-      const i = displayOrder.indexOf(String(c));
-      return i === -1 ? 999 : i;
-    };
-    const out: typeof basePlan = [];
-    for (let lo = 0; lo < basePlan.length; lo += perCycle) {
-      const hi = Math.min(lo + perCycle, basePlan.length);
-      const slice = basePlan.slice(lo, hi).slice();
-      slice.sort((a, b) => orderIdx(a.court) - orderIdx(b.court));
-      out.push(...slice);
-    }
-    return out;
-  }, [basePlan, event]);
+  const plan = basePlan;
 
   /* --- default tider --- */
   useEffect(() => {
@@ -802,57 +876,60 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
 
   /* --- load court/time meta fra DB (seneste pr. group_index) --- */
   useEffect(() => {
-    if (!event?.id || basePlan.length === 0) return;
-    (async () => {
-      const { data, error } = await supabase
-        .from("event_result")
-        .select("group_index, court_label, start_time, end_time, updated_at")
-        .eq("event_id", event.id)
-        .order("updated_at", { ascending: false });
+  // Kun hente fra event_result når programmet er offentliggjort
+  if (!event?.id || basePlan.length === 0) return;
+  if (event.status !== "published") return;
 
-      if (error || !data?.length) return;
+  (async () => {
+    const { data, error } = await supabase
+      .from("event_result")
+      .select("group_index, court_label, start_time, end_time, updated_at")
+      .eq("event_id", event.id)
+      .order("updated_at", { ascending: false });
 
-      const seen = new Set<number>();
-      const courtByGroup: Record<number, string | number> = {};
-      const timeByGroup: Record<number, { start: string; end: string }> = {};
+    if (error || !data?.length) return;
 
-      for (const r of data as EventResultMeta[]) {
-        const gi = Number(r.group_index);
-        if (!Number.isFinite(gi) || seen.has(gi)) continue;
-        seen.add(gi);
+    const seen = new Set<number>();
+    const courtByGroup: Record<number, string | number> = {};
+    const timeByGroup: Record<number, { start: string; end: string }> = {};
 
-        if (r.court_label) courtByGroup[gi] = r.court_label;
+    for (const r of data as EventResultMeta[]) {
+      const gi = Number(r.group_index);
+      if (!Number.isFinite(gi) || seen.has(gi)) continue;
+      seen.add(gi);
 
-        const s = r.start_time ? r.start_time.slice(0, 5) : undefined;
-        const e = r.end_time ? r.end_time.slice(0, 5) : undefined;
-        if (s || e) {
-          const prev = matchTimes[gi] ?? { start: "", end: "" };
-          timeByGroup[gi] = { start: s ?? prev.start, end: e ?? prev.end };
+      if (r.court_label) courtByGroup[gi] = r.court_label;
+
+      const s = r.start_time ? r.start_time.slice(0, 5) : undefined;
+      const e = r.end_time ? r.end_time.slice(0, 5) : undefined;
+      if (s || e) {
+        const prev = matchTimes[gi] ?? { start: "", end: "" };
+        timeByGroup[gi] = { start: s ?? prev.start, end: e ?? prev.end };
+      }
+    }
+
+    if (Object.keys(courtByGroup).length) {
+      setCourtsOrder((prev) => {
+        const next = [...prev];
+        for (let gi = 0; gi < basePlan.length; gi++) {
+          if (courtByGroup[gi] != null) next[gi] = courtByGroup[gi];
         }
-      }
+        return next;
+      });
+    }
 
-      if (Object.keys(courtByGroup).length) {
-        setCourtsOrder((prev) => {
-          const next = [...prev];
-          for (let gi = 0; gi < basePlan.length; gi++) {
-            if (courtByGroup[gi] != null) next[gi] = courtByGroup[gi];
+    if (Object.keys(timeByGroup).length) {
+      setMatchTimes((prev) => {
+        const next = { ...prev };
+        for (let gi = 0; gi < basePlan.length; gi++) {
+          if (timeByGroup[gi]) next[gi] = timeByGroup[gi];
           }
-          return next;
-        });
-      }
+        return next;
+      });
+    }
+  })();
+}, [event?.id, event?.status, basePlan.length]);
 
-      if (Object.keys(timeByGroup).length) {
-        setMatchTimes((prev) => {
-          const next = { ...prev };
-          for (let gi = 0; gi < basePlan.length; gi++) {
-            if (timeByGroup[gi]) next[gi] = timeByGroup[gi];
-          }
-          return next;
-        });
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [event?.id, basePlan.length]);
 
   /* --- UI helpers --- */
   function setCourtLabel(gi: number, value: string) {
@@ -1278,7 +1355,7 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
             <button
               type="button"
               className="text-xs underline text-pink-700 dark:text-pink-300"
-              onClick={refreshEloValues} // 👈 Kun opdatér Elo – ikke rækkefølge
+              onClick={refreshEloValues}
             >
               Opdater
             </button>
@@ -1539,6 +1616,7 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
     </div>
   );
 }
+
 /* ===================== Midterkolonnen ===================== */
 function CenterMatches({
   plan,
@@ -1724,21 +1802,21 @@ function CenterMatches({
                 // Forventningspct for visning
                 const prevSets: any[] = [];
                 for (let gg = 0; gg <= gi; gg++) {
-                  const rMax = roundsPerCourt[gg] ?? 3;
-                  const lastSi = gg === gi ? si - 1 : rMax - 1;
+                  const r = roundsPerCourt[gg] ?? 3;
+                  const lastSi = gg === gi ? si - 1 : r - 1;
                   if (lastSi < 0) continue;
                   const players =
                     plan.find((x) => x.gi === gg)?.players ?? [];
                   for (let s = 0; s <= lastSi; s++) {
-                    const r = ROTATIONS[s % ROTATIONS.length];
+                    const rRot = ROTATIONS[s % ROTATIONS.length];
                     const A1 =
-                      players[r[0][0]]?.visningsnavn || "?";
+                      players[rRot[0][0]]?.visningsnavn || "?";
                     const A2 =
-                      players[r[0][1]]?.visningsnavn || "?";
+                      players[rRot[0][1]]?.visningsnavn || "?";
                     const B1 =
-                      players[r[1][0]]?.visningsnavn || "?";
+                      players[rRot[1][0]]?.visningsnavn || "?";
                     const B2 =
-                      players[r[1][1]]?.visningsnavn || "?";
+                      players[rRot[1][1]]?.visningsnavn || "?";
                     const SS = scoreOf(scores[setKey(gg, s)]);
                     const done =
                       SS.a !== 0 || SS.b !== 0
@@ -2104,7 +2182,6 @@ function EditModal({
   );
 }
 
-/* ===== Modal: Skift spiller ===== */
 function SwapModal({
   open,
   onClose,
