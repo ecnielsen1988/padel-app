@@ -450,12 +450,16 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
         const res = await fetch("/api/rangliste", { cache: "no-store" });
         const rang = await res.json();
         const arr = Array.isArray(rang) ? rang : rang?.data ?? [];
-        const map: Record<string, number> = {};
-        arr.forEach((s: any) => {
-          const vn = (s?.visningsnavn || "").trim();
-          if (vn) map[vn] = Math.round(s.elo);
-        });
-        setEloMap(map);
+              const map: Record<string, number> = {};
+      arr.forEach((s: any) => {
+        const vn = (s?.visningsnavn || "").trim();
+        if (!vn) return;
+        const elo = typeof s.elo === "number" ? s.elo : Number(s.elo);
+        if (!Number.isFinite(elo)) return;
+        map[vn] = elo; // ✅ gem fuldt tal med decimaler
+      });
+      setEloMap(map);
+
       } catch {
         setEloMap({});
       } finally {
@@ -583,11 +587,15 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
       const res = await fetch("/api/rangliste", { cache: "no-store" });
       const rang = await res.json();
       const arr = Array.isArray(rang) ? rang : rang?.data ?? [];
-      const map: Record<string, number> = {};
-      arr.forEach((s: any) => {
-        const vn = (s?.visningsnavn || "").trim();
-        if (vn) map[vn] = Math.round(s.elo);
-      });
+          const map: Record<string, number> = {};
+    arr.forEach((s: any) => {
+      const vn = (s?.visningsnavn || "").trim();
+      if (!vn) return;
+      const elo = typeof s.elo === "number" ? s.elo : Number(s.elo);
+      if (!Number.isFinite(elo)) return;
+      map[vn] = elo; // ✅ fuld præcision
+    });
+
 
       setEloMap(map);
       setEloReady(true);
@@ -1390,8 +1398,9 @@ useEffect(() => {
                       <div className="truncate">
                         {p.visningsnavn || "Ukendt"}{" "}
                         <span className="opacity-70">
-                          · ELO {p.elo}
-                        </span>
+  · ELO {p.elo != null ? Math.round(p.elo) : 1000}
+</span>
+
                       </div>
                       <span className="text-xs px-2 py-0.5 rounded border border-pink-300 dark:border-pink-700 text-pink-700 dark:text-pink-300">
                         Tilføj
@@ -1435,8 +1444,9 @@ useEffect(() => {
                               {p?.visningsnavn || "(ukendt)"}
                             </div>
                             <div className="text-[11px] opacity-70">
-                              ELO {p?.elo ?? 1000}
-                            </div>
+  ELO {p?.elo != null ? Math.round(p.elo) : 1000}
+</div>
+
                           </div>
                           <div className="flex items-center gap-1">
                             <button
@@ -2233,8 +2243,9 @@ function SwapModal({
                   <div className="truncate">
                     {p.visningsnavn || "Ukendt"}{" "}
                     <span className="opacity-70">
-                      · ELO {p.elo}
-                    </span>
+  · ELO {p.elo != null ? Math.round(p.elo) : 1000}
+</span>
+
                   </div>
                   <span className="text-xs px-2 py-0.5 rounded border border-pink-300 dark:border-pink-700 text-pink-700 dark:text-pink-300">
                     Skift
