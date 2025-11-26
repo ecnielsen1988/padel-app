@@ -335,9 +335,11 @@ export default function LunarSide() {
     }
 
     // gem i Supabase-tabel "lunar"
-    const { error: upErr } = await supabase
-      .from("lunar")
-      .upsert({ visningsnavn: navn }, { onConflict: "visningsnavn" })
+    const { error: upErr } = await (supabase.from("lunar") as any)
+  .upsert(
+    { visningsnavn: navn },
+    { onConflict: "visningsnavn" }
+  )
 
     if (upErr) {
       console.error("Fejl ved upsert til lunar:", upErr)
