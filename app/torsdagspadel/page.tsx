@@ -24,6 +24,22 @@ function nowInCopenhagen(): Date {
   }
 }
 
+function getDanishWeekday(isoDate: string): string {
+  const dt = new Date(`${isoDate}T00:00:00`)
+  try {
+    const weekday = dt.toLocaleDateString('da-DK', {
+      weekday: 'long',
+      timeZone: 'Europe/Copenhagen',
+    })
+    // Gør første bogstav stort (torsdag → Torsdag)
+    return weekday.charAt(0).toUpperCase() + weekday.slice(1)
+  } catch {
+    const weekday = dt.toLocaleDateString('da-DK', { weekday: 'long' })
+    return weekday.charAt(0).toUpperCase() + weekday.slice(1)
+  }
+}
+
+
 function getNextThursdayISOFrom(d: Date): string {
   const day = d.getDay() // 0..6 (torsdag=4)
   let addDays = (4 - day + 7) % 7
@@ -287,8 +303,10 @@ export default function TorsdagStartside() {
             const isEditing = editingEventDate === event.date || !t
 
             const datoTekst = formatDanishDate(event.date)
-            const eventNavn = event.name || 'Torsdagspadel'
-            const valgtTid = t?.tidligste_tid || standardTid
+const weekday = getDanishWeekday(event.date)
+const eventNavn = event.name || 'Torsdagspadel'
+const valgtTid = t?.tidligste_tid || standardTid
+
 
             return (
               <div
@@ -301,8 +319,9 @@ export default function TorsdagStartside() {
                       {eventNavn}
                     </div>
                     <div className="text-xs text-green-700/80 dark:text-green-200/80">
-                      Torsdag d. {datoTekst}
-                    </div>
+  {weekday} d. {datoTekst}
+</div>
+
                   </div>
                   {t && !isEditing && (
                     <div className="text-xs text-green-900 dark:text-green-100 text-right">
