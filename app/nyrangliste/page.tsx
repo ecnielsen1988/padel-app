@@ -144,18 +144,19 @@ export default function NyRanglisteSide() {
 
 function TopBar() {
   return (
-    <div className="fixed top-4 right-4 z-50 flex flex-col items-end gap-2">
+    <div className="fixed top-4 left-4 z-50 flex flex-col items-start gap-2">
       <Link
         href="/startside"
         aria-label="Tilbage"
         title="Tilbage"
         className="px-3 py-1.5 rounded-full border-2 border-pink-500 text-pink-600 bg-white/90 dark:bg-[#2a2a2a]/90 shadow hover:bg-pink-50 dark:hover:bg-pink-900/20 transition"
       >
-        Tilbage →
+        ← Tilbage
       </Link>
     </div>
   );
 }
+
 
 /* ───────── Liste + søgning/scroll ───────── */
 
@@ -211,21 +212,23 @@ function RanglisteList({
     <>
       {/* Toggle søgning (kan blive til højre senere hvis du ønsker) */}
       <button
-        type="button"
-        onClick={() => setSearchOpen((v) => !v)}
-        className="fixed top-4 left-4 translate-x-8 text-2xl leading-none hover:scale-110 transition z-50"
-        title={searchOpen ? 'Luk søgning' : 'Søg spiller'}
-        aria-label="Søg spiller"
-      >
-        🔎
-      </button>
+  type="button"
+  onClick={() => setSearchOpen((v) => !v)}
+  className="fixed top-4 right-4 text-2xl leading-none hover:scale-110 transition z-50"
+  title={searchOpen ? 'Luk søgning' : 'Søg spiller'}
+  aria-label="Søg spiller"
+>
+  🔎
+</button>
+
 
       {/* Søg-boks */}
       <div
-        className={`fixed top-[52px] left-4 z-50 origin-top-left transition-all duration-200 ${
-          searchOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'
-        }`}
-      >
+  className={`fixed top-[52px] right-4 z-50 origin-top-right transition-all duration-200 ${
+    searchOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'
+  }`}
+>
+
         <div className="mt-2 w-[240px] rounded-xl border border-pink-200 dark:border-pink-900/50 bg-white/90 dark:bg-[#2a2a2a]/90 shadow-lg backdrop-blur p-2">
           <form onSubmit={handleSubmit}>
             <input

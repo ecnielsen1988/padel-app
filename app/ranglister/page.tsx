@@ -24,12 +24,11 @@ export default function RanglisterPage() {
         return;
       }
 
-      // TS-safe: cast .from(...) til any og undgå generics på maybeSingle()
       const { data: p } = await (supabase
         .from('profiles') as any)
         .select('visningsnavn')
         .eq('id', user.id)
-        .maybeSingle(); // <- ingen <T>
+        .maybeSingle();
 
       if (mounted) {
         setLoggedIn(true);
@@ -38,6 +37,7 @@ export default function RanglisterPage() {
             (user.user_metadata as any)?.visningsnavn ??
             user.email ??
             'Spiller') as string;
+
         setVisningsnavn(navn);
         setLoading(false);
       }
@@ -77,6 +77,7 @@ export default function RanglisterPage() {
       </header>
 
       <div className="grid gap-4">
+        {/* Klassiske ranglister */}
         <Link
           href="/nyrangliste"
           className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
@@ -98,6 +99,36 @@ export default function RanglisterPage() {
           🏃‍♂️ Mest aktive
         </Link>
 
+        {/* Nye ranglister */}
+        <Link
+          href="/women"
+          className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
+        >
+          👸 GirlPower Listen
+        </Link>
+
+        <Link
+          href="/egg"
+          className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
+        >
+          🥚 Æggejagten
+        </Link>
+
+        <Link
+          href="/winstreak"
+          className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
+        >
+          🔥 Win-Streak
+        </Link>
+
+        <Link
+          href="/playstreak"
+          className="bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
+        >
+          📆 5 Games Streak
+        </Link>
+
+        {/* Tilbage til start */}
         <Link
           href="/startside"
           className="bg-gray-800 hover:bg-gray-900 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
