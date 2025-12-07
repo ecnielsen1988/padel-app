@@ -4,7 +4,6 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 
-type EntryRow = { visningsnavn: string | null; amount_ore: number | null }
 type SaldoRow = { visningsnavn: string; ore: number } // gem i ØRE hele vejen
 
 const fmtDKK = (ore: number) =>
@@ -21,7 +20,10 @@ export default function AdminRegnskabPage() {
         // --- Auth + admin ---
         const { data: auth } = await supabase.auth.getUser()
         const user = auth?.user
-        if (!user) { setLoading(false); return }
+        if (!user) {
+          setLoading(false)
+          return
+        }
 
         let admin = (user as any)?.app_metadata?.rolle === 'admin'
         if (!admin) {
@@ -32,71 +34,77 @@ export default function AdminRegnskabPage() {
           admin = (me as any)?.rolle === 'admin'
         }
         setIsAdmin(admin)
-        if (!admin) { setLoading(false); return }
+        if (!admin) {
+          setLoading(false)
+          return
+        }
 
         // --- Hent torsdags-spillere (navne) ---
         const { data: players, error: playersErr } = await (supabase.from('profiles') as any)
           .select('visningsnavn')
           .eq('torsdagspadel', true)
 
-        if (playersErr) { console.error(playersErr); setRows([]); setLoading(false); return }
+        if (playersErr) {
+          console.error(playersErr)
+          setRows([])
+          setLoading(false)
+          return
+        }
 
-        const namesArr: string[] = ((players ?? []) as Array<{ visningsnavn: string | null }>)
-          .map(p => (p.visningsnavn ?? '').trim())
-          .filter(Boolean)
+        // Brug præcis de samme navne som i profiles (ingen trim),
+        // så det matcher detaljesiden 1:1
+        const names = Array.from(
+          new Set(
+            ((players ?? []) as Array<{ visningsnavn: string | null }>)
+              .map(p => p.visningsnavn)
+              .filter((n): n is string => !!n)
+          )
+        )
 
-        // dedup navne (hvis der er dubletter i profiles)
-        const names = Array.from(new Set(namesArr))
+        if (names.length === 0) {
+          setRows([])
+          setLoading(false)
+          return
+        }
 
-        if (names.length === 0) { setRows([]); setLoading(false); return }
+        // --- Beregn saldo for hver spiller på samme måde som detaljesiden ---
+        const saldoRows: SaldoRow[] = []
 
-        // --- Hent bar-entries for KUN disse navne (ALLE sider) ---
-        const PAGE = 1000
-        let from = 0
-        let all: EntryRow[] = []
-
-        for (;;) {
-          const to = from + PAGE - 1
-          const { data: page, error } = await (supabase.from('bar_entries') as any)
-            .select('visningsnavn, amount_ore')
-            .in('visningsnavn', names)
-            .range(from, to)
+        for (const name of names) {
+          // samme type query som på /torsdagspadel/regnskab
+          const { data, error } = await (supabase.from('bar_entries') as any)
+            .select('amount_ore')
+            .eq('visningsnavn', name)
+            .limit(20000)
 
           if (error) {
-            console.error('Fejl ved hentning af bar_entries:', error)
-            break
+            console.error('Fejl ved hentning af bar_entries for', name, error)
+            saldoRows.push({ visningsnavn: name, ore: 0 })
+            continue
           }
 
-          all.push(...(((page ?? []) as EntryRow[])))
+          const entries = (data ?? []) as Array<{ amount_ore: number | null }>
+          let oreTotal = 0
 
-          if (!page || page.length < PAGE) break // sidste side
-          from += PAGE
+          for (const row of entries) {
+            const ore = Number(row.amount_ore ?? 0)
+            if (Number.isFinite(ore)) {
+              oreTotal += ore
+            }
+          }
+
+          saldoRows.push({ visningsnavn: name, ore: oreTotal })
         }
 
-        // --- Summér i JS (helt simpelt) ---
-        const sumMap = new Map<string, number>()
-        // Sørg for at alle navne findes i mappet (også dem uden rækker)
-        for (const n of names) sumMap.set(n, 0)
+        // Sorter alfabetisk
+        saldoRows.sort((a, b) => a.visningsnavn.localeCompare(b.visningsnavn, 'da'))
 
-        for (const r of all) {
-          const n = (r.visningsnavn ?? '').trim()
-          if (!n) continue
-          if (!sumMap.has(n)) continue // skulle ikke ske, men safe
-          const ore = Number(r.amount_ore ?? 0)
-          if (!Number.isFinite(ore)) continue
-          sumMap.set(n, (sumMap.get(n) ?? 0) + ore)
-        }
-
-        // --- Byg rækker + sorter A-Å ---
-        const list: SaldoRow[] = names
-          .map(n => ({ visningsnavn: n, ore: sumMap.get(n) ?? 0 }))
-          .sort((a, b) => a.visningsnavn.localeCompare(b.visningsnavn, 'da'))
-
-        setRows(list)
+        setRows(saldoRows)
       } finally {
         setLoading(false)
       }
     }
+
     run()
   }, [])
 
@@ -115,7 +123,10 @@ export default function AdminRegnskabPage() {
         <h1 className="text-3xl font-bold mb-6">Admin · Regnskab</h1>
         <p>Du har ikke adgang til denne side.</p>
         <div className="mt-4">
-          <Link href="/admin/torsdagspadel" className="inline-block bg-green-700 hover:bg-green-800 text-white font-semibold py-2 px-4 rounded-lg">
+          <Link
+            href="/admin/torsdagspadel"
+            className="inline-block bg-green-700 hover:bg-green-800 text-white font-semibold py-2 px-4 rounded-lg"
+          >
             ⬅ Tilbage til Torsdagspadel
           </Link>
         </div>
@@ -133,14 +144,18 @@ export default function AdminRegnskabPage() {
       <div className="mb-6 rounded-xl border p-4">
         <div className="flex items-center justify-between">
           <div className="text-sm opacity-70">Samlet status (torsdagsspillere)</div>
-          <div className={`text-lg font-semibold ${totalAllOre > 0 ? 'text-green-700' : totalAllOre < 0 ? 'text-red-600' : ''}`}>
+          <div
+            className={`text-lg font-semibold ${
+              totalAllOre > 0 ? 'text-green-700' : totalAllOre < 0 ? 'text-red-600' : ''
+            }`}
+          >
             {totalAllOre > 0 ? 'Til gode' : totalAllOre < 0 ? 'Skyld' : 'Alt i nul'}:{' '}
             {fmtDKK(totalAllOre)}
           </div>
         </div>
       </div>
 
-      {/* Liste */}
+      {/* Liste pr. spiller */}
       {rows.length === 0 ? (
         <div className="text-sm opacity-75">Ingen data.</div>
       ) : (
@@ -155,7 +170,11 @@ export default function AdminRegnskabPage() {
                   {r.visningsnavn}
                 </Link>
               </div>
-              <div className={`shrink-0 font-semibold ${r.ore < 0 ? 'text-red-600' : r.ore > 0 ? 'text-green-700' : ''}`}>
+              <div
+                className={`shrink-0 font-semibold ${
+                  r.ore < 0 ? 'text-red-600' : r.ore > 0 ? 'text-green-700' : ''
+                }`}
+              >
                 {fmtDKK(r.ore)}
               </div>
             </li>
@@ -164,7 +183,10 @@ export default function AdminRegnskabPage() {
       )}
 
       <div className="mt-6">
-        <Link href="/admin/torsdagspadel" className="inline-block bg-green-700 hover:bg-green-800 text-white font-semibold py-2 px-4 rounded-lg">
+        <Link
+          href="/admin/torsdagspadel"
+          className="inline-block bg-green-700 hover:bg-green-800 text-white font-semibold py-2 px-4 rounded-lg"
+        >
           ⬅ Tilbage til Torsdagspadel
         </Link>
       </div>
