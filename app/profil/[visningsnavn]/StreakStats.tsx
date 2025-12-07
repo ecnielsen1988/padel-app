@@ -1,0 +1,392 @@
+"use client"
+
+import { useMemo } from "react"
+
+type StreakStatsProps = {
+  visningsnavn: string
+  kampe: any[]
+}
+
+type WinStreakInfo = {
+  current: number
+  currentStartDate: string | null
+  currentEndDate: string | null
+  best: number
+  bestStartDate: string | null
+  bestEndDate: string | null
+}
+
+type WeekEntry = {
+  weekStart: Date
+  count: number
+  firstDate: string
+  lastDate: string
+}
+
+type WeekStreakInfo = {
+  current: number
+  currentStartDate: string | null
+  currentEndDate: string | null
+  best: number
+  bestStartDate: string | null
+  bestEndDate: string | null
+}
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000
+const MS_PER_WEEK = 7 * MS_PER_DAY
+
+export function StreakStats({ visningsnavn, kampe }: StreakStatsProps) {
+  const { winStreak, weekStreak } = useMemo(() => {
+    // -------- Helper: check finish ----------
+    const isFinished = (k: any): boolean =>
+      k.finish === true || k.finish === "true" || k.finish === 1
+
+    // -------- Helper: find player role & score ----------
+    type PlayerSet = { date: string; playerWon: boolean }
+
+    const playerSets: PlayerSet[] = []
+
+    // til spil-streak (uger)
+    const weekMap: Record<string, WeekEntry> = {}
+
+    const now = new Date()
+
+    for (const k of kampe) {
+      const dateStr: string | undefined = k.date
+      if (!dateStr) continue
+
+      if (!isFinished(k)) continue
+
+      const dt = new Date(dateStr)
+      if (isNaN(dt.getTime())) continue
+
+      const ha1: string | undefined = k.holda1 ?? k.holdA1
+      const ha2: string | undefined = k.holda2 ?? k.holdA2
+      const hb1: string | undefined = k.holdb1 ?? k.holdB1
+      const hb2: string | undefined = k.holdb2 ?? k.holdB2
+
+      const isA = ha1 === visningsnavn || ha2 === visningsnavn
+      const isB = hb1 === visningsnavn || hb2 === visningsnavn
+      if (!isA && !isB) continue
+
+      const rawA = k.scorea ?? k.scoreA
+      const rawB = k.scoreb ?? k.scoreB
+
+      let scoreA =
+        typeof rawA === "number" ? rawA : parseInt(rawA ?? "0", 10)
+      let scoreB =
+        typeof rawB === "number" ? rawB : parseInt(rawB ?? "0", 10)
+
+      if (isNaN(scoreA) || isNaN(scoreB)) continue
+      if (scoreA === scoreB) continue // ingen uafgjorte sæt
+
+      const playerWon =
+        (isA && scoreA > scoreB) ||
+        (isB && scoreB > scoreA)
+
+      // til sejr-streak
+      playerSets.push({ date: dateStr, playerWon })
+
+      // til uge-streak (min. 6 sæt/uge)
+      // Uge = mandag–søndag. Find mandag for denne dato.
+      const weekday = (dt.getDay() + 6) % 7 // mandag=0
+      const weekStart = new Date(dt)
+      weekStart.setDate(dt.getDate() - weekday)
+      weekStart.setHours(0, 0, 0, 0)
+
+      const weekKey = weekStart.toISOString().slice(0, 10)
+      const entry = weekMap[weekKey]
+      if (!entry) {
+        weekMap[weekKey] = {
+          weekStart,
+          count: 1,
+          firstDate: dateStr,
+          lastDate: dateStr,
+        }
+      } else {
+        entry.count += 1
+        if (dateStr < entry.firstDate) entry.firstDate = dateStr
+        if (dateStr > entry.lastDate) entry.lastDate = dateStr
+      }
+    }
+
+    // -------- SEJR-STREAK (per sæt) --------
+    let winStreak: WinStreakInfo = {
+      current: 0,
+      currentStartDate: null,
+      currentEndDate: null,
+      best: 0,
+      bestStartDate: null,
+      bestEndDate: null,
+    }
+
+    if (playerSets.length > 0) {
+      // sortér kronologisk
+      playerSets.sort(
+        (a, b) =>
+          new Date(a.date).getTime() - new Date(b.date).getTime()
+      )
+
+      const n = playerSets.length
+
+      // Aktuel streak (baglæns)
+      let current = 0
+      let currentStartIdx: number | null = null
+      let currentEndIdx: number | null = null
+
+      for (let i = n - 1; i >= 0; i--) {
+        if (playerSets[i].playerWon) {
+          current++
+          currentStartIdx = i
+          if (currentEndIdx === null) currentEndIdx = n - 1
+        } else {
+          break
+        }
+      }
+
+      // Længste streak (hele historikken)
+      let best = 0
+      let bestStartIdx: number | null = null
+      let bestEndIdx: number | null = null
+      let tempLen = 0
+      let tempStart = -1
+
+      for (let i = 0; i < n; i++) {
+        if (playerSets[i].playerWon) {
+          if (tempLen === 0) tempStart = i
+          tempLen++
+          if (tempLen > best) {
+            best = tempLen
+            bestStartIdx = tempStart
+            bestEndIdx = i
+          }
+        } else {
+          tempLen = 0
+          tempStart = -1
+        }
+      }
+
+      winStreak = {
+        current,
+        currentStartDate:
+          current > 0 && currentStartIdx !== null
+            ? playerSets[currentStartIdx].date
+            : null,
+        currentEndDate:
+          current > 0 && currentEndIdx !== null
+            ? playerSets[currentEndIdx].date
+            : null,
+        best,
+        bestStartDate:
+          best > 0 && bestStartIdx !== null
+            ? playerSets[bestStartIdx].date
+            : null,
+        bestEndDate:
+          best > 0 && bestEndIdx !== null
+            ? playerSets[bestEndIdx].date
+            : null,
+      }
+    }
+
+    // -------- SPIL-STREAK (uger med >= 6 sæt) --------
+    let weekStreak: WeekStreakInfo = {
+      current: 0,
+      currentStartDate: null,
+      currentEndDate: null,
+      best: 0,
+      bestStartDate: null,
+      bestEndDate: null,
+    }
+
+    const weekEntries: WeekEntry[] = Object.values(weekMap)
+
+    if (weekEntries.length > 0) {
+      // Tag kun uger med mindst 6 sæt
+      const qualifying = weekEntries
+        .filter((w) => w.count >= 6)
+        .sort(
+          (a, b) =>
+            a.weekStart.getTime() - b.weekStart.getTime()
+        )
+
+      if (qualifying.length > 0) {
+        // Aktuel ugestreak: baglæns fra sidste kvalificerende uge
+        let current = 1
+        let startIdx = qualifying.length - 1
+        const endIdx = qualifying.length - 1
+
+        for (let i = qualifying.length - 1; i > 0; i--) {
+          const curr = qualifying[i]
+          const prev = qualifying[i - 1]
+          const diff =
+            curr.weekStart.getTime() - prev.weekStart.getTime()
+          if (diff === MS_PER_WEEK) {
+            current++
+            startIdx = i - 1
+          } else {
+            break
+          }
+        }
+
+        weekStreak.current = current
+        weekStreak.currentStartDate =
+          qualifying[startIdx].firstDate
+        weekStreak.currentEndDate =
+          qualifying[endIdx].lastDate
+
+        // Længste streak igennem historikken
+        let best = 1
+        let bestStartIdx = 0
+        let bestEndIdx = 0
+
+        let tempLen = 1
+        let tempStartIdx = 0
+
+        for (let i = 1; i < qualifying.length; i++) {
+          const curr = qualifying[i]
+          const prev = qualifying[i - 1]
+          const diff =
+            curr.weekStart.getTime() - prev.weekStart.getTime()
+          if (diff === MS_PER_WEEK) {
+            tempLen++
+          } else {
+            if (tempLen > best) {
+              best = tempLen
+              bestStartIdx = tempStartIdx
+              bestEndIdx = i - 1
+            }
+            tempLen = 1
+            tempStartIdx = i
+          }
+        }
+
+        // check sidste streak
+        if (tempLen > best) {
+          best = tempLen
+          bestStartIdx = tempStartIdx
+          bestEndIdx = qualifying.length - 1
+        }
+
+        weekStreak.best = best
+        weekStreak.bestStartDate =
+          qualifying[bestStartIdx].firstDate
+        weekStreak.bestEndDate =
+          qualifying[bestEndIdx].lastDate
+      }
+    }
+
+    return { winStreak, weekStreak }
+  }, [kampe, visningsnavn])
+
+  const formatDate = (dateStr: string | null) => {
+    if (!dateStr) return "–"
+    const d = new Date(dateStr)
+    if (isNaN(d.getTime())) return dateStr
+    return d.toLocaleDateString("da-DK", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    })
+  }
+
+  const formatRange = (
+    start: string | null,
+    end: string | null
+  ) => {
+    if (!start && !end) return "–"
+    if (start && !end) return formatDate(start)
+    if (!start && end) return formatDate(end)
+    if (start === end) return formatDate(start)
+    return `${formatDate(start)} – ${formatDate(end)}`
+  }
+
+  return (
+    <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 mt-2">
+      <h2 className="text-lg font-semibold mb-3">
+        Streaks for {visningsnavn}
+      </h2>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+        {/* Sejr-streak */}
+        <div className="rounded-xl border border-pink-500/40 bg-pink-500/5 p-3 space-y-2">
+          <p className="text-xs uppercase tracking-wide text-pink-300">
+            Sejr-streak (færdigspillede sæt)
+          </p>
+          <div className="flex flex-col gap-1">
+            <div className="flex justify-between">
+              <span className="text-slate-200">
+                Aktuel sejrstreak
+              </span>
+              <span className="font-semibold text-pink-200">
+                {winStreak.current} sæt
+              </span>
+            </div>
+            {winStreak.current > 0 && (
+              <div className="flex justify-between text-xs text-slate-300">
+                <span>Periode</span>
+                <span>{formatRange(winStreak.currentStartDate, winStreak.currentEndDate)}</span>
+              </div>
+            )}
+            <div className="flex justify-between mt-2">
+              <span className="text-slate-200">
+                Længste sejrstreak
+              </span>
+              <span className="font-semibold text-pink-200">
+                {winStreak.best} sæt
+              </span>
+            </div>
+            {winStreak.best > 0 && (
+              <div className="flex justify-between text-xs text-slate-300">
+                <span>Periode</span>
+                <span>{formatRange(winStreak.bestStartDate, winStreak.bestEndDate)}</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Spil-streak */}
+        <div className="rounded-xl border border-indigo-500/40 bg-indigo-500/5 p-3 space-y-2">
+          <p className="text-xs uppercase tracking-wide text-indigo-300">
+            Spil-streak (uger med ≥ 6 sæt)
+          </p>
+          <div className="flex flex-col gap-1">
+            <div className="flex justify-between">
+              <span className="text-slate-200">
+                Aktuel spil-streak
+              </span>
+              <span className="font-semibold text-indigo-200">
+                {weekStreak.current} uger
+              </span>
+            </div>
+            {weekStreak.current > 0 && (
+              <div className="flex justify-between text-xs text-slate-300">
+                <span>Periode</span>
+                <span>{formatRange(weekStreak.currentStartDate, weekStreak.currentEndDate)}</span>
+              </div>
+            )}
+            <div className="flex justify-between mt-2">
+              <span className="text-slate-200">
+                Længste spil-streak
+              </span>
+              <span className="font-semibold text-indigo-200">
+                {weekStreak.best} uger
+              </span>
+            </div>
+            {weekStreak.best > 0 && (
+              <div className="flex justify-between text-xs text-slate-300">
+                <span>Periode</span>
+                <span>{formatRange(weekStreak.bestStartDate, weekStreak.bestEndDate)}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <p className="text-[11px] text-slate-400 mt-2">
+        Sejr-streak er baseret på færdigspillede sæt, hvor du har vundet.
+        Spil-streak tæller uger (mandag–søndag), hvor du har spillet mindst 6
+        færdigspillede sæt.
+      </p>
+    </div>
+  )
+}
