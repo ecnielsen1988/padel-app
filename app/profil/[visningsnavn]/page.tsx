@@ -13,7 +13,7 @@ import { EloStats } from "./EloStats"
 import { SetStats } from "./SetStats"
 import { MakkerStats } from "./MakkerStats"
 import { StreakStats } from "./StreakStats"
-
+import RankOverview from "./RankOverview" // 👈 rettet import
 
 type ProfilState = {
   loading: boolean
@@ -208,9 +208,7 @@ export default function ProfilSide() {
 
     if (!kampe.length) return
 
-    // Lav en lokal kopi som ren string
     const name = compareName
-
     let cancelled = false
 
     async function calcCompare() {
@@ -345,6 +343,9 @@ export default function ProfilSide() {
           </div>
         </header>
 
+        {/* 🔝 Hurtigt overblik over ranglister */}
+        <RankOverview visningsnavn={visningsnavn} kampe={kampe} />
+
         {/* Indhold */}
         {loading && (
           <div className="rounded-2xl border border-slate-800 bg-slate-900/60 px-4 py-6 text-sm text-slate-300">
@@ -374,13 +375,12 @@ export default function ProfilSide() {
             <SetStats visningsnavn={visningsnavn} kampe={kampe} />
 
             <MakkerStats
-    visningsnavn={visningsnavn}
-    kampe={kampe}
-    initialEloMap={initialEloMap}
-  />
+              visningsnavn={visningsnavn}
+              kampe={kampe}
+              initialEloMap={initialEloMap}
+            />
 
-  <StreakStats visningsnavn={visningsnavn} kampe={kampe} />
-
+            <StreakStats visningsnavn={visningsnavn} kampe={kampe} />
           </section>
         )}
       </div>
