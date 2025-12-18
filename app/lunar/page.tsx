@@ -83,6 +83,8 @@ function weekdayFromISO(dateStr: string): number {
  * - måneds-gennemsnit + vægtet Elo
  * - torsdags-bonus (kun ud fra dato + holdA/holdB)
  * - lunar-bonus fra tabel
+ *
+ * ÆNDRING: sidste "måned" (vægt 6) sættes til NU-VÆRENDE ELO
  */
 function computeLunarRowForPlayer(
   navn: string,
@@ -109,11 +111,39 @@ function computeLunarRowForPlayer(
       elo: p.elo,
     }))
 
-  // 3) Beregn måneds-gennemsnit + vægtet Elo
+  // 3) Beregn måneds-gennemsnit + (oprindelig) vægtet Elo
   const { months, weightedAverage } = beregnMaanedsGnsForSpiller(
     snapshots,
     startElo
   )
+
+  // ★ 3b) Find nuværende Elo (sidste punkt i historikken, ellers startElo)
+  const currentElo =
+    history.length > 0 ? history[history.length - 1].elo : startElo
+
+  // ★ 3c) Erstat sidste måneds avgElo med nuværende Elo
+  let monthsWithCurrent = months
+  if (monthsWithCurrent.length > 0) {
+    monthsWithCurrent = [...monthsWithCurrent]
+    const lastIndex = monthsWithCurrent.length - 1
+    monthsWithCurrent[lastIndex] = {
+      ...monthsWithCurrent[lastIndex],
+      avgElo: currentElo,
+    }
+  }
+
+  // ★ 3d) Genberegn vægtet Elo ud fra opdaterede måneder
+  const weightedElo = (() => {
+    if (monthsWithCurrent.length === 0) return startElo
+    let sumWeights = 0
+    let sum = 0
+    for (const m of monthsWithCurrent) {
+      const val = m.avgElo ?? startElo
+      sum += val * m.weight
+      sumWeights += m.weight
+    }
+    return sumWeights > 0 ? sum / sumWeights : startElo
+  })()
 
   // 4) Torsdags-bonus:
   //    +5 pr. unik torsdag hvor spilleren står i holda1/2 eller holdb1/2
@@ -148,12 +178,13 @@ function computeLunarRowForPlayer(
   // 5) Lunar-bonus
   const lunarBonus = lunarBonusByPlayer.get(navn) ?? 0
 
-  const total = weightedAverage + lunarBonus + thursdayPoints
+  // ★ total baseret på NY weightedElo
+  const total = weightedElo + lunarBonus + thursdayPoints
 
   const row: LunarRow = {
     visningsnavn: navn,
-    months,
-    weightedElo: weightedAverage,
+    months: monthsWithCurrent, // ★ gem de opdaterede måneder
+    weightedElo,
     lunarBonus,
     thursdayCount,
     thursdayPoints,
@@ -178,6 +209,11 @@ export default function LunarSide() {
   const [inputNavn, setInputNavn] = useState("")
 
   const monthsMeta = useMemo(() => getLast6MonthsMeta(), [])
+
+  // ★ Sidste kolonne-label markeres som "nu"
+  const monthsHeader = monthsMeta.map((m, idx) =>
+    idx === monthsMeta.length - 1 ? { ...m, label: `${m.label} (nu)` } : m
+  )
 
   // første load: kampe + profiler + lunar-bonus + spillere fra lunar-tabellen
   useEffect(() => {
@@ -335,11 +371,10 @@ export default function LunarSide() {
     }
 
     // gem i Supabase-tabel "lunar"
-    const { error: upErr } = await (supabase.from("lunar") as any)
-  .upsert(
-    { visningsnavn: navn },
-    { onConflict: "visningsnavn" }
-  )
+    const { error: upErr } = await (supabase.from("lunar") as any).upsert(
+      { visningsnavn: navn },
+      { onConflict: "visningsnavn" }
+    )
 
     if (upErr) {
       console.error("Fejl ved upsert til lunar:", upErr)
@@ -400,12 +435,12 @@ export default function LunarSide() {
     }
   }
 
-  const monthsHeader = monthsMeta
-
   if (loading) {
     return (
       <main className="max-w-5xl mx-auto p-6 text-gray-900 dark:text-white">
-        <h1 className="text-3xl font-bold mb-4">🌙 Lunar – holdkampsrangering</h1>
+        <h1 className="text-3xl font-bold mb-4">
+          🌙 Lunar – holdkampsrangering
+        </h1>
         <p>Indlæser kampe og profiler…</p>
       </main>
     )
@@ -414,7 +449,9 @@ export default function LunarSide() {
   if (error) {
     return (
       <main className="max-w-5xl mx-auto p-6 text-gray-900 dark:text-white">
-        <h1 className="text-3xl font-bold mb-4">🌙 Lunar – holdkampsrangering</h1>
+        <h1 className="text-3xl font-bold mb-4">
+          🌙 Lunar – holdkampsrangering
+        </h1>
         <p className="text-red-600 whitespace-pre-wrap">{error}</p>
       </main>
     )
@@ -422,12 +459,14 @@ export default function LunarSide() {
 
   return (
     <main className="max-w-5xl mx-auto p-6 text-gray-900 dark:text-white">
-      <h1 className="text-3xl font-bold mb-4">🌙 Lunar – holdkampsrangering</h1>
+      <h1 className="text-3xl font-bold mb-4">
+        🌙 Lunar – holdkampsrangering
+      </h1>
 
       <p className="mb-4 text-sm text-zinc-600 dark:text-zinc-300">
         Skriv eller vælg et <strong>visningsnavn</strong> (autocomplete). Systemet bruger
-        samme Elo-historik som på profilsiden, beregner månedsgennemsnit for de sidste 6
-        måneder (vægtet 1–6), lægger Lunar-tillæg og{" "}
+        samme Elo-historik som på profilsiden, beregner månedsgennemsnit for de sidste{" "}
+        5 måneder + <strong>nuværende Elo</strong> (vægtet 1–6), lægger Lunar-tillæg og{" "}
         <strong>torsdagsbonus</strong> (+5 per torsdag, hvor spilleren har spillet) oveni
         – og sorterer automatisk efter samlet score.
       </p>

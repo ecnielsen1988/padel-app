@@ -38,24 +38,6 @@ function getCopenhagenNowAsUTCDate() {
   );
 }
 
-function kommendeTorsdagISODate() {
-  // Returnerer dato (YYYY-MM-DD) for kommende torsdag i Europe/Copenhagen
-  const cphNow = getCopenhagenNowAsUTCDate();
-  const dow = cphNow.getUTCDay(); // 0=Sun ... 4=Thu
-  const add = (4 - dow + 7) % 7; // hvor mange dage til torsdag (0 hvis i dag er torsdag)
-  const th = new Date(
-    Date.UTC(
-      cphNow.getUTCFullYear(),
-      cphNow.getUTCMonth(),
-      cphNow.getUTCDate() + add
-    )
-  );
-  const y = th.getUTCFullYear();
-  const m = String(th.getUTCMonth() + 1).padStart(2, "0");
-  const d = String(th.getUTCDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
 function formatTime(value: string | null) {
   if (!value) return "";
   const hhmm = value.match(/\d{2}:\d{2}/)?.[0];
@@ -197,13 +179,63 @@ export default async function Page() {
     console.warn("Kunne ikke aflæse session:", e);
   }
 
-  const thursday = kommendeTorsdagISODate();
+  // Find dagens dato (YYYY-MM-DD) i CPH
+  const cphNow = getCopenhagenNowAsUTCDate();
+  const todayY = cphNow.getUTCFullYear();
+  const todayM = String(cphNow.getUTCMonth() + 1).padStart(2, "0");
+  const todayD = String(cphNow.getUTCDate()).padStart(2, "0");
+  const todayISO = `${todayY}-${todayM}-${todayD}`;
 
-  // 1) Hent tilmeldinger for kommende torsdag
+  // Find næste planlagte event for lukket gruppe
+  const { data: nextEvent, error: eventErr } = await supabase
+    .from("events")
+    .select("id, name, date")
+    .eq("closed_group", true)
+    .gte("date", todayISO)
+    .order("date", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (eventErr) {
+    console.error("events error", {
+      message: (eventErr as any)?.message,
+      details: (eventErr as any)?.details,
+      hint: (eventErr as any)?.hint,
+      code: (eventErr as any)?.code,
+    });
+  }
+
+  const eventDate = (nextEvent?.date as string) ?? null;
+  const eventName = (nextEvent?.name as string) ?? null;
+
+  // Hvis der ikke findes et kommende lukket event, så vis en simpel besked
+  if (!eventDate) {
+    return (
+      <main className="p-6 space-y-6 text-neutral-900 dark:text-neutral-100">
+        {!sessionUserId && (
+          <div className="rounded-md bg-amber-100 text-amber-800 px-3 py-2 text-sm">
+            Ingen server-session fundet – hvis RLS kræver login, kan listerne
+            være tomme (du kan stadig være logget ind i browseren).
+          </div>
+        )}
+
+        <header>
+          <h1 className="text-2xl font-semibold">
+            Tilmeldinger – Næste event (lukket gruppe)
+          </h1>
+          <p className="text-sm text-neutral-500 dark:text-neutral-400">
+            Der er ingen planlagte events for den lukkede gruppe.
+          </p>
+        </header>
+      </main>
+    );
+  }
+
+  // 1) Hent tilmeldinger for næste lukkede event
   const { data: signupsRaw, error: signupsErr } = await supabase
     .from("event_signups")
     .select("visningsnavn, event_dato, kan_spille, tidligste_tid, paid")
-    .eq("event_dato", thursday);
+    .eq("event_dato", eventDate);
 
   if (signupsErr) {
     console.error("event_signups error", {
@@ -272,12 +304,7 @@ export default async function Page() {
   ingenSvar.sort(byName);
 
   // Faste valide starttider
-const timeOptions: string[] = [
-  "17:00",
-  "17:30",
-  "18:40",
-  "20:20",
-];
+  const timeOptions: string[] = ["17:00", "17:30", "18:40", "20:20"];
 
   // --- Bane-gruppering (tilmeldte) ---
   type CourtGroup = {
@@ -324,9 +351,11 @@ const timeOptions: string[] = [
 
       <header className="flex items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">Tilmeldinger – Torsdag</h1>
+          <h1 className="text-2xl font-semibold">
+            Tilmeldinger – Næste event (lukket gruppe)
+          </h1>
           <p className="text-sm text-neutral-500 dark:text-neutral-400">
-            Dato: {thursday}
+            Dato: {eventDate} {eventName ? `– ${eventName}` : ""}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -394,7 +423,10 @@ const timeOptions: string[] = [
                         </div>
 
                         {/* Betalt toggle */}
-                        <form action={togglePaidAction} className="flex items-center gap-2">
+                        <form
+                          action={togglePaidAction}
+                          className="flex items-center gap-2"
+                        >
                           <input
                             type="hidden"
                             name="visningsnavn"
@@ -403,7 +435,7 @@ const timeOptions: string[] = [
                           <input
                             type="hidden"
                             name="event_dato"
-                            value={s.event_dato ?? thursday}
+                            value={s.event_dato ?? eventDate}
                           />
                           <input
                             type="hidden"
@@ -431,7 +463,7 @@ const timeOptions: string[] = [
                           <input
                             type="hidden"
                             name="event_dato"
-                            value={s.event_dato ?? thursday}
+                            value={s.event_dato ?? eventDate}
                           />
                           <input type="hidden" name="tidligste_tid" value="" />
                           <button
@@ -488,7 +520,7 @@ const timeOptions: string[] = [
                   <input
                     type="hidden"
                     name="event_dato"
-                    value={s.event_dato ?? thursday}
+                    value={s.event_dato ?? eventDate}
                   />
                   <label className="text-xs text-neutral-500 dark:text-neutral-400">
                     Tidligste start:
@@ -525,7 +557,7 @@ const timeOptions: string[] = [
           <div className="px-4 py-3 border-b border-neutral-200 dark:border-neutral-800">
             <h2 className="font-medium">Ikke svaret ({ingenSvar.length})</h2>
             <p className="text-xs text-neutral-500 dark:text-neutral-400">
-              Alle spillere med torsdagsflag uden svar for {thursday}.
+              Alle spillere med torsdagsflag uden svar til {eventDate}.
             </p>
           </div>
           <ul className="divide-y divide-neutral-200 dark:divide-neutral-800">
@@ -548,7 +580,11 @@ const timeOptions: string[] = [
                         name="visningsnavn"
                         value={p.visningsnavn}
                       />
-                      <input type="hidden" name="event_dato" value={thursday} />
+                      <input
+                        type="hidden"
+                        name="event_dato"
+                        value={eventDate}
+                      />
                       <input
                         type="hidden"
                         name="next_paid"
@@ -576,7 +612,11 @@ const timeOptions: string[] = [
                       name="visningsnavn"
                       value={p.visningsnavn}
                     />
-                    <input type="hidden" name="event_dato" value={thursday} />
+                    <input
+                      type="hidden"
+                      name="event_dato"
+                      value={eventDate}
+                    />
 
                     <label className="text-xs text-neutral-500 dark:text-neutral-400">
                       Tidligste start:
@@ -625,11 +665,10 @@ const timeOptions: string[] = [
       <footer className="text-xs text-gray-400">
         <p>
           Betalingssum tæller rækker i <code>event_signups</code> med{" "}
-          <code>paid = true</code> for {thursday}. Afkrydsninger gemmes via
+          <code>paid = true</code> for {eventDate}. Afkrydsninger gemmes via
           server actions ovenfor.
         </p>
       </footer>
     </main>
   );
 }
-
