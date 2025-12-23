@@ -96,44 +96,77 @@ export default function RankOverview({ visningsnavn, kampe }: Props) {
         }
 
         const rangliste: RanglisteRow[] = Array.isArray(rangDataRaw)
-          ? rangDataRaw
-          : Array.isArray(rangDataRaw?.data)
-          ? rangDataRaw.data
-          : []
+  ? rangDataRaw
+  : Array.isArray(rangDataRaw?.data)
+  ? rangDataRaw.data
+  : []
 
-        // brugt mange steder
-        const currentEloMap = new Map<string, number>()
-        for (const r of rangliste) {
-          const navn = (r.visningsnavn ?? "").toString().trim()
-          const elo = Number(r.elo ?? 0)
-          if (!navn || !Number.isFinite(elo)) continue
-          currentEloMap.set(normalizeName(navn), elo)
-        }
+// profiles læses her, så vi kan se hvem der er aktive
+const profiles =
+  !profilesRes.error && Array.isArray(profilesRes.data)
+    ? profilesRes.data
+    : []
+
+// Set over aktive spillere (normaliseret navn)
+const activeNameSet = new Set(
+  (profiles as any[])
+    .filter((p) => p.active === true)
+    .map((p) =>
+      normalizeName((p?.visningsnavn ?? "").toString())
+    )
+    .filter(Boolean)
+)
+
+// brugt mange steder
+const currentEloMap = new Map<string, number>()
+for (const r of rangliste) {
+  const navn = (r.visningsnavn ?? "").toString().trim()
+  const elo = Number(r.elo ?? 0)
+  if (!navn || !Number.isFinite(elo)) continue
+  currentEloMap.set(normalizeName(navn), elo)
+}
+
 
         const idxMain = rangliste.findIndex(
-          (row) => normalizeName(row.visningsnavn) === normalizedTarget
-        )
-        if (idxMain !== -1) {
-          const entry = rangliste[idxMain]
-          const pos =
-            typeof entry.position === "number" && entry.position > 0
-              ? entry.position
-              : idxMain + 1
-          const eloValue =
-            currentEloMap.get(normalizeName(entry.visningsnavn)) ?? null
+  (row) => normalizeName(row.visningsnavn) === normalizedTarget
+)
+if (idxMain !== -1) {
+  const entry = rangliste[idxMain]
 
-          results.push({
-            key: "main",
-            label: "Ranglisten",
-            emoji: "🥇",
-            href: "/nyrangliste",
-            position: pos,
-            valueLabel:
-              eloValue != null
-                ? `Elo ${Math.round(eloValue)}`
-                : "Elo –",
-          })
-        }
+  // Beregn placering KUN blandt aktive spillere
+  let pos = 0
+  for (const row of rangliste) {
+    const normName = normalizeName(row.visningsnavn)
+    if (!activeNameSet.has(normName)) continue // spring inaktive over
+    pos++
+    if (normName === normalizedTarget) break
+  }
+
+  // fallback hvis spilleren mod forventning ikke er i activeNameSet
+  if (pos === 0) {
+    pos =
+      typeof entry.position === "number" && entry.position > 0
+        ? entry.position
+        : idxMain + 1
+  }
+
+  const eloValue =
+    currentEloMap.get(normalizeName(entry.visningsnavn)) ?? null
+
+  results.push({
+    key: "main",
+    label: "Ranglisten",
+    emoji: "🥇",
+    href: "/nyrangliste",
+    position: pos,
+    valueLabel:
+      eloValue != null
+        ? `Elo ${Math.round(eloValue)}`
+        : "Elo –",
+  })
+}
+
+
 
         /* ---------- MONTHLY ---------- */
 
@@ -181,10 +214,7 @@ export default function RankOverview({ visningsnavn, kampe }: Props) {
 
         /* ---------- PROFILES (GirlPower + WinStreak initialElo) ---------- */
 
-        const profiles = !profilesRes.error && Array.isArray(profilesRes.data)
-          ? profilesRes.data
-          : []
-
+    
         const DEFAULT_START_ELO = 1000
         const initialEloMap: EloMap = {}
         for (const p of profiles as any[]) {
