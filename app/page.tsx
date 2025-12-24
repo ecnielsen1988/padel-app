@@ -1,11 +1,42 @@
-import Image from "next/image";
-import Link from "next/link";
-import { beregnNyRangliste } from "@/lib/beregnNyRangliste";
+import Image from "next/image"
+import Link from "next/link"
+import { beregnNyRangliste } from "@/lib/beregnNyRangliste"
+import { supabase } from "@/lib/supabaseClient"
+
+type Spiller = {
+  visningsnavn: string
+  elo: number
+}
+
+type ProfileRow = {
+  visningsnavn: string
+  active: boolean
+}
 
 // ✅ Server component
 export default async function Home() {
-  const rangliste = await beregnNyRangliste();
-  const top5 = rangliste.slice(0, 5);
+  // 1) Hent rangliste (alle spillere)
+  const rangliste: Spiller[] = await beregnNyRangliste()
+
+  // 2) Hent aktive profiler
+  const { data: profiles } = await supabase
+    .from("profiles")
+    .select("visningsnavn, active")
+
+  const activeNameSet = new Set(
+    (profiles as ProfileRow[] | null ?? [])
+      .filter((p) => p.active === true)
+      .map((p) => (p.visningsnavn ?? "").toString().trim())
+      .filter(Boolean)
+  )
+
+  // 3) Filtrér ranglisten til kun aktive spillere
+  const aktiveRangliste = rangliste.filter((spiller) =>
+    activeNameSet.has((spiller.visningsnavn ?? "").toString().trim())
+  )
+
+  // 4) Top 5 blandt de aktive
+  const top5 = aktiveRangliste.slice(0, 5)
 
   return (
     <main style={styles.main}>
@@ -37,7 +68,10 @@ export default async function Home() {
         <Link href="/login" style={styles.button}>
           Log ind
         </Link>
-        <Link href="/signup" style={{ ...styles.button, backgroundColor: "#333" }}>
+        <Link
+          href="/signup"
+          style={{ ...styles.button, backgroundColor: "#333" }}
+        >
           Opret profil
         </Link>
       </div>
@@ -57,7 +91,7 @@ export default async function Home() {
         </ol>
       </div>
     </main>
-  );
+  )
 }
 
 const styles: { [key: string]: React.CSSProperties } = {
@@ -128,5 +162,5 @@ const styles: { [key: string]: React.CSSProperties } = {
     margin: 0,
     lineHeight: 1.6,
   },
-};
+}
 
