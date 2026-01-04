@@ -1,13 +1,15 @@
 // lib/beregnEloMonthly.ts
 import { supabase } from "@/lib/supabaseClient";
+import { beregnEloForKampe, type Kamp, type EloMap } from "@/lib/beregnElo";
 
-type EloMap = Record<string, number>;
-type MånedensSpiller = { visningsnavn: string; pluspoint: number };
+export type MånedensSpiller = { visningsnavn: string; pluspoint: number };
 
-// Justér hvis dit baseline-elo er noget andet end 1000
-const DEFAULT_ELO = 1000;
+// Match din Elo-motor default (du bruger 1500 som fallback i beregnEloForKampe)
+const DEFAULT_ELO = 0;
 
-/** Første dag i måneden i Europe/Copenhagen som 'YYYY-MM-DD' */
+// -------------------------
+// Dato-grænser i Europe/Copenhagen (YYYY-MM-DD)
+// -------------------------
 function monthStartCph(year: number, month1_12: number): string {
   const d = new Date(Date.UTC(year, month1_12 - 1, 1, 0, 0, 0));
   const fmt = new Intl.DateTimeFormat("en-CA", {
@@ -19,7 +21,6 @@ function monthStartCph(year: number, month1_12: number): string {
   return fmt.format(d);
 }
 
-/** Første dag i næste måned i Europe/Copenhagen som 'YYYY-MM-DD' (eksklusiv grænse) */
 function nextMonthStartCph(year: number, month1_12: number): string {
   const d = new Date(Date.UTC(year, month1_12 - 1, 1, 0, 0, 0));
   d.setUTCMonth(d.getUTCMonth() + 1);
@@ -32,309 +33,172 @@ function nextMonthStartCph(year: number, month1_12: number): string {
   return fmt.format(d);
 }
 
-// ———————————————————————————————
-// Elo-motor loader (tåler forskellige export-navne)
-// ———————————————————————————————
-async function loadEloMotor(): Promise<(...args: any[]) => Promise<any>> {
-  const mod: any = await import("@/lib/beregnElo");
-  const fn =
-    mod.beregnElo ??
-    mod.beregnEloForKampe ??
-    mod.beregnEloKampe ??
-    mod.default;
-
-  if (typeof fn !== "function") {
-    const available = Object.keys(mod || {});
-    throw new Error(
-      `Kunne ikke finde en Elo-funktion i "@/lib/beregnElo". Fundne exports: [${available.join(", ")}]`
-    );
-  }
-  return fn as (...args: any[]) => Promise<any>;
+function round1(n: number) {
+  return Math.round(n * 10) / 10;
 }
 
-// ———————————————————————————————
-// Normalisering: træk slut-elo ud som { [visningsnavn]: number }
-// Dækker: Map, plain object, array af par, array af objekter, wrappers & nested felter
-// ———————————————————————————————
-function toEloMap(res: any): EloMap {
-  if (!res) throw new Error("Elo-resultat var tomt/undefined.");
+// -------------------------
+// Pagination helper (så vi ikke mister rows > 1000)
+// -------------------------
+async function fetchAllNewresults(opts: { lt?: string; gte?: string }): Promise<any[]> {
+  const PAGE_SIZE = 1000;
+  let from = 0;
+  const out: any[] = [];
 
-  // 1) Map<string, number>
-  if (res instanceof Map) {
-    const obj: EloMap = {};
-    for (const [k, v] of res.entries()) obj[String(k)] = Number(v);
-    return obj;
+  while (true) {
+    const to = from + PAGE_SIZE - 1;
+    let q = supabase.from("newresults").select("*");
+
+    if (opts.gte) q = q.gte("date", opts.gte);
+    if (opts.lt) q = q.lt("date", opts.lt);
+
+    q = q
+      .order("date", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, to);
+
+    const { data, error } = await q;
+    if (error) throw error;
+
+    const batch = data ?? [];
+    out.push(...batch);
+
+    if (batch.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
   }
 
-  // 2) Array-formater
-  if (Array.isArray(res)) {
-    // 2a) Array af [navn, værdi]
-    if (
-      res.length > 0 &&
-      Array.isArray(res[0]) &&
-      res[0].length >= 2 &&
-      typeof res[0][0] === "string" &&
-      typeof res[0][1] === "number"
-    ) {
-      const obj: EloMap = {};
-      for (const [name, val] of res) obj[String(name)] = Number(val);
-      return obj;
-    }
-
-    // 2b) Array af objekter med (navn, rating) i forskellige felter
-    if (res.length > 0 && typeof res[0] === "object") {
-      const nameKeys = [
-        "visningsnavn",
-        "displayName",
-        "displayname",
-        "navn",
-        "name",
-        "player",
-        "spiller",
-        "id",
-      ];
-      const ratingKeys = [
-        "elo",
-        "rating",
-        "value",
-        "points",
-        "score",
-        "current",
-        "after",
-        "end",
-        "nyElo",
-        "eloEfter",
-        "elo_afslut",
-        "elo_slut",
-      ];
-
-      const out: EloMap = {};
-      for (const row of res) {
-        if (!row || typeof row !== "object") continue;
-
-        let name: string | undefined;
-        for (const nk of nameKeys) {
-          if (typeof (row as any)[nk] === "string" && (row as any)[nk]) {
-            name = (row as any)[nk];
-            break;
-          }
-        }
-        if (!name && row.player && typeof row.player === "object") {
-          const p = (row as any).player;
-          name = p.visningsnavn || p.displayName || p.displayname || p.navn || p.name;
-        }
-
-        let rating: number | undefined;
-        for (const rk of ratingKeys) {
-          if (typeof (row as any)[rk] === "number") {
-            rating = (row as any)[rk];
-            break;
-          }
-        }
-        if (rating === undefined) {
-          const nestedKeys = ["stats", "state", "result", "resultat", "elo", "data"];
-          for (const nk of nestedKeys) {
-            const nest = (row as any)[nk];
-            if (nest && typeof nest === "object") {
-              for (const rk of ratingKeys) {
-                if (typeof (nest as any)[rk] === "number") {
-                  rating = (nest as any)[rk];
-                  break;
-                }
-              }
-            }
-            if (rating !== undefined) break;
-          }
-        }
-
-        if (name && typeof rating === "number") out[name] = rating;
-      }
-      if (Object.keys(out).length > 0) return out;
-    }
-  }
-
-  // 3) Wrapper-objekter – prøv kendte nøgler og rekursér
-  const wrappers = [
-    "eloMap",
-    "currentEloMap",
-    "ratings",
-    "current",
-    "state",
-    "result",
-    "resultat",
-    "rangliste",
-    "leaderboard",
-    "players",
-    "spillere",
-    "endState",
-    "end",
-  ];
-  if (typeof res === "object" && res) {
-    for (const k of wrappers) {
-      if ((res as any)[k] != null) {
-        try {
-          return toEloMap((res as any)[k]);
-        } catch {
-          // prøv næste
-        }
-      }
-    }
-  }
-
-  // 4) Plain objekt: { navn: number } ELLER navn->objekt med rating indeni
-  if (typeof res === "object" && res) {
-    const entries = Object.entries(res);
-
-    // 4a) Direkte navn -> tal
-    if (entries.length > 0 && entries.every(([k, v]) => typeof k === "string" && typeof v === "number")) {
-      return res as EloMap;
-    }
-
-    // 4b) navn -> objekt med talværdi et sted
-    const ratingKeys = [
-      "elo",
-      "rating",
-      "value",
-      "points",
-      "score",
-      "current",
-      "after",
-      "end",
-      "nyElo",
-      "eloEfter",
-      "elo_afslut",
-      "elo_slut",
-    ];
-    const nameKeys = ["visningsnavn", "displayName", "displayname", "navn", "name", "player", "spiller", "id"];
-    const out: EloMap = {};
-
-    for (const [outerKey, val] of entries) {
-      if (!val || typeof val !== "object") continue;
-
-      let name: string = outerKey;
-      for (const nk of nameKeys) {
-        if (typeof (val as any)[nk] === "string") {
-          name = (val as any)[nk];
-          break;
-        }
-      }
-
-      let rating: number | undefined;
-      for (const rk of ratingKeys) {
-        if (typeof (val as any)[rk] === "number") {
-          rating = (val as any)[rk];
-          break;
-        }
-      }
-      if (rating === undefined) {
-        for (const nested of Object.values(val as any)) {
-          if (nested && typeof nested === "object") {
-            for (const rk of ratingKeys) {
-              if (typeof (nested as any)[rk] === "number") {
-                rating = (nested as any)[rk];
-                break;
-              }
-            }
-            if (rating !== undefined) break;
-          }
-        }
-      }
-
-      if (typeof rating === "number") out[String(name)] = rating;
-    }
-    if (Object.keys(out).length > 0) return out;
-  }
-
-  throw new Error(
-    "Kunne ikke normalisere Elo-resultat til et { [visningsnavn]: number }-map. Tjek returtypen fra beregnElo."
-  );
+  return out;
 }
 
-// ———————————————————————————————
-// Kør Elo med/uden seed og få slut-map tilbage
-// ———————————————————————————————
-async function runEloWithOptionalSeed(
-  beregnElo: (...args: any[]) => Promise<any>,
-  saet: any[],
-  seed?: EloMap
-): Promise<EloMap> {
+// -------------------------
+// Map Supabase-row -> Kamp (matcher din type i lib/beregnElo.ts)
+// -------------------------
+// IMPORTANT: tilpas keys her hvis dine kolonner hedder noget andet.
+// Jeg bruger de navne, du har vist i resten af projektet.
+function rowToKamp(r: any): Kamp | null {
+  const id = typeof r.id === "number" ? r.id : Number(r.id);
+  if (!Number.isFinite(id)) return null;
+
+  const kampidRaw = r.kampid ?? r.kamp_id ?? r.kampId ?? r.matchid ?? r.matchId;
+  // Hvis kampid mangler, brug id (så Elo stadig kan køre pr række)
+  const kampid = Number.isFinite(Number(kampidRaw)) ? Number(kampidRaw) : id;
+
+  const date = (r.date ?? r.dato ?? "").toString();
+
+  const holdA1 = (r.holdA1 ?? r.holda1 ?? r.teama1 ?? r.teamA1 ?? r.playerA1 ?? "").toString();
+  const holdA2 = (r.holdA2 ?? r.holda2 ?? r.teama2 ?? r.teamA2 ?? r.playerA2 ?? "").toString();
+  const holdB1 = (r.holdB1 ?? r.holdb1 ?? r.teamb1 ?? r.teamB1 ?? r.playerB1 ?? "").toString();
+  const holdB2 = (r.holdB2 ?? r.holdb2 ?? r.teamb2 ?? r.teamB2 ?? r.playerB2 ?? "").toString();
+
+  const scoreA = typeof r.scoreA === "number" ? r.scoreA : Number(r.scoreA);
+  const scoreB = typeof r.scoreB === "number" ? r.scoreB : Number(r.scoreB);
+
+  // dine felter i Elo: finish/event/tiebreak
+  const finish =
+    typeof r.finish === "boolean" ? r.finish :
+    typeof r.finished === "boolean" ? r.finished :
+    typeof r.completed === "boolean" ? r.completed :
+    true;
+
+  const event =
+    typeof r.event === "boolean" ? r.event :
+    typeof r.isEvent === "boolean" ? r.isEvent :
+    false;
+
+  // din Elo bruger string: 'tiebreak' | 'matchtiebreak' | ''
+  const tiebreak =
+    (r.tiebreak ?? r.tieBreak ?? r.matchTieBreak ?? "").toString().toLowerCase();
+
+  // hvis du gemmer indberettet_af i newresults
+  const indberettet_af = r.indberettet_af ? String(r.indberettet_af) : undefined;
+
+  // Valider minimum
+  if (!holdA1 || !holdA2 || !holdB1 || !holdB2) return null;
+  if (!Number.isFinite(scoreA) || !Number.isFinite(scoreB)) return null;
+
+  return {
+    id,
+    kampid,
+    date,
+    holdA1,
+    holdA2,
+    holdB1,
+    holdB2,
+    scoreA,
+    scoreB,
+    finish,
+    event,
+    tiebreak,
+    indberettet_af,
+  };
+}
+
+// (valgfrit) seed Elo fra profiles.startElo hvis du bruger det.
+// Hvis du ikke har startElo, så return {}.
+async function fetchInitialEloMap(): Promise<EloMap> {
   try {
-    // Prøv signatur (saet, initialEloMap)
-    const res = await beregnElo(saet, seed ?? {});
-    return toEloMap(res);
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("visningsnavn, startElo")
+      .eq("active", true);
+
+    if (error) return {};
+    const map: EloMap = {};
+    for (const r of data ?? []) {
+      const name = r?.visningsnavn;
+      const start = r?.startElo;
+      if (typeof name === "string" && name) {
+        map[name] = typeof start === "number" && Number.isFinite(start) ? start : DEFAULT_ELO;
+      }
+    }
+    return map;
   } catch {
-    // Fald tilbage til (saet)
-    const res = await beregnElo(saet);
-    return toEloMap(res);
+    return {};
   }
 }
 
-// ———————————————————————————————
-// Offentlig: Netto Elo pr. måned
-// ———————————————————————————————
-export async function beregnEloÆndringerForMåned(
-  year: number,
-  month1_12: number
-): Promise<MånedensSpiller[]> {
+// -------------------------
+// Public API
+// -------------------------
+export async function beregnEloÆndringerForMåned(year: number, month1_12: number): Promise<MånedensSpiller[]> {
   const start = monthStartCph(year, month1_12);
   const endExclusive = nextMonthStartCph(year, month1_12);
 
-  // 1) “Før” – alle sæt før månedens start
-  const { data: saetBefore, error: e1 } = await supabase
-    .from("newresults")
-    .select("*")
-    .lt("date", start)
-    .order("date", { ascending: true })
-    .order("id", { ascending: true });
+  const initialEloMap = await fetchInitialEloMap();
 
-  if (e1) {
-    console.error("Kunne ikke hente sæt før måned:", e1);
-    return [];
-  }
+  const rowsBefore = await fetchAllNewresults({ lt: start });
+  const rowsMonth = await fetchAllNewresults({ gte: start, lt: endExclusive });
 
-  // 2) “Månedens sæt”
-  const { data: saetMonth, error: e2 } = await supabase
-    .from("newresults")
-    .select("*")
-    .gte("date", start)
-    .lt("date", endExclusive)
-    .order("date", { ascending: true })
-    .order("id", { ascending: true });
+  const beforeKampe = rowsBefore.map(rowToKamp).filter(Boolean) as Kamp[];
+  const monthKampe = rowsMonth.map(rowToKamp).filter(Boolean) as Kamp[];
 
-  if (e2) {
-    console.error("Kunne ikke hente månedens sæt:", e2);
-    return [];
-  }
+  // Elo ved månedens start
+  const beforeRun = beregnEloForKampe(beforeKampe, initialEloMap);
+  const beforeMap = beforeRun.nyEloMap;
 
-  // 3) Kør Elo
-  const beregnElo = await loadEloMotor();
-  const beforeMap = await runEloWithOptionalSeed(beregnElo, saetBefore ?? [], {});
-  const afterMonthMap = await runEloWithOptionalSeed(beregnElo, saetMonth ?? [], beforeMap);
+  // Elo ved månedens slut
+  const afterRun = beregnEloForKampe(monthKampe, beforeMap);
+  const afterMap = afterRun.nyEloMap;
 
-  // 4) Netto = efter - før
-  const spillere = new Set<string>([
-    ...Object.keys(beforeMap),
-    ...Object.keys(afterMonthMap),
+  const players = new Set<string>([
+    ...Object.keys(beforeMap || {}),
+    ...Object.keys(afterMap || {}),
   ]);
 
   const liste: MånedensSpiller[] = [];
-  for (const navn of spillere) {
-    const before = beforeMap[navn] ?? DEFAULT_ELO;
-    const after = afterMonthMap[navn] ?? before;
+  for (const navn of players) {
+    const before = beforeMap?.[navn] ?? initialEloMap?.[navn] ?? DEFAULT_ELO;
+    const after = afterMap?.[navn] ?? before;
     const delta = after - before;
     if (delta !== 0) {
-      liste.push({ visningsnavn: navn, pluspoint: Math.round(delta * 10) / 10 });
+      liste.push({ visningsnavn: navn, pluspoint: round1(delta) });
     }
   }
 
-  // Sortér netto faldende
   liste.sort((a, b) => b.pluspoint - a.pluspoint);
   return liste;
 }
 
-// ———————————————————————————————
-// Hjælper: Indeværende måned (valgfri – praktisk til din nuværende API)
-// ———————————————————————————————
 export async function beregnEloÆndringerForIndeværendeMåned(): Promise<MånedensSpiller[]> {
   const now = new Date();
   const fmt = new Intl.DateTimeFormat("en-CA", {
@@ -343,8 +207,7 @@ export async function beregnEloÆndringerForIndeværendeMåned(): Promise<Måned
     month: "2-digit",
   });
   const parts = fmt.formatToParts(now);
-  const y = Number(parts.find(p => p.type === "year")!.value);
-  const m = Number(parts.find(p => p.type === "month")!.value);
+  const y = Number(parts.find((p) => p.type === "year")!.value);
+  const m = Number(parts.find((p) => p.type === "month")!.value);
   return beregnEloÆndringerForMåned(y, m);
 }
-

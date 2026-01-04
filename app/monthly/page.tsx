@@ -1,48 +1,49 @@
-export const dynamic = 'force-dynamic'
+export const dynamic = "force-dynamic";
 
-import { beregnEloÆndringerForIndeværendeMåned } from '@/lib/beregnEloChange'
-import { headers } from 'next/headers'
+import { headers } from "next/headers";
+import { beregnEloÆndringerForIndeværendeMåned } from "@/lib/beregnEloMonthly";
 
 type MånedensSpiller = {
-  visningsnavn: string
-  pluspoint: number
+  visningsnavn: string;
+  pluspoint: number;
+};
+
+function emojiForPluspoint(p: number) {
+  if (p >= 100) return "🍾";
+  if (p >= 50) return "🏆";
+  if (p >= 40) return "🏅";
+  if (p >= 30) return "☄️";
+  if (p >= 20) return "🚀";
+  if (p >= 10) return "🔥";
+  if (p >= 5) return "📈";
+  if (p >= 0) return "💪";
+  if (p > -5) return "🎲";
+  if (p > -10) return "📉";
+  if (p > -20) return "🧯";
+  if (p > -30) return "🪂";
+  if (p > -40) return "❄️";
+  if (p > -50) return "🙈";
+  if (p > -100) return "🥊";
+  if (p > -150) return "💩";
+  return "💩💩";
 }
 
 export default async function MånedensSpillerSide() {
-  const maanedens: MånedensSpiller[] = await beregnEloÆndringerForIndeværendeMåned()
+  const maanedens: MånedensSpiller[] =
+    await beregnEloÆndringerForIndeværendeMåned();
 
   // Læs Referer i server component og lav et internt href (uden cross-origin)
-  const h = headers() as any
-  const ref: string | null = typeof h.get === 'function' ? h.get('referer') : null
+  const h = headers() as any;
+  const ref: string | null = typeof h.get === "function" ? h.get("referer") : null;
 
-  let backHref = '/'
+  let backHref = "/";
   if (ref) {
     try {
-      const u = new URL(ref)
-      backHref = (u.pathname || '/') + (u.search || '') + (u.hash || '')
+      const u = new URL(ref);
+      backHref = (u.pathname || "/") + (u.search || "") + (u.hash || "");
     } catch {
-      if (ref.startsWith('/')) backHref = ref
+      if (ref.startsWith("/")) backHref = ref;
     }
-  }
-
-  function emojiForPluspoint(p: number) {
-    if (p >= 100) return '🍾'
-    if (p >= 50) return '🏆'
-    if (p >= 40) return '🏅'
-    if (p >= 30) return '☄️'
-    if (p >= 20) return '🚀'
-    if (p >= 10) return '🔥'
-    if (p >= 5) return '📈'
-    if (p >= 0) return '💪'
-    if (p > -5) return '🎲'
-    if (p > -10) return '📉'
-    if (p > -20) return '🧯'
-    if (p > -30) return '🪂'
-    if (p > -40) return '❄️'
-    if (p > -50) return '🙈'
-    if (p > -100) return '🥊'
-    if (p > -150) return '💩'
-    return '💩💩'
   }
 
   return (
@@ -70,21 +71,21 @@ export default async function MånedensSpillerSide() {
       ) : (
         <ol className="space-y-4 max-w-2xl mx-auto">
           {maanedens.map((spiller, index) => {
-            const emoji = emojiForPluspoint(spiller.pluspoint)
+            const emoji = emojiForPluspoint(spiller.pluspoint);
             return (
               <li
                 key={spiller.visningsnavn}
                 className={`flex items-center justify-between rounded-2xl px-6 py-4 shadow transition-all ${
                   index === 0
-                    ? 'bg-gradient-to-r from-pink-500 to-pink-400 text-white scale-[1.03]'
+                    ? "bg-gradient-to-r from-pink-500 to-pink-400 text-white scale-[1.03]"
                     : index === 1
-                    ? 'bg-pink-100 dark:bg-pink-900/30'
+                    ? "bg-pink-100 dark:bg-pink-900/30"
                     : index === 2
-                    ? 'bg-pink-50 dark:bg-pink-800/20'
-                    : 'bg-white dark:bg-[#2a2a2a]'
+                    ? "bg-pink-50 dark:bg-pink-800/20"
+                    : "bg-white dark:bg-[#2a2a2a]"
                 }`}
               >
-                <div className="flex items-center gap-2 sm:gap-3">
+                <div className="flex items-center gap-2 sm:gap-3 min-w-0">
                   <span className="text-base sm:text-xl font-bold text-pink-600 dark:text-pink-400">
                     #{index + 1}
                   </span>
@@ -92,16 +93,16 @@ export default async function MånedensSpillerSide() {
                     {spiller.visningsnavn}
                   </span>
                 </div>
+
                 <span className="text-sm sm:text-base font-semibold whitespace-nowrap tabular-nums">
-                  {spiller.pluspoint > 0 ? '+' : ''}
+                  {spiller.pluspoint > 0 ? "+" : ""}
                   {spiller.pluspoint.toFixed(1)} {emoji}
                 </span>
               </li>
-            )
+            );
           })}
         </ol>
       )}
     </main>
-  )
+  );
 }
-
