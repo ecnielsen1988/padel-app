@@ -429,17 +429,25 @@ const valgtTid = t?.tidligste_tid || standardTid
       </div>
 
       {/* Links */}
-      <div className="grid gap-4">
-        <Link
-          href="/torsdagspadel/rangliste"
-          className="bg-green-700 hover:bg-green-800 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
-        >
-          📊 Torsdagsranglisten
-        </Link>
-        <Link
-          href="/torsdagspadel/monthly"
-          className="bg-green-700 hover:bg-green-800 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
-        >
+<div className="grid gap-4">
+  <Link
+    href="/dpfhold"
+    className="bg-green-700 hover:bg-green-800 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
+  >
+    🧾 Holdkamps Hold (DPF)
+  </Link>
+
+  <Link
+    href="/torsdagspadel/rangliste"
+    className="bg-green-700 hover:bg-green-800 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
+  >
+    📊 Torsdagsranglisten
+  </Link>
+
+  <Link
+    href="/torsdagspadel/monthly"
+    className="bg-green-700 hover:bg-green-800 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
+  >
           🌟 Månedens Torsdagsspiller
         </Link>
         <Link
