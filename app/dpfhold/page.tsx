@@ -212,9 +212,7 @@ export default function DpfHoldPage() {
       </section>
 
       <footer style={s.footer}>
-        <div style={s.footerBox}>
-          📌 Næste step (når du gider): holdkamps-statistik, sejre, sæt, MVP og streaks 🏅📈
-        </div>
+        
       </footer>
     </main>
   );
