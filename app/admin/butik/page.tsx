@@ -38,8 +38,15 @@ const PRODUCTS = {
   stor_fadoel: { label: "🍺 Stor Fadøl", priceKr: 40, sign: -1 },
   lille_fadoel: { label: "🍺 Lille Fadøl", priceKr: 30, sign: -1 },
   stor_oel: { label: "🍻 Stor Øl", priceKr: 35, sign: -1 },
-  lille_oel: { label: "🍻 Lille Øl", priceKr: 25, sign: -1 },
-  sodavand: { label: "🥤 Sodavand", priceKr: 25, sign: -1 },
+
+  // ✅ ændret til 20
+  lille_oel: { label: "🍻 Lille Øl", priceKr: 20, sign: -1 },
+
+  // ✅ ændret til 20
+  sodavand: { label: "🥤 Sodavand", priceKr: 20, sign: -1 },
+
+  // ✅ NY: vin
+  vin: { label: "🍷 Vin", priceKr: 30, sign: -1 },
 
   // Mad/snacks
   chips: { label: "🍟 Chips", priceKr: 15, sign: -1 },
@@ -52,6 +59,9 @@ const PRODUCTS = {
   // Merchandise
   tshirt: { label: "👕 T-shirt", priceKr: 300, sign: -1 },
   shorts: { label: "🩳 Shorts", priceKr: 200, sign: -1 },
+
+  // ✅ NY: greb
+  greb: { label: "🎾 Greb", priceKr: 20, sign: -1 },
 } as const;
 
 type ProductKey = keyof typeof PRODUCTS;
@@ -63,13 +73,16 @@ const PURCHASE_KEYS: readonly ProductKey[] = [
   "stor_oel",
   "lille_oel",
   "sodavand",
+  "vin",      // ✅ ny
   "chips",
   "toast",
   "lunarkamp",
   "torsdagsspil",
   "tshirt",
   "shorts",
+  "greb",     // ✅ ny
 ] as const;
+
 
 // Drikkevarer – anvendes til evt. "første drik gratis"
 const BEVERAGE_KEYS: readonly ProductKey[] = [
@@ -78,14 +91,24 @@ const BEVERAGE_KEYS: readonly ProductKey[] = [
   "stor_oel",
   "lille_oel",
   "sodavand",
+  "vin",
 ] as const;
 
 // UI-grupper (Præmier som egen fane inde i butik)
 const PRODUCT_GROUPS = {
-  "🍽️ Mad & Drikke": ["stor_fadoel", "lille_fadoel", "stor_oel", "lille_oel", "sodavand", "chips", "toast"],
+  "🍽️ Mad & Drikke": [
+    "stor_fadoel",
+    "lille_fadoel",
+    "stor_oel",
+    "lille_oel",
+    "sodavand",
+    "vin",      // ✅ ny
+    "chips",
+    "toast",
+  ],
   "🎟️ Events": ["lunarkamp", "torsdagsspil"],
-  "🛍️ Merch": ["tshirt", "shorts"],
-  "🎁 Præmier": [] as ProductKey[], // håndteres særskilt i UI
+  "🛍️ Merch": ["tshirt", "shorts", "greb"], // ✅ ny
+  "🎁 Præmier": [] as ProductKey[],
 } as const;
 
 type GroupKey = keyof typeof PRODUCT_GROUPS;
