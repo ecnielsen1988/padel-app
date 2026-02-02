@@ -857,6 +857,8 @@ function labelForProduct(key: string) {
       return "🍻 Lille Øl";
     case "sodavand":
       return "🥤 Sodavand";
+    case "vin":
+      return "🍷 Vin";
 
     // Mad/snacks
     case "chips":
@@ -875,6 +877,9 @@ function labelForProduct(key: string) {
       return "👕 T-shirt";
     case "shorts":
       return "🩳 Shorts";
+    case "greb":
+      return "🎾 Greb";
+      
 
     // Øvrige
     case "boede":
