@@ -787,19 +787,26 @@ useEffect(() => {
 
   // Baner: altid frisk mønster baseret på antal grupper
   setCourtsOrder(() => {
-    const need = groups.length;
-    if (need === 0) return [];
+  const need = groups.length;
+  if (need === 0) return [];
 
-    if (isTorsdag(event.name)) {
-      const next: (string | number)[] = [];
-      for (let i = 0; i < need; i++) {
-        next.push(thursdayCourts[i % thursdayCourts.length]);
-      }
-      return next;
-    }
+  // ✅ Gilleleje: altid deres mønster (uanset dag)
+  if (event.location === "Gilleleje") {
+    const pattern = ["2", "1", "3", "6", "5"] as const;
+    return Array.from({ length: need }, (_, i) => pattern[i % pattern.length]);
+    // (eller: return courtOrderFor("Gilleleje", need); hvis du vil bruge din eksisterende funktion)
+  }
 
-    return courtOrderFor(event.location, need);
-  });
+  // ✅ Helsinge: behold torsdags-mønster som nu
+  if (isTorsdag(event.name)) {
+    const next: (string | number)[] = [];
+    for (let i = 0; i < need; i++) next.push(thursdayCourts[i % thursdayCourts.length]);
+    return next;
+  }
+
+  // ✅ Helsinge øvrige dage
+  return courtOrderFor(event.location, need);
+});
 
   // Antal sæt pr. kamp (den del kan du lade være som nu)
   setRoundsPerCourt((prev) => {
@@ -855,32 +862,42 @@ useEffect(() => {
 
   const plan = basePlan;
 
-  /* --- default tider --- */
-  useEffect(() => {
-    if (!event) return;
-    setMatchTimes((prev) => {
-      const next = { ...prev };
-      const tor = isTorsdag(event.name);
-      for (let gi = 0; gi < basePlan.length; gi++) {
-        if (!next[gi])
-          next[gi] = tor
-            ? thursdayTime(gi)
-            : {
-                start: (event.start_time || "17:00").slice(0, 5),
-                end: (
-                  event.end_time ||
-                  addMinutes((event.start_time || "17:00").slice(0, 5), 100)
-                ).slice(0, 5),
-              };
+ /* --- default tider --- */
+useEffect(() => {
+  if (!event) return;
+
+  setMatchTimes((prev) => {
+    const next = { ...prev };
+
+    const tor = isTorsdag(event.name);
+    // ✅ Kun torsdags-standard i HELSINGE
+    const useTorStandard = tor && event.location === "Helsinge";
+
+    for (let gi = 0; gi < basePlan.length; gi++) {
+      if (!next[gi]) {
+        next[gi] = useTorStandard
+          ? thursdayTime(gi)
+          : {
+              start: (event.start_time || "17:00").slice(0, 5),
+              end: (
+                event.end_time ||
+                addMinutes((event.start_time || "17:00").slice(0, 5), 100)
+              ).slice(0, 5),
+            };
       }
-      Object.keys(next)
-        .map(Number)
-        .forEach((gi) => {
-          if (gi >= basePlan.length) delete next[gi];
-        });
-      return next;
-    });
-  }, [event, basePlan.length]);
+    }
+
+    Object.keys(next)
+      .map(Number)
+      .forEach((gi) => {
+        if (gi >= basePlan.length) delete next[gi];
+      });
+
+    return next;
+  });
+}, [event, basePlan.length]);
+
+
 
   /* --- load court/time meta fra DB (seneste pr. group_index) --- */
   useEffect(() => {
