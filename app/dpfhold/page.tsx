@@ -18,11 +18,11 @@ const HOLD: Hold[] = [
       "Titanes træder ind på banen som om den allerede tilhører dem. Ikke kun power – men ro. Når kampen spidser til, løfter de niveauet og knækker modstanderen stille og roligt. 🏛️💪",
     spillere: [
       "Gitte Haxen",
+      "Stefan Beck Nielsen",
       "Emil Nielsen",
       "Daniel Vizel",
       "Anders Beck Nielsen",
       "Jan Vingaard",
-      "Jesper Senior Nielsen",
       "Pauli",
       "Claus Cæsar Andersen",
       "Michelle Skov Jensen",
@@ -35,7 +35,7 @@ const HOLD: Hold[] = [
     historie:
       "Gladiadores spiller aldrig for uafgjort. Hver bold er en duel, hver kamp er en arena – og de fighter til sidste point. Smukt? Måske ikke. Effektivt? Altid. ⚔️🔥",
     spillere: [
-      "Stefan Beck Nielsen",
+      "Jesper Senior Nielsen",
       "Michael Berglund",
       "Mik Skoglund",
       "Tobias Beck Nielsen",
@@ -74,12 +74,12 @@ const HOLD: Hold[] = [
       "Thomas Olsen",
       "Stanley Nielsen",
       "Markus Ley",
-      "Lasse Nedergaard",
       "Philip Beck",
       "Michael Toft",
       "Kennie Jørgensen",
       "Martin Yde",
       "Lukas Christiansen",
+      "Claus Asmussen"
     ],
   },
   {
@@ -89,7 +89,7 @@ const HOLD: Hold[] = [
     historie:
       "Reclutas er sultne og lærevillige. De suger erfaring til sig og vokser for hver kamp. Undervurder dem – og du kommer til at fortryde det. 🎯📈",
     spillere: [
-      "Claus Asmussen",
+      "Lasse Nedergård",
       "Tobias Lønnecker",
       "Simon Petersen",
       "Christian Jensen",
