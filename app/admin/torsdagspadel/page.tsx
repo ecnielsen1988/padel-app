@@ -123,10 +123,10 @@ export default function AdminTorsdagsPage() {
       {/* Top-knapper */}
       <div className="grid gap-4 mb-8">
         <Link
-          href="/admin/torsdagspadel/regnskab"
+          href="/admin/torsdagspadel/winner"
           className="bg-emerald-700 hover:bg-emerald-800 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
         >
-          📊 Regnskab
+          🌟 Winner Ranking
         </Link>
 
         <Link

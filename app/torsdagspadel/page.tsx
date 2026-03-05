@@ -388,10 +388,10 @@ export default function TorsdagStartside() {
         </Link>
 
         <Link
-          href="/torsdagspadel/monthly"
+          href="/torsdagspadel/winner"
           className="bg-green-700 hover:bg-green-800 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
         >
-          🌟 Månedens Torsdagsspiller
+          🌟 Winner Ranking
         </Link>
 
         <Link
