@@ -31,14 +31,12 @@ function getDanishWeekday(isoDate: string): string {
       weekday: 'long',
       timeZone: 'Europe/Copenhagen',
     })
-    // Gør første bogstav stort (torsdag → Torsdag)
     return weekday.charAt(0).toUpperCase() + weekday.slice(1)
   } catch {
     const weekday = dt.toLocaleDateString('da-DK', { weekday: 'long' })
     return weekday.charAt(0).toUpperCase() + weekday.slice(1)
   }
 }
-
 
 function getNextThursdayISOFrom(d: Date): string {
   const day = d.getDay() // 0..6 (torsdag=4)
@@ -73,16 +71,9 @@ function formatDanishDate(isoDate: string): string {
   }
 }
 
-function oreToDKK(ore: any): number {
-  const n = Number(ore ?? 0)
-  return Number.isFinite(n) ? n / 100 : 0
-}
-
 export default function TorsdagStartside() {
   const [bruger, setBruger] = useState<Bruger | null>(null)
   const [loading, setLoading] = useState(true)
-
-  const [totalDKK, setTotalDKK] = useState<number>(0)
 
   const [events, setEvents] = useState<EventRow[]>([])
   const [tilmeldinger, setTilmeldinger] = useState<Record<string, Tilmelding>>({})
@@ -141,22 +132,6 @@ export default function TorsdagStartside() {
           visningsnavn: profile.visningsnavn,
           torsdagspadel: !!profile.torsdagspadel,
         })
-
-        // Hent bar-regnskab
-        const barResp = await (supabase.from('bar_entries') as any)
-          .select('amount_ore')
-          .eq('visningsnavn', profile.visningsnavn)
-
-        if (barResp?.error) {
-          console.error('Fejl ved hentning af bar_entries:', barResp.error)
-          setTotalDKK(0)
-        } else {
-          const total = (barResp?.data ?? []).reduce(
-            (sum: number, r: any) => sum + oreToDKK(r?.amount_ore),
-            0
-          )
-          setTotalDKK(total)
-        }
 
         // Hent næste 4 lukkede torsdags-events
         const todayISO = new Date().toISOString().slice(0, 10)
@@ -235,7 +210,6 @@ export default function TorsdagStartside() {
         ...prev,
         [eventDato]: { kan_spille: kanSpille, tidligste_tid: effektiveTid },
       }))
-      // Luk edit-mode efter gem
       setEditingEventDate(null)
     }
 
@@ -254,35 +228,11 @@ export default function TorsdagStartside() {
     )
   }
 
-  const totalLabel =
-    totalDKK > 0 ? 'Du har til gode' : totalDKK < 0 ? 'Du skylder' : 'Alt i nul'
-
-  const totalClass =
-    totalDKK > 0
-      ? 'text-green-700'
-      : totalDKK < 0
-      ? 'text-red-600'
-      : 'text-zinc-700 dark:text-zinc-300'
-
   return (
     <main className="max-w-xl mx-auto p-8 text-gray-900 dark:text-white">
       <h1 className="text-3xl font-bold mb-6 text-center">
         💪 Torsdagspadel – velkommen, {bruger.visningsnavn}!
       </h1>
-
-      {/* Samlet status */}
-      <div className="mb-8 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4">
-        <div className="flex items-center justify-between">
-          <div className="text-sm opacity-70">Samlet status</div>
-          <div className={`text-lg font-semibold ${totalClass}`}>
-            {totalLabel}:{' '}
-            {totalDKK.toLocaleString('da-DK', { style: 'currency', currency: 'DKK' })}
-          </div>
-        </div>
-        <div className="mt-2 text-md text-zinc-600 dark:text-zinc-400 italic">
-          Indbetalinger kan ske til MobilePay Box 9478FG
-        </div>
-      </div>
 
       {/* Tilmelding til de næste 4 lukkede events */}
       <div className="mb-8 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 p-4 rounded-xl">
@@ -303,10 +253,9 @@ export default function TorsdagStartside() {
             const isEditing = editingEventDate === event.date || !t
 
             const datoTekst = formatDanishDate(event.date)
-const weekday = getDanishWeekday(event.date)
-const eventNavn = event.name || 'Torsdagspadel'
-const valgtTid = t?.tidligste_tid || standardTid
-
+            const weekday = getDanishWeekday(event.date)
+            const eventNavn = event.name || 'Torsdagspadel'
+            const valgtTid = t?.tidligste_tid || standardTid
 
             return (
               <div
@@ -319,16 +268,14 @@ const valgtTid = t?.tidligste_tid || standardTid
                       {eventNavn}
                     </div>
                     <div className="text-xs text-green-700/80 dark:text-green-200/80">
-  {weekday} d. {datoTekst}
-</div>
-
+                      {weekday} d. {datoTekst}
+                    </div>
                   </div>
+
                   {t && !isEditing && (
                     <div className="text-xs text-green-900 dark:text-green-100 text-right">
                       {t.kan_spille ? (
-                        <>
-                          ✅ Du er tilmeldt – tidligst kl. {t.tidligste_tid || standardTid}
-                        </>
+                        <>✅ Du er tilmeldt – tidligst kl. {t.tidligste_tid || standardTid}</>
                       ) : (
                         <>❌ Du har meldt afbud</>
                       )}
@@ -338,7 +285,6 @@ const valgtTid = t?.tidligste_tid || standardTid
 
                 {isEditing ? (
                   !t ? (
-                    // Ingen tilmelding endnu → vis de to hovedvalg
                     <>
                       <div className="flex flex-col sm:flex-row gap-3">
                         <button
@@ -361,7 +307,6 @@ const valgtTid = t?.tidligste_tid || standardTid
                       )}
                     </>
                   ) : (
-                    // Der findes en tilmelding → redigér tidspunkt eller meld afbud
                     <>
                       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                         <button
@@ -378,9 +323,7 @@ const valgtTid = t?.tidligste_tid || standardTid
                           </span>
                           <select
                             value={valgtTid}
-                            onChange={(e) =>
-                              sendTilmelding(event.date, true, e.target.value)
-                            }
+                            onChange={(e) => sendTilmelding(event.date, true, e.target.value)}
                             disabled={isSaving}
                             className="bg-green-600 text-white font-semibold px-4 py-2 rounded-xl text-sm disabled:opacity-60 disabled:cursor-not-allowed"
                             aria-label="Vælg tidligste starttid"
@@ -429,41 +372,35 @@ const valgtTid = t?.tidligste_tid || standardTid
       </div>
 
       {/* Links */}
-<div className="grid gap-4">
-  <Link
-    href="/dpfhold"
-    className="bg-green-700 hover:bg-green-800 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
-  >
-    🧾 Holdkamps Hold (DPF)
-  </Link>
-
-  <Link
-    href="/torsdagspadel/rangliste"
-    className="bg-green-700 hover:bg-green-800 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
-  >
-    📊 Torsdagsranglisten
-  </Link>
-
-  <Link
-    href="/torsdagspadel/monthly"
-    className="bg-green-700 hover:bg-green-800 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
-  >
-          🌟 Månedens Torsdagsspiller
-        </Link>
+      <div className="grid gap-4">
         <Link
-          href="/torsdagspadel/regnskab"
+          href="/dpfhold"
           className="bg-green-700 hover:bg-green-800 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
         >
-          💸 Regnskab
+          🧾 Holdkamps Hold (DPF)
         </Link>
+
+        <Link
+          href="/torsdagspadel/rangliste"
+          className="bg-green-700 hover:bg-green-800 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
+        >
+          📊 Torsdagsranglisten
+        </Link>
+
+        <Link
+          href="/torsdagspadel/monthly"
+          className="bg-green-700 hover:bg-green-800 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
+        >
+          🌟 Månedens Torsdagsspiller
+        </Link>
+
         <Link
           href="/torsdagspadel/reglement"
           className="bg-green-700 hover:bg-green-800 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
         >
-          § Reglement
+          § Sådan fungere det
         </Link>
       </div>
     </main>
   )
 }
-
