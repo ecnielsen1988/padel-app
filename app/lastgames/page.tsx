@@ -83,7 +83,7 @@ export default function SenesteKampeSide() {
           };
         })
         .sort((a, b) => b.kampid - a.kampid)
-        .slice(0, 20);
+        .slice(0, 50);
 
       setKampGrupper(kampGrupperArray);
       setEloMap(nyEloMap);
@@ -217,7 +217,7 @@ export default function SenesteKampeSide() {
 
       <h1 style={{ textAlign: 'center', marginBottom: '0.5rem' }}>🎾 Seneste Kampe</h1>
       <p style={{ textAlign: 'center', marginBottom: '2rem', color: '#666' }}>
-        Viser de seneste 20 kampe
+        Viser de seneste 50 kampe
       </p>
 
       {kampGrupper.map(({ kampid, sæt, indberettetAf }) => {
