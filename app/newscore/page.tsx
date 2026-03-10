@@ -50,11 +50,11 @@ export default function NewScorePage() {
   useEffect(() => {
   (async () => {
     const { data, error } = await supabase
-      .from('profiles')
-      .select('visningsnavn, active')
-      .eq('active', true)                         // ← kun aktive
-      .not('visningsnavn', 'is', null)            // ← kræv navn
-      .order('visningsnavn', { ascending: true })
+  .from('profiles')
+  .select('visningsnavn, status')
+  .in('status', ['active', 'sleep'])          // ← active + sleep må vælges
+  .not('visningsnavn', 'is', null)
+  .order('visningsnavn', { ascending: true })
 
     if (!error) {
       // defensiv deduplikering + trim
@@ -184,14 +184,38 @@ const nyKampid = (Number.isFinite(lastKampid) ? lastKampid : 0) + 1
 
     // TS-fix: cast kanal som any (undgår streng row-type på insert)
     const { error } = await (supabase.from('newresults') as any).insert(rows as any)
-    if (error) {
-      setMessage('❌ Fejl: ' + error.message)
-    } else {
-      setMessage(`✅ Resultater indsendt! 🏆 Kamp ID: ${nyKampid}`)
-      setAfsluttedeSaet([])
-      setAktivtSaet(emptySet())
-    }
-    setBusy(false)
+
+if (error) {
+  setMessage('❌ Fejl: ' + error.message)
+  setBusy(false)
+  return
+}
+
+// Sæt alle deltagende spillere til active med det samme
+const spillereISubmit = Array.from(
+  new Set(
+    rows.flatMap((r) => [r.holdA1, r.holdA2, r.holdB1, r.holdB2])
+      .filter(Boolean)
+      .map((navn) => String(navn).trim())
+  )
+)
+
+if (spillereISubmit.length > 0) {
+  const { error: statusError } = await supabase
+    .from('profiles')
+    .update({ status: 'active' })
+    .in('visningsnavn', spillereISubmit)
+    .neq('status', 'inactive')
+
+  if (statusError) {
+    console.error('Kunne ikke sætte spillere til active:', statusError)
+  }
+}
+
+setMessage(`✅ Resultater indsendt! 🏆 Kamp ID: ${nyKampid}`)
+setAfsluttedeSaet([])
+setAktivtSaet(emptySet())
+setBusy(false)
   }
 
   function nameFor(val: string | null) {
