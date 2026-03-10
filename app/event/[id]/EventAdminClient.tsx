@@ -473,11 +473,11 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
     (async () => {
       setLoadingProfiles(true);
       const { data, error } = await supabase
-        .from("profiles")
-        .select("id, visningsnavn, active")
-        .eq("active", true)
-        .not("visningsnavn", "is", null)
-        .order("visningsnavn", { ascending: true });
+  .from("profiles")
+  .select("id, visningsnavn, status")
+  .in("status", ["active", "sleep"])
+  .not("visningsnavn", "is", null)
+  .order("visningsnavn", { ascending: true });
 
       const rows = (data ?? [])
         .map((p: any) => ({
@@ -1287,15 +1287,36 @@ useEffect(() => {
     }
 
     const newresultsTbl = supabase.from("newresults") as any;
-    const { error } = await newresultsTbl.insert(rows as any[]);
-    if (error) {
-      alert("Kunne ikke indsende: " + error.message);
-      return;
-    }
+const { error } = await newresultsTbl.insert(rows as any[]);
+if (error) {
+  alert("Kunne ikke indsende: " + error.message);
+  return;
+}
 
-    alert(
-      `Indsendt ${rows.length} sæt ✔️ (første kampid i batch: ${startKampId})`
-    );
+// Sæt alle deltagende spillere til active
+const spillereISubmit = Array.from(
+  new Set(
+    rows.flatMap((r) => [r.holdA1, r.holdA2, r.holdB1, r.holdB2])
+      .filter(Boolean)
+      .map((navn) => String(navn).trim())
+  )
+);
+
+if (spillereISubmit.length > 0) {
+  const { error: statusError } = await supabase
+    .from("profiles")
+    .update({ status: "active" })
+    .in("visningsnavn", spillereISubmit)
+    .neq("status", "inactive");
+
+  if (statusError) {
+    console.error("Kunne ikke sætte event-spillere til active:", statusError);
+  }
+}
+
+alert(
+  `Indsendt ${rows.length} sæt ✔️ (første kampid i batch: ${startKampId})`
+);
   }
 
   if (!event) return <div className="p-4">Indlæser…</div>;

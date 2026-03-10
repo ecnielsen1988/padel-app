@@ -149,7 +149,7 @@ export default function ClientVisning() {
       const { data: activeProfiles, error: activeErr } = await (supabase
   .from("profiles") as any)
   .select("visningsnavn, koen")
-  .eq("active", true)  // 👈 KUN aktive profiler
+  .eq("status", "active")  // 👈 KUN aktive profiler
 
 
       const activeSet = (!activeErr && Array.isArray(activeProfiles))
