@@ -38,9 +38,9 @@ export default function NyRanglisteSide() {
 
         // Hent aktive profiler og filtrér
         const { data: activeProfiles, error: activeErr } = await (supabase
-          .from('profiles') as any)
-          .select('visningsnavn')
-          .eq('active', true);
+  .from('profiles') as any)
+  .select('visningsnavn')
+  .eq('status', 'active');
 
         if (!activeErr && Array.isArray(activeProfiles)) {
           const activeSet = new Set(
