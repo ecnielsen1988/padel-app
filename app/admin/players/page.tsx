@@ -15,33 +15,65 @@ export default function AdminPlayersPage() {
   const [rows, setRows] = useState<PlayerRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [sendingTo, setSendingTo] = useState<string | null>(null);
 
   useEffect(() => {
-    (async () => {
-      setLoading(true);
-
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("id, visningsnavn, email, status")
-        .order("visningsnavn", { ascending: true });
-
-      if (error) {
-        console.error("Fejl ved hentning af profiler:", error.message);
-        setRows([]);
-      } else {
-        const clean = ((data ?? []) as PlayerRow[]).map((r) => ({
-          id: r.id,
-          visningsnavn: (r.visningsnavn ?? "").toString().trim() || null,
-          email: (r.email ?? "").toString().trim() || null,
-          status: r.status ?? null,
-        }));
-
-        setRows(clean);
-      }
-
-      setLoading(false);
-    })();
+    void loadPlayers();
   }, []);
+
+  async function loadPlayers() {
+    setLoading(true);
+
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id, visningsnavn, email, status")
+      .order("visningsnavn", { ascending: true });
+
+    if (error) {
+      console.error("Fejl ved hentning af profiler:", error.message);
+      setRows([]);
+      setLoading(false);
+      return;
+    }
+
+    const clean = ((data ?? []) as PlayerRow[]).map((r) => ({
+      id: r.id,
+      visningsnavn: (r.visningsnavn ?? "").toString().trim() || null,
+      email: (r.email ?? "").toString().trim() || null,
+      status: r.status ?? null,
+    }));
+
+    setRows(clean);
+    setLoading(false);
+  }
+
+  async function sendPasswordReset(email: string | null, navn: string | null) {
+    if (!email) {
+      alert("Spilleren har ingen e-mail gemt.");
+      return;
+    }
+
+    const ok = confirm(
+      `Vil du sende et nulstil-adgangskode link til ${navn || email}?`
+    );
+    if (!ok) return;
+
+    setSendingTo(email);
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: "https://padelhuset-app.netlify.app/opdater-adgangskode",
+    });
+
+    setSendingTo(null);
+
+    if (error) {
+      console.error("Reset-fejl:", error);
+      alert("Kunne ikke sende reset-mail: " + error.message);
+      return;
+    }
+
+    alert(`Reset-link sendt til ${email}`);
+  }
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -64,7 +96,7 @@ export default function AdminPlayersPage() {
     return { total, active, sleep, inactive };
   }, [rows]);
 
-  const statusBadge = (status: PlayerRow["status"]) => {
+  function statusBadgeClass(status: PlayerRow["status"]) {
     if (status === "active") {
       return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300";
     }
@@ -75,15 +107,16 @@ export default function AdminPlayersPage() {
       return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300";
     }
     return "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300";
-  };
+  }
 
   return (
     <main className="min-h-screen bg-white dark:bg-[#121212] text-gray-900 dark:text-white px-4 py-6">
-      <div className="mx-auto max-w-6xl">
+      <div className="mx-auto max-w-7xl">
         <div className="mb-6 flex items-center justify-between gap-3">
           <h1 className="text-2xl sm:text-3xl font-bold text-pink-600">
             👥 Admin · Spillere
           </h1>
+
           <Link
             href="/admin"
             className="rounded-xl border px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-zinc-800"
@@ -125,31 +158,52 @@ export default function AdminPlayersPage() {
                     <th className="text-left px-4 py-3 font-semibold">Visningsnavn</th>
                     <th className="text-left px-4 py-3 font-semibold">E-mail</th>
                     <th className="text-left px-4 py-3 font-semibold">Status</th>
+                    <th className="text-left px-4 py-3 font-semibold">Handling</th>
                   </tr>
                 </thead>
+
                 <tbody>
-                  {filteredRows.map((player) => (
-                    <tr
-                      key={player.id}
-                      className="border-t border-pink-100 dark:border-pink-900/20"
-                    >
-                      <td className="px-4 py-3 font-medium">
-                        {player.visningsnavn || "—"}
-                      </td>
-                      <td className="px-4 py-3">
-                        {player.email || "—"}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`inline-block rounded-full px-2.5 py-1 text-xs font-semibold ${statusBadge(
-                            player.status
-                          )}`}
-                        >
-                          {player.status || "ukendt"}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  {filteredRows.map((player) => {
+                    const isSending = sendingTo === player.email;
+
+                    return (
+                      <tr
+                        key={player.id}
+                        className="border-t border-pink-100 dark:border-pink-900/20"
+                      >
+                        <td className="px-4 py-3 font-medium">
+                          {player.visningsnavn || "—"}
+                        </td>
+
+                        <td className="px-4 py-3">
+                          {player.email || "—"}
+                        </td>
+
+                        <td className="px-4 py-3">
+                          <span
+                            className={`inline-block rounded-full px-2.5 py-1 text-xs font-semibold ${statusBadgeClass(
+                              player.status
+                            )}`}
+                          >
+                            {player.status || "ukendt"}
+                          </span>
+                        </td>
+
+                        <td className="px-4 py-3">
+                          <button
+                            type="button"
+                            disabled={!player.email || isSending}
+                            onClick={() =>
+                              void sendPasswordReset(player.email, player.visningsnavn)
+                            }
+                            className="rounded-lg border px-3 py-1.5 text-xs hover:bg-pink-50 dark:hover:bg-pink-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {isSending ? "Sender..." : "Nulstil adgangskode"}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
