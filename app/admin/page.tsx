@@ -79,11 +79,11 @@ export default function AdminHomePage() {
         </Link>
 
         <Link
-          href="/admin/butik"
-          className="block bg-amber-600 hover:bg-amber-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
-        >
-          🛍️ Admin · Butik
-        </Link>
+    href="/admin/players"
+    className="block bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
+  >
+    👥 Admin · Spillere
+  </Link>
 
         <Link
           href="/admin/event"
