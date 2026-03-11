@@ -142,17 +142,18 @@ export default function Registrer() {
 
       // Opret/Opdater profil
       const row: any = {
-        id: user.id,
-        fornavn,
-        efternavn,
-        visningsnavn: visningsnavn.trim(),
-        email,
-        koen,
-        telefon,
-        rolle: "bruger",
-        niveau,
-        startElo,
-      };
+  id: user.id,
+  fornavn,
+  efternavn,
+  visningsnavn: visningsnavn.trim(),
+  email,
+  koen,
+  telefon,
+  rolle: "bruger",
+  niveau,
+  startElo,
+  status: "active",
+};
       if (fødselsdato) row["fødselsdato"] = fødselsdato;
 
       const { error: profilFejl } = await supabase.from("profiles").upsert(row, { onConflict: "id" });
