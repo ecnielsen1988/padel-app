@@ -140,7 +140,7 @@ async function fetchInitialEloMap(): Promise<EloMap> {
     const { data, error } = await supabase
       .from("profiles")
       .select("visningsnavn, startElo")
-      .eq("active", true);
+      .eq("status", "active");
 
     if (error) return {};
     const map: EloMap = {};
