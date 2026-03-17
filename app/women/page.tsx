@@ -41,7 +41,7 @@ export default function GirlPowerRangliste() {
         const { data: womenProfiles, error: womenErr } = await supabase
           .from('profiles')
           .select('visningsnavn, koen, active')
-          .eq('active', true)
+          .eq('status', 'active')
           .eq('koen', 'kvinde');
 
         if (!womenErr && Array.isArray(womenProfiles)) {

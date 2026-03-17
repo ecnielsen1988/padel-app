@@ -10,7 +10,7 @@ type Spiller = {
 
 type ProfileRow = {
   visningsnavn: string
-  active: boolean
+  status: "active" | "sleep" | "inactive" | null
 }
 
 // ✅ Server component
@@ -20,15 +20,15 @@ export default async function Home() {
 
   // 2) Hent aktive profiler
   const { data: profiles } = await supabase
-    .from("profiles")
-    .select("visningsnavn, active")
+  .from("profiles")
+  .select("visningsnavn, status")
 
   const activeNameSet = new Set(
-    (profiles as ProfileRow[] | null ?? [])
-      .filter((p) => p.active === true)
-      .map((p) => (p.visningsnavn ?? "").toString().trim())
-      .filter(Boolean)
-  )
+  ((profiles as ProfileRow[] | null) ?? [])
+    .filter((p) => p.status === "active")
+    .map((p) => (p.visningsnavn ?? "").toString().trim())
+    .filter(Boolean)
+)
 
   // 3) Filtrér ranglisten til kun aktive spillere
   const aktiveRangliste = rangliste.filter((spiller) =>
