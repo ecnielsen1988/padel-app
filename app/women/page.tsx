@@ -39,20 +39,25 @@ export default function GirlPowerRangliste() {
 
         // Hent kun *aktive kvinder*
         const { data: womenProfiles, error: womenErr } = await supabase
-          .from('profiles')
-          .select('visningsnavn, koen, active')
-          .eq('status', 'active')
-          .eq('koen', 'kvinde');
+  .from('profiles')
+  .select('visningsnavn')
+  .eq('status', 'active')
+  .eq('koen', 'kvinde');
 
-        if (!womenErr && Array.isArray(womenProfiles)) {
-          const womenSet = new Set(
-            womenProfiles
-              .map((p: any) => (p?.visningsnavn ?? '').toString().trim().toLowerCase())
-              .filter(Boolean)
-          );
+if (womenErr) {
+  console.error('Fejl ved hentning af kvindeprofiler:', womenErr);
+  setRows([]);
+  return;
+}
 
-          list = list.filter((r) => womenSet.has(r.visningsnavn.toLowerCase()));
-        }
+const womenSet = new Set(
+  (womenProfiles ?? [])
+    .map((p: any) => (p?.visningsnavn ?? '').toString().trim().toLowerCase())
+    .filter(Boolean)
+);
+
+list = list.filter((r) => womenSet.has(r.visningsnavn.toLowerCase()));
+        
 
         setRows(list);
       } finally {
