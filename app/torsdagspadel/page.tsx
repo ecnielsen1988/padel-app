@@ -374,10 +374,10 @@ export default function TorsdagStartside() {
       {/* Links */}
       <div className="grid gap-4">
         <Link
-          href="/dpfhold"
+          href="/holdkampe"
           className="bg-green-700 hover:bg-green-800 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
         >
-          🧾 Holdkamps Hold (DPF)
+          🧾 Holdkampe
         </Link>
 
         <Link
