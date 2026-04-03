@@ -3,7 +3,7 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { use, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
 type MatchData = {
@@ -75,8 +75,10 @@ function formatTeamScore(playerTotal: number) {
 export default function HoldkampSide({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
+  const { id } = use(params);
+
   const [match, setMatch] = useState<MatchData | null>(null);
   const [team, setTeam] = useState<TeamData | null>(null);
   const [members, setMembers] = useState<TeamMember[]>([]);
@@ -109,7 +111,7 @@ export default function HoldkampSide({
           result_for,
           result_against
         `)
-        .eq("id", params.id)
+        .eq("id", id)
         .eq("season", CURRENT_SEASON)
         .single();
 
@@ -203,7 +205,7 @@ export default function HoldkampSide({
     return () => {
       cancelled = true;
     };
-  }, [params.id]);
+  }, [id]);
 
   const primaryPlayers = useMemo(
     () => members.filter((m) => m.member_type === "primary"),

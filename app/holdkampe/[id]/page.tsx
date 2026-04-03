@@ -3,7 +3,7 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { use, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
 type Hold = {
@@ -75,8 +75,10 @@ function formatDate(dateString: string | null) {
 export default function HoldSide({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
+  const { id } = use(params);
+
   const [hold, setHold] = useState<Hold | null>(null);
   const [medlemmer, setMedlemmer] = useState<HoldMedlem[]>([]);
   const [kampe, setKampe] = useState<Kamp[]>([]);
@@ -101,14 +103,14 @@ export default function HoldSide({
         supabase
           .from("hold_teams")
           .select("id, name, division, season")
-          .eq("id", params.id)
+          .eq("id", id)
           .eq("season", CURRENT_SEASON)
           .single(),
 
         supabase
           .from("hold_team_members")
           .select("id, visningsnavn, member_type, sort_order")
-          .eq("team_id", params.id)
+          .eq("team_id", id)
           .eq("season", CURRENT_SEASON)
           .order("sort_order", { ascending: true }),
 
@@ -125,7 +127,7 @@ export default function HoldSide({
             result_for,
             result_against
           `)
-          .eq("team_id", params.id)
+          .eq("team_id", id)
           .eq("season", CURRENT_SEASON)
           .order("round", { ascending: true }),
       ]);
@@ -225,7 +227,7 @@ export default function HoldSide({
         .select("visningsnavn, team_id")
         .eq("season", CURRENT_SEASON)
         .eq("member_type", "primary")
-        .neq("team_id", params.id)
+        .neq("team_id", id)
         .in("visningsnavn", reserveNames);
 
       if (cancelled) return;
@@ -247,7 +249,7 @@ export default function HoldSide({
       }
 
       const relevantTeamIds = Array.from(
-        new Set([params.id, ...Object.values(primaryTeamByName)])
+        new Set([id, ...Object.values(primaryTeamByName)])
       );
 
       const relevantMatchesRes = await supabase
@@ -306,7 +308,7 @@ export default function HoldSide({
         status: string | null;
       }[] = reserveUsageRes.data ?? [];
 
-      const currentTeamMatchIdsSet = new Set(matchIdsByTeam[params.id] ?? []);
+      const currentTeamMatchIdsSet = new Set(matchIdsByTeam[id] ?? []);
       const externalAfbudCountByName: Record<string, number> = {};
       const reserveUsedCountByName: Record<string, number> = {};
 
@@ -358,7 +360,7 @@ export default function HoldSide({
     return () => {
       cancelled = true;
     };
-  }, [params.id]);
+  }, [id]);
 
   const primaryPlayers = medlemmer.filter((m) => m.member_type === "primary");
   const reservePlayers = medlemmer.filter((m) => m.member_type === "reserve");
