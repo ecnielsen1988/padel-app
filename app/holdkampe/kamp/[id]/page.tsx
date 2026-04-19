@@ -226,7 +226,10 @@ export default function HoldkampSide({
   }, [rows]);
 
   const resultFor = useMemo(() => formatTeamScore(playerWinsTotal), [playerWinsTotal]);
-  const resultAgainst = useMemo(() => formatTeamScore(playerLossesTotal), [playerLossesTotal]);
+  const resultAgainst = useMemo(
+    () => formatTeamScore(playerLossesTotal),
+    [playerLossesTotal]
+  );
 
   function updateStatus(visningsnavn: string, status: "afventer" | "tilmeldt" | "afbud") {
     setRows((prev) => ({
@@ -341,10 +344,10 @@ export default function HoldkampSide({
       <button
         type="button"
         onClick={() => updateStatus(visningsnavn, statusOption)}
-        className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+        className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition ${
           active
             ? activeClass
-            : "bg-white text-gray-700 ring-1 ring-gray-200 hover:bg-gray-100"
+            : "bg-white text-gray-700 ring-1 ring-gray-200 hover:bg-gray-50"
         }`}
       >
         {label}
@@ -363,26 +366,23 @@ export default function HoldkampSide({
     const boxBg = muted ? "bg-gray-50" : "bg-pink-50";
 
     return (
-      <div
-        key={player.id}
-        className={`rounded-2xl ${boxBg} px-4 py-3`}
-      >
-        <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3">
-          <div className="min-w-0">
-            <div className="truncate font-semibold text-gray-900">
+      <div key={player.id} className={`rounded-2xl ${boxBg} px-3 py-3`}>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0 lg:w-[190px]">
+            <div className="truncate text-sm font-bold text-gray-900">
               {player.visningsnavn}
             </div>
           </div>
 
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap gap-1.5">
             {renderStatusButton(player.visningsnavn, row.status, "afventer", "Afventer")}
             {renderStatusButton(player.visningsnavn, row.status, "tilmeldt", "Tilmeldt")}
             {renderStatusButton(player.visningsnavn, row.status, "afbud", "Afbud")}
           </div>
 
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-end gap-2">
-              <label className="w-4 text-right text-xs font-medium text-gray-600">V</label>
+          <div className="flex items-center gap-3 lg:justify-end">
+            <div className="flex items-center gap-1.5">
+              <label className="text-[11px] font-bold text-gray-600">V</label>
               <input
                 type="number"
                 min={0}
@@ -394,8 +394,8 @@ export default function HoldkampSide({
               />
             </div>
 
-            <div className="flex items-center justify-end gap-2">
-              <label className="w-4 text-right text-xs font-medium text-gray-600">T</label>
+            <div className="flex items-center gap-1.5">
+              <label className="text-[11px] font-bold text-gray-600">T</label>
               <input
                 type="number"
                 min={0}
@@ -414,9 +414,9 @@ export default function HoldkampSide({
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-gradient-to-b from-pink-50 to-white p-4 md:p-8">
-        <div className="mx-auto max-w-5xl rounded-3xl bg-white p-6 shadow-sm ring-1 ring-pink-100">
-          <p className="text-gray-500">Henter kamp...</p>
+      <main className="min-h-screen bg-gradient-to-b from-pink-50 to-white p-3 md:p-6">
+        <div className="mx-auto max-w-5xl rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-100">
+          <p className="text-sm text-gray-500">Henter kamp...</p>
         </div>
       </main>
     );
@@ -424,49 +424,49 @@ export default function HoldkampSide({
 
   if (error && !match) {
     return (
-      <main className="min-h-screen bg-gradient-to-b from-pink-50 to-white p-4 md:p-8">
-        <div className="mx-auto max-w-5xl rounded-3xl bg-white p-6 shadow-sm ring-1 ring-pink-100">
+      <main className="min-h-screen bg-gradient-to-b from-pink-50 to-white p-3 md:p-6">
+        <div className="mx-auto max-w-5xl rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-100">
           <Link
             href="/holdkampe"
-            className="mb-4 inline-block text-sm font-semibold text-pink-700 hover:underline"
+            className="mb-3 inline-block text-sm font-semibold text-pink-700 hover:underline"
           >
             ← Tilbage til holdkampe
           </Link>
-          <p className="text-red-600">Fejl: {error}</p>
+          <p className="text-sm text-red-600">Fejl: {error}</p>
         </div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-pink-50 to-white p-4 md:p-8">
-      <div className="mx-auto max-w-5xl">
-        <div className="mb-6 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-pink-100">
+    <main className="min-h-screen bg-gradient-to-b from-pink-50 to-white p-3 md:p-6">
+      <div className="mx-auto max-w-5xl space-y-5">
+        <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-100">
           <Link
             href={team ? `/holdkampe/${team.id}` : "/holdkampe"}
-            className="mb-4 inline-block text-sm font-semibold text-pink-700 hover:underline"
+            className="mb-3 inline-block text-sm font-semibold text-pink-700 hover:underline"
           >
             ← Tilbage
           </Link>
 
-          <h1 className="text-3xl font-bold text-pink-700">
+          <h1 className="text-2xl font-bold text-pink-700">
             {match && team ? getMatchTitle(match, team) : "Holdkamp"}
           </h1>
 
-          <p className="mt-2 text-gray-600">
+          <p className="mt-1 text-sm text-gray-600">
             {team?.division ? `${team.division} • ` : ""}
             {match?.round ? `Runde ${match.round} • ` : ""}
             {match ? formatDate(match.match_date) : ""}
             {match?.location ? ` • ${match.location}` : ""}
           </p>
 
-          <div className="mt-4 flex flex-wrap items-center gap-3">
-            <div className="rounded-full bg-pink-100 px-4 py-2 text-sm font-semibold text-pink-700">
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <div className="rounded-full bg-pink-100 px-3 py-1 text-sm font-bold text-pink-700">
               Resultat: {resultFor}-{resultAgainst}
             </div>
 
             <div
-              className={`rounded-full px-4 py-2 text-sm font-semibold ${
+              className={`rounded-full px-3 py-1 text-sm font-bold ${
                 match?.status === "played"
                   ? "bg-green-100 text-green-700"
                   : "bg-gray-100 text-gray-700"
@@ -478,39 +478,43 @@ export default function HoldkampSide({
         </div>
 
         {message && (
-          <div className="mb-4 rounded-2xl bg-green-50 px-4 py-3 text-sm font-medium text-green-700">
+          <div className="rounded-2xl bg-green-50 px-4 py-3 text-sm font-semibold text-green-700 ring-1 ring-green-100">
             {message}
           </div>
         )}
 
         {error && (
-          <div className="mb-4 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+          <div className="rounded-2xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 ring-1 ring-red-100">
             {error}
           </div>
         )}
 
-        <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-pink-100">
-            <h2 className="text-xl font-bold text-gray-800">Primært hold</h2>
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+          <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-100">
+            <div className="mb-3">
+              <h2 className="text-lg font-bold text-gray-800">Primært hold</h2>
+              <p className="text-xs text-gray-500">Vælg status og indtast V/T</p>
+            </div>
 
             {primaryPlayers.length === 0 ? (
-              <p className="mt-4 text-sm text-gray-500">
-                Ingen primære spillere fundet.
-              </p>
+              <p className="text-sm text-gray-500">Ingen primære spillere fundet.</p>
             ) : (
-              <div className="mt-4 space-y-3">
+              <div className="space-y-2">
                 {primaryPlayers.map((player) => renderPlayerRow(player))}
               </div>
             )}
           </section>
 
-          <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-pink-100">
-            <h2 className="text-xl font-bold text-gray-800">Reserver</h2>
+          <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-100">
+            <div className="mb-3">
+              <h2 className="text-lg font-bold text-gray-800">Reserver</h2>
+              <p className="text-xs text-gray-500">Samme funktioner som primært hold</p>
+            </div>
 
             {reservePlayers.length === 0 ? (
-              <p className="mt-4 text-sm text-gray-500">Ingen reserver fundet.</p>
+              <p className="text-sm text-gray-500">Ingen reserver fundet.</p>
             ) : (
-              <div className="mt-4 space-y-3">
+              <div className="space-y-2">
                 {reservePlayers.map((player) => renderPlayerRow(player, true))}
               </div>
             )}
@@ -518,7 +522,7 @@ export default function HoldkampSide({
         </div>
 
         <div className="sticky bottom-4">
-          <div className="rounded-3xl bg-white p-4 shadow-lg ring-1 ring-pink-100">
+          <div className="rounded-2xl bg-white p-4 shadow-lg ring-1 ring-pink-100">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="text-sm text-gray-600">
                 2 spillersejre tæller som 1 holdpoint.
@@ -528,7 +532,7 @@ export default function HoldkampSide({
                 type="button"
                 onClick={handleSave}
                 disabled={saving}
-                className="rounded-2xl bg-pink-600 px-5 py-3 font-semibold text-white transition hover:bg-pink-700 disabled:opacity-60"
+                className="rounded-2xl bg-pink-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-pink-700 disabled:opacity-60"
               >
                 {saving ? "Gemmer..." : "Gem kamp"}
               </button>
