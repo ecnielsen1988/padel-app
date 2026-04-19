@@ -72,6 +72,12 @@ function formatDate(dateString: string | null) {
   }).format(date);
 }
 
+function getMatchTimestamp(dateString: string | null) {
+  if (!dateString) return Number.MAX_SAFE_INTEGER;
+  const ts = new Date(dateString).getTime();
+  return Number.isNaN(ts) ? Number.MAX_SAFE_INTEGER : ts;
+}
+
 export default function HoldSide({
   params,
 }: {
@@ -129,7 +135,7 @@ export default function HoldSide({
           `)
           .eq("team_id", id)
           .eq("season", CURRENT_SEASON)
-          .order("round", { ascending: true }),
+          .order("match_date", { ascending: true }),
       ]);
 
       if (cancelled) return;
@@ -154,7 +160,9 @@ export default function HoldSide({
 
       const holdData = holdRes.data;
       const medlemmerData = medlemmerRes.data ?? [];
-      const kampeData = kampeRes.data ?? [];
+      const kampeData = (kampeRes.data ?? []).sort((a, b) => {
+        return getMatchTimestamp(a.match_date) - getMatchTimestamp(b.match_date);
+      });
 
       setHold(holdData);
       setMedlemmer(medlemmerData);
@@ -401,9 +409,9 @@ export default function HoldSide({
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-gradient-to-b from-pink-50 to-white p-4 md:p-8">
-        <div className="mx-auto max-w-5xl rounded-3xl bg-white p-6 shadow-sm ring-1 ring-pink-100">
-          <p className="text-gray-500">Henter hold...</p>
+      <main className="min-h-screen bg-gradient-to-b from-pink-50 to-white p-3 md:p-6">
+        <div className="mx-auto max-w-5xl rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-100">
+          <p className="text-sm text-gray-500">Henter hold...</p>
         </div>
       </main>
     );
@@ -411,54 +419,55 @@ export default function HoldSide({
 
   if (error || !hold) {
     return (
-      <main className="min-h-screen bg-gradient-to-b from-pink-50 to-white p-4 md:p-8">
-        <div className="mx-auto max-w-5xl rounded-3xl bg-white p-6 shadow-sm ring-1 ring-pink-100">
+      <main className="min-h-screen bg-gradient-to-b from-pink-50 to-white p-3 md:p-6">
+        <div className="mx-auto max-w-5xl rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-100">
           <Link
             href="/holdkampe"
-            className="mb-4 inline-block text-sm font-semibold text-pink-700"
+            className="mb-3 inline-block text-sm font-semibold text-pink-700"
           >
             ← Tilbage til holdkampe
           </Link>
-          <p className="text-red-600">Fejl: {error ?? "Hold ikke fundet"}</p>
+          <p className="text-sm text-red-600">Fejl: {error ?? "Hold ikke fundet"}</p>
         </div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-pink-50 to-white p-4 md:p-8">
-      <div className="mx-auto max-w-5xl">
-        <div className="mb-6 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-pink-100">
+    <main className="min-h-screen bg-gradient-to-b from-pink-50 to-white p-3 md:p-6">
+      <div className="mx-auto max-w-5xl space-y-5">
+        <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-100">
           <Link
             href="/holdkampe"
-            className="mb-4 inline-block text-sm font-semibold text-pink-700 hover:underline"
+            className="mb-3 inline-block text-sm font-semibold text-pink-700 hover:underline"
           >
             ← Tilbage til holdkampe
           </Link>
 
-          <h1 className="text-3xl font-bold text-pink-700">{hold.name}</h1>
-          <p className="mt-2 text-gray-600">
+          <h1 className="text-2xl font-bold text-pink-700">{hold.name}</h1>
+          <p className="mt-1 text-sm text-gray-600">
             {hold.division} • {hold.season}
           </p>
         </div>
 
-        <section className="mb-6 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-pink-100">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-xl font-bold text-gray-800">Holdets kampe</h2>
+        <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-100">
+          <div className="mb-3">
+            <h2 className="text-lg font-bold text-gray-800">Holdets kampe</h2>
+            <p className="text-xs text-gray-500">Sorterede efter kampdato</p>
           </div>
 
           {kampe.length === 0 ? (
-            <div className="rounded-2xl bg-pink-50 p-6 text-center">
+            <div className="rounded-2xl bg-pink-50 p-5 text-center">
               <div className="text-3xl">📅</div>
-              <p className="mt-3 font-semibold text-gray-800">
+              <p className="mt-2 text-sm font-semibold text-gray-800">
                 Der er ikke oprettet kampe endnu
               </p>
-              <p className="mt-1 text-sm text-gray-500">
+              <p className="mt-1 text-xs text-gray-500">
                 Kampene kommer til at stå her, når de bliver lagt ind.
               </p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2">
               {kampe.map((kamp) => {
                 const signupCount = getSignupCount(kamp.id);
                 const enoughPlayers = signupCount >= 6;
@@ -469,36 +478,39 @@ export default function HoldSide({
                   <Link
                     key={kamp.id}
                     href={`/holdkampe/kamp/${kamp.id}`}
-                    className="block rounded-2xl bg-pink-50 p-4 transition hover:bg-pink-100"
+                    className="block rounded-2xl bg-pink-50 px-4 py-3 transition hover:bg-pink-100"
                   >
-                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                      <div>
-                        <h3 className="text-lg font-bold text-gray-900">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <h3 className="text-sm font-bold text-gray-900 sm:text-base">
                           {kamp.home_away === "home"
                             ? `${hold.name} vs. ${kamp.opponent}`
                             : `${kamp.opponent} vs. ${hold.name}`}
                         </h3>
 
-                        <p className="text-sm text-gray-500">
+                        <p className="mt-1 text-xs leading-snug text-gray-500">
                           {formatDate(kamp.match_date)}
                           {kamp.location ? ` • ${kamp.location}` : ""}
+                          {kamp.round ? ` • Runde ${kamp.round}` : ""}
                         </p>
 
                         <p
-                          className={`mt-1 text-sm font-semibold ${
-                            enoughPlayers ? "font-bold text-green-700" : "text-red-600"
+                          className={`mt-2 inline-flex rounded-full px-2 py-1 text-[11px] font-bold ${
+                            enoughPlayers
+                              ? "bg-green-100 text-green-700"
+                              : "bg-red-100 text-red-600"
                           }`}
                         >
                           {signupCount} tilmeldt
                         </p>
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="shrink-0">
                         {kamp.status === "played" &&
                         kamp.result_for !== null &&
                         kamp.result_against !== null ? (
                           <div
-                            className={`rounded-full px-4 py-2 text-sm font-bold ring-1 ${
+                            className={`rounded-full px-3 py-1 text-xs font-bold ring-1 ${
                               won
                                 ? "bg-green-100 text-green-700 ring-green-200"
                                 : lost
@@ -509,7 +521,7 @@ export default function HoldSide({
                             {formatDisplayedScore(kamp)}
                           </div>
                         ) : (
-                          <div className="rounded-full bg-white px-4 py-2 text-xs font-semibold text-gray-600 ring-1 ring-pink-200">
+                          <div className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-gray-600 ring-1 ring-pink-200">
                             Se kamp
                           </div>
                         )}
@@ -522,39 +534,34 @@ export default function HoldSide({
           )}
         </section>
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-pink-100">
-            <h2 className="text-xl font-bold text-gray-800">Primært hold</h2>
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+          <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-100">
+            <h2 className="text-lg font-bold text-gray-800">Primært hold</h2>
 
             {primaryPlayers.length === 0 ? (
-              <p className="mt-4 text-sm text-gray-500">
+              <p className="mt-3 text-sm text-gray-500">
                 Ingen primære spillere fundet.
               </p>
             ) : (
-              <div className="mt-4 space-y-3">
-                {primaryPlayers.map((player, index) => {
+              <div className="mt-3 space-y-2">
+                {primaryPlayers.map((player) => {
                   const stats = getStats(player.visningsnavn);
 
                   return (
                     <div
                       key={player.id}
-                      className="flex items-center justify-between gap-3 rounded-2xl bg-pink-50 px-4 py-3"
+                      className="flex items-center justify-between gap-3 rounded-2xl bg-pink-50 px-3 py-2.5"
                     >
-                      <div className="flex min-w-0 items-center gap-3">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-pink-200 text-sm font-bold text-pink-700">
-                          {index + 1}
-                        </div>
-                        <span className="truncate font-medium text-gray-900">
-                          {player.visningsnavn}
-                        </span>
-                      </div>
+                      <span className="min-w-0 truncate text-sm font-semibold text-gray-900">
+                        {player.visningsnavn}
+                      </span>
 
-                      <div className="flex shrink-0 items-center gap-2 text-sm font-semibold">
-                        <span className="rounded-full bg-green-100 px-3 py-1 text-green-700">
-                          {stats.wins} vundet
+                      <div className="flex shrink-0 items-center gap-1.5 text-xs font-bold">
+                        <span className="rounded-full bg-green-100 px-2 py-0.5 text-green-700">
+                          V {stats.wins}
                         </span>
-                        <span className="rounded-full bg-red-100 px-3 py-1 text-red-700">
-                          {stats.losses} tabt
+                        <span className="rounded-full bg-red-100 px-2 py-0.5 text-red-700">
+                          T {stats.losses}
                         </span>
                       </div>
                     </div>
@@ -564,14 +571,14 @@ export default function HoldSide({
             )}
           </section>
 
-          <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-pink-100">
-            <h2 className="text-xl font-bold text-gray-800">Reserver</h2>
+          <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-100">
+            <h2 className="text-lg font-bold text-gray-800">Reserver</h2>
 
             {reservePlayers.length === 0 ? (
-              <p className="mt-4 text-sm text-gray-500">Ingen reserver fundet.</p>
+              <p className="mt-3 text-sm text-gray-500">Ingen reserver fundet.</p>
             ) : (
-              <div className="mt-4 space-y-3">
-                {reservePlayers.map((player, index) => {
+              <div className="mt-3 space-y-2">
+                {reservePlayers.map((player) => {
                   const stats = getStats(player.visningsnavn);
                   const availability = getReserveAvailability(player.visningsnavn);
                   const canUse = availability > 0;
@@ -579,18 +586,15 @@ export default function HoldSide({
                   return (
                     <div
                       key={player.id}
-                      className="flex items-center justify-between gap-3 rounded-2xl bg-gray-50 px-4 py-3"
+                      className="flex items-center justify-between gap-3 rounded-2xl bg-gray-50 px-3 py-2.5"
                     >
-                      <div className="flex min-w-0 items-center gap-3">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-200 text-sm font-bold text-gray-700">
-                          {index + 1}
-                        </div>
-                        <span className="truncate font-medium text-gray-900">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="truncate text-sm font-semibold text-gray-900">
                           {player.visningsnavn}
                         </span>
 
                         <span
-                          className={`rounded-full px-3 py-1 text-xs font-bold ${
+                          className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
                             canUse
                               ? "bg-green-100 text-green-700"
                               : "bg-red-100 text-red-700"
@@ -600,12 +604,12 @@ export default function HoldSide({
                         </span>
                       </div>
 
-                      <div className="flex shrink-0 items-center gap-2 text-sm font-semibold">
-                        <span className="rounded-full bg-green-100 px-3 py-1 text-green-700">
-                          {stats.wins} vundet
+                      <div className="flex shrink-0 items-center gap-1.5 text-xs font-bold">
+                        <span className="rounded-full bg-green-100 px-2 py-0.5 text-green-700">
+                          V {stats.wins}
                         </span>
-                        <span className="rounded-full bg-red-100 px-3 py-1 text-red-700">
-                          {stats.losses} tabt
+                        <span className="rounded-full bg-red-100 px-2 py-0.5 text-red-700">
+                          T {stats.losses}
                         </span>
                       </div>
                     </div>
