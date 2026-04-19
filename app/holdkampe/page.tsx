@@ -3,7 +3,7 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
 type Hold = {
@@ -45,7 +45,37 @@ type MatchPlayerRow = {
   status: string | null;
 };
 
+type PlayerStatsRow = {
+  match_id: string;
+  visningsnavn: string | null;
+  wins: number | null;
+  losses: number | null;
+  hold_matches:
+    | {
+        season: string | null;
+        match_date: string | null;
+      }
+    | {
+        season: string | null;
+        match_date: string | null;
+      }[]
+    | null;
+};
+
+type PlayerStats = {
+  visningsnavn: string;
+  wins: number;
+  losses: number;
+  matches: number;
+  winrate: number;
+  lastWonMatchDate: string | null;
+  lastWonMatchTs: number;
+};
+
 const CURRENT_SEASON = "2026 forår";
+const INITIAL_VISIBLE_MATCHES = 3;
+const INITIAL_VISIBLE_PLAYERS = 3;
+const PLAYER_STATS_SEASONS = ["2025 forår", "2025 efterår", "2026 forår"];
 
 function formatDate(dateString: string | null) {
   if (!dateString) return "Dato mangler";
@@ -55,21 +85,42 @@ function formatDate(dateString: string | null) {
   return new Intl.DateTimeFormat("da-DK", {
     day: "2-digit",
     month: "2-digit",
-    year: "numeric",
+    year: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
   }).format(date);
+}
+
+function formatShortDate(dateString: string | null) {
+  if (!dateString) return "—";
+
+  const date = new Date(dateString);
+
+  return new Intl.DateTimeFormat("da-DK", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
+  }).format(date);
+}
+
+function formatWinrate(winrate: number) {
+  return `${Math.round(winrate * 100)}%`;
 }
 
 export default function HoldkampeForside() {
   const [hold, setHold] = useState<Hold[]>([]);
   const [kommendeKampe, setKommendeKampe] = useState<Kamp[]>([]);
   const [senesteKampe, setSenesteKampe] = useState<Kamp[]>([]);
+  const [playerStats, setPlayerStats] = useState<PlayerStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [holdStatsMap, setHoldStatsMap] = useState<Record<string, HoldStats>>({});
   const [signupCountMap, setSignupCountMap] = useState<Record<string, number>>({});
+
+  const [showAllUpcoming, setShowAllUpcoming] = useState(false);
+  const [showAllPlayed, setShowAllPlayed] = useState(false);
+  const [showAllPlayers, setShowAllPlayers] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -202,35 +253,118 @@ export default function HoldkampeForside() {
 
       const upcomingMatchIds = kommendeData.map((kamp) => kamp.id);
 
-      if (upcomingMatchIds.length === 0) {
+      if (upcomingMatchIds.length > 0) {
+        const signupsRes = await supabase
+          .from("hold_match_players")
+          .select("match_id, status")
+          .in("match_id", upcomingMatchIds)
+          .eq("status", "tilmeldt");
+
+        if (cancelled) return;
+
+        if (signupsRes.error) {
+          setError(signupsRes.error.message);
+          setLoading(false);
+          return;
+        }
+
+        const signupRows: MatchPlayerRow[] = signupsRes.data ?? [];
+        const nextSignupCountMap: Record<string, number> = {};
+
+        for (const row of signupRows) {
+          nextSignupCountMap[row.match_id] =
+            (nextSignupCountMap[row.match_id] ?? 0) + 1;
+        }
+
+        setSignupCountMap(nextSignupCountMap);
+      } else {
         setSignupCountMap({});
-        setLoading(false);
-        return;
       }
 
-      const signupsRes = await supabase
+      const playerStatsRes = await supabase
         .from("hold_match_players")
-        .select("match_id, status")
-        .in("match_id", upcomingMatchIds)
-        .eq("status", "tilmeldt");
+        .select(`
+          match_id,
+          visningsnavn,
+          wins,
+          losses,
+          hold_matches!inner (
+            season,
+            match_date
+          )
+        `)
+        .not("visningsnavn", "is", null);
 
       if (cancelled) return;
 
-      if (signupsRes.error) {
-        setError(signupsRes.error.message);
+      if (playerStatsRes.error) {
+        setError(playerStatsRes.error.message);
         setLoading(false);
         return;
       }
 
-      const signupRows: MatchPlayerRow[] = signupsRes.data ?? [];
-      const nextSignupCountMap: Record<string, number> = {};
+      const playerRows: PlayerStatsRow[] = playerStatsRes.data ?? [];
+      const statsMap: Record<string, PlayerStats> = {};
 
-      for (const row of signupRows) {
-        nextSignupCountMap[row.match_id] =
-          (nextSignupCountMap[row.match_id] ?? 0) + 1;
+      for (const row of playerRows) {
+        const name = row.visningsnavn?.trim();
+        if (!name) continue;
+
+        const joinedMatch = Array.isArray(row.hold_matches)
+          ? row.hold_matches[0]
+          : row.hold_matches;
+
+        const season = joinedMatch?.season ?? null;
+        const matchDate = joinedMatch?.match_date ?? null;
+
+        if (!season || !PLAYER_STATS_SEASONS.includes(season)) continue;
+
+        const rowWins = Number(row.wins ?? 0);
+        const rowLosses = Number(row.losses ?? 0);
+        const matchTs = matchDate ? new Date(matchDate).getTime() : 0;
+
+        if (!statsMap[name]) {
+          statsMap[name] = {
+            visningsnavn: name,
+            wins: 0,
+            losses: 0,
+            matches: 0,
+            winrate: 0,
+            lastWonMatchDate: null,
+            lastWonMatchTs: 0,
+          };
+        }
+
+        statsMap[name].wins += rowWins;
+        statsMap[name].losses += rowLosses;
+
+        if (rowWins > 0 && matchTs > statsMap[name].lastWonMatchTs) {
+          statsMap[name].lastWonMatchTs = matchTs;
+          statsMap[name].lastWonMatchDate = matchDate;
+        }
       }
 
-      setSignupCountMap(nextSignupCountMap);
+      const sortedPlayerStats = Object.values(statsMap)
+        .map((player) => {
+          const matches = player.wins + player.losses;
+
+          return {
+            ...player,
+            matches,
+            winrate: matches > 0 ? player.wins / matches : 0,
+          };
+        })
+        .filter((player) => player.matches > 0)
+        .sort((a, b) => {
+          if (b.winrate !== a.winrate) return b.winrate - a.winrate;
+          if (b.matches !== a.matches) return b.matches - a.matches;
+          if (b.lastWonMatchTs !== a.lastWonMatchTs) {
+            return b.lastWonMatchTs - a.lastWonMatchTs;
+          }
+          return a.visningsnavn.localeCompare(b.visningsnavn, "da");
+        });
+
+      setPlayerStats(sortedPlayerStats);
       setLoading(false);
     }
 
@@ -271,12 +405,24 @@ export default function HoldkampeForside() {
       : `${kamp.result_against}-${kamp.result_for}`;
   }
 
+  const visibleUpcoming = showAllUpcoming
+    ? kommendeKampe
+    : kommendeKampe.slice(0, INITIAL_VISIBLE_MATCHES);
+
+  const visiblePlayed = showAllPlayed
+    ? senesteKampe
+    : senesteKampe.slice(0, INITIAL_VISIBLE_MATCHES);
+
+  const visiblePlayers = showAllPlayers
+    ? playerStats
+    : playerStats.slice(0, INITIAL_VISIBLE_PLAYERS);
+
   if (loading) {
     return (
-      <main className="min-h-screen bg-gradient-to-b from-pink-50 to-white p-4 md:p-8">
-        <div className="mx-auto max-w-6xl rounded-3xl bg-white p-6 shadow-sm ring-1 ring-pink-100">
-          <h1 className="text-3xl font-bold text-pink-700">Holdkampe</h1>
-          <p className="mt-3 text-gray-500">Henter hold og kampe...</p>
+      <main className="min-h-screen bg-gradient-to-b from-pink-50 to-white p-3 md:p-6">
+        <div className="mx-auto max-w-5xl rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-100">
+          <h1 className="text-2xl font-bold text-pink-700">Holdkampe</h1>
+          <p className="mt-1 text-sm text-gray-500">Henter hold og kampe...</p>
         </div>
       </main>
     );
@@ -284,29 +430,31 @@ export default function HoldkampeForside() {
 
   if (error) {
     return (
-      <main className="min-h-screen bg-gradient-to-b from-pink-50 to-white p-4 md:p-8">
-        <div className="mx-auto max-w-6xl rounded-3xl bg-white p-6 shadow-sm ring-1 ring-pink-100">
-          <h1 className="text-3xl font-bold text-pink-700">Holdkampe</h1>
-          <p className="mt-3 text-red-600">Fejl: {error}</p>
+      <main className="min-h-screen bg-gradient-to-b from-pink-50 to-white p-3 md:p-6">
+        <div className="mx-auto max-w-5xl rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-100">
+          <h1 className="text-2xl font-bold text-pink-700">Holdkampe</h1>
+          <p className="mt-1 text-sm text-red-600">Fejl: {error}</p>
         </div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-pink-50 to-white p-4 md:p-8">
-      <div className="mx-auto max-w-6xl">
-        <div className="mb-6 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-pink-100">
-          <h1 className="text-3xl font-bold text-pink-700">Holdkampe</h1>
-          <p className="mt-2 text-gray-600">
-            Overblik over holdene og kommende kampe for sæsonen {CURRENT_SEASON}.
-          </p>
+    <main className="min-h-screen bg-gradient-to-b from-pink-50 to-white p-3 md:p-6">
+      <div className="mx-auto max-w-5xl space-y-6">
+        <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-100">
+          <div>
+            <h1 className="text-2xl font-bold text-pink-700">Holdkampe</h1>
+            <p className="mt-1 text-sm text-gray-600">
+              Overblik for sæsonen {CURRENT_SEASON}
+            </p>
+          </div>
         </div>
 
-        <section className="mb-8">
-          <h2 className="mb-4 text-xl font-bold text-gray-800">Vælg hold</h2>
+        <section>
+          <h2 className="mb-3 text-lg font-bold text-gray-800">Vælg hold</h2>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
             {hold.map((team) => {
               const stats = getTeamStats(team.id);
 
@@ -314,27 +462,23 @@ export default function HoldkampeForside() {
                 <Link
                   key={team.id}
                   href={`/holdkampe/${team.id}`}
-                  className="group rounded-3xl bg-white p-5 shadow-sm ring-1 ring-pink-100 transition hover:-translate-y-0.5 hover:shadow-md"
+                  className="rounded-2xl bg-white px-4 py-3 shadow-sm ring-1 ring-pink-100 transition hover:shadow-md"
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h3 className="text-xl font-bold text-pink-700 group-hover:text-pink-800">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <h3 className="truncate text-sm font-bold text-pink-700 sm:text-base">
                         {team.name}
                       </h3>
-                      <p className="mt-1 text-sm text-gray-500">{team.division}</p>
-
-                      <div className="mt-3 flex flex-wrap items-center gap-2 text-sm font-semibold">
-                        <span className="rounded-full bg-green-100 px-3 py-1 text-green-700">
-                          {stats.wins} vundet
-                        </span>
-                        <span className="rounded-full bg-red-100 px-3 py-1 text-red-700">
-                          {stats.losses} tabt
-                        </span>
-                      </div>
+                      <p className="truncate text-xs text-gray-500">{team.division}</p>
                     </div>
 
-                    <div className="rounded-full bg-pink-100 px-3 py-1 text-xs font-semibold text-pink-700">
-                      Se hold
+                    <div className="flex shrink-0 items-center gap-1.5 text-xs font-bold">
+                      <span className="rounded-full bg-green-100 px-2 py-0.5 text-green-700">
+                        V {stats.wins}
+                      </span>
+                      <span className="rounded-full bg-red-100 px-2 py-0.5 text-red-700">
+                        T {stats.losses}
+                      </span>
                     </div>
                   </div>
                 </Link>
@@ -343,139 +487,216 @@ export default function HoldkampeForside() {
           </div>
         </section>
 
-        <section className="mb-8">
-          <h2 className="mb-1 text-xl font-bold text-gray-800">Kommende kampe</h2>
-          <p className="mb-4 text-sm text-gray-500">
-            Her vises næste holdkampe, når de bliver oprettet.
-          </p>
+        <section>
+          <div className="mb-3">
+            <h2 className="text-lg font-bold text-gray-800">Kommende kampe</h2>
+            <p className="text-xs text-gray-500">De næste holdkampe</p>
+          </div>
 
           {kommendeKampe.length === 0 ? (
-            <div className="rounded-3xl bg-white p-8 text-center shadow-sm ring-1 ring-pink-100">
-              <div className="text-4xl">📅</div>
-              <h3 className="mt-3 text-lg font-bold text-gray-800">
-                Der er ikke oprettet kampe endnu
-              </h3>
-              <p className="mt-2 text-sm text-gray-500">
-                Når kampene bliver lagt ind, vil de automatisk dukke op her.
-              </p>
+            <div className="rounded-2xl bg-white p-5 text-center shadow-sm ring-1 ring-pink-100">
+              <div className="text-3xl">📅</div>
+              <p className="mt-2 text-sm text-gray-600">Der er ikke oprettet kampe endnu.</p>
             </div>
           ) : (
-            <div className="space-y-3">
-              {kommendeKampe.map((kamp) => {
-                const team = getTeamRelation(kamp);
-                const signupCount = getSignupCount(kamp.id);
-                const enoughPlayers = signupCount >= 6;
+            <>
+              <div className="space-y-2">
+                {visibleUpcoming.map((kamp) => {
+                  const team = getTeamRelation(kamp);
+                  const signupCount = getSignupCount(kamp.id);
+                  const enoughPlayers = signupCount >= 6;
 
-                return (
-                  <Link
-                    key={kamp.id}
-                    href={`/holdkampe/kamp/${kamp.id}`}
-                    className="block rounded-3xl bg-white p-5 shadow-sm ring-1 ring-pink-100 transition hover:shadow-md"
-                  >
-                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                      <div>
-                        <p className="text-sm font-semibold text-pink-700">
-                          {team?.name ?? "Ukendt hold"} • {team?.division ?? ""}
-                        </p>
+                  return (
+                    <Link
+                      key={kamp.id}
+                      href={`/holdkampe/kamp/${kamp.id}`}
+                      className="block rounded-2xl bg-white px-4 py-3 shadow-sm ring-1 ring-pink-100 transition hover:shadow-md"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-xs font-semibold text-pink-700">
+                            {team?.name ?? "Ukendt hold"} • {team?.division ?? ""}
+                          </div>
 
-                        <h3 className="mt-1 text-lg font-bold text-gray-900">
-                          {kamp.home_away === "home"
-                            ? `${team?.name ?? "Hold"} vs. ${kamp.opponent}`
-                            : `${kamp.opponent} vs. ${team?.name ?? "Hold"}`}
-                        </h3>
+                          <div className="mt-0.5 text-sm font-bold text-gray-900">
+                            {kamp.home_away === "home"
+                              ? `${team?.name ?? "Hold"} vs. ${kamp.opponent}`
+                              : `${kamp.opponent} vs. ${team?.name ?? "Hold"}`}
+                          </div>
 
-                        <p className="mt-1 text-sm text-gray-500">
-                          {formatDate(kamp.match_date)}
-                          {kamp.location ? ` • ${kamp.location}` : ""}
-                          {kamp.round ? ` • Runde ${kamp.round}` : ""}
-                        </p>
+                          <div className="mt-1 text-xs leading-snug text-gray-500">
+                            {formatDate(kamp.match_date)}
+                            {kamp.location ? ` • ${kamp.location}` : ""}
+                            {kamp.round ? ` • Runde ${kamp.round}` : ""}
+                          </div>
+                        </div>
 
-                        <p
-                          className={`mt-2 text-sm ${
+                        <div
+                          className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-bold ${
                             enoughPlayers
-                              ? "font-bold text-green-700"
-                              : "font-semibold text-red-600"
+                              ? "bg-green-100 text-green-700"
+                              : "bg-red-100 text-red-600"
                           }`}
                         >
-                          {signupCount} tilmeldt
-                        </p>
+                          {signupCount}
+                        </div>
                       </div>
+                    </Link>
+                  );
+                })}
+              </div>
 
-                      <div className="self-start rounded-full bg-pink-100 px-3 py-1 text-xs font-semibold text-pink-700">
-                        Se kamp
-                      </div>
-                    </div>
-                  </Link>
-                );
-              })}
-            </div>
+              {kommendeKampe.length > INITIAL_VISIBLE_MATCHES && (
+                <button
+                  onClick={() => setShowAllUpcoming((prev) => !prev)}
+                  className="mt-3 w-full rounded-2xl bg-white px-4 py-2 text-sm font-semibold text-pink-700 shadow-sm ring-1 ring-pink-100"
+                >
+                  {showAllUpcoming ? "Vis færre" : "Vis flere"}
+                </button>
+              )}
+            </>
           )}
         </section>
 
         <section>
-          <h2 className="mb-1 text-xl font-bold text-gray-800">Seneste kampe</h2>
-          <p className="mb-4 text-sm text-gray-500">
-            De senest spillede holdkampe vises her med nyeste først.
-          </p>
+          <div className="mb-3">
+            <h2 className="text-lg font-bold text-gray-800">Seneste kampe</h2>
+            <p className="text-xs text-gray-500">De nyeste resultater</p>
+          </div>
 
           {senesteKampe.length === 0 ? (
-            <div className="rounded-3xl bg-white p-8 text-center shadow-sm ring-1 ring-pink-100">
-              <div className="text-4xl">🏁</div>
-              <h3 className="mt-3 text-lg font-bold text-gray-800">
-                Der er ingen spillede kampe endnu
-              </h3>
-              <p className="mt-2 text-sm text-gray-500">
-                Når de første holdkampe er spillet, vil de dukke op her.
-              </p>
+            <div className="rounded-2xl bg-white p-5 text-center shadow-sm ring-1 ring-pink-100">
+              <div className="text-3xl">🏁</div>
+              <p className="mt-2 text-sm text-gray-600">Der er ingen spillede kampe endnu.</p>
             </div>
           ) : (
-            <div className="space-y-3">
-              {senesteKampe.map((kamp) => {
-                const team = getTeamRelation(kamp);
-                const won = isWon(kamp);
-                const lost = isLost(kamp);
+            <>
+              <div className="space-y-2">
+                {visiblePlayed.map((kamp) => {
+                  const team = getTeamRelation(kamp);
+                  const won = isWon(kamp);
+                  const lost = isLost(kamp);
 
-                return (
-                  <Link
-                    key={kamp.id}
-                    href={`/holdkampe/kamp/${kamp.id}`}
-                    className="block rounded-3xl bg-white p-5 shadow-sm ring-1 ring-pink-100 transition hover:shadow-md"
+                  return (
+                    <Link
+                      key={kamp.id}
+                      href={`/holdkampe/kamp/${kamp.id}`}
+                      className="block rounded-2xl bg-white px-4 py-3 shadow-sm ring-1 ring-pink-100 transition hover:shadow-md"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-xs font-semibold text-pink-700">
+                            {team?.name ?? "Ukendt hold"} • {team?.division ?? ""}
+                          </div>
+
+                          <div className="mt-0.5 text-sm font-bold text-gray-900">
+                            {kamp.home_away === "home"
+                              ? `${team?.name ?? "Hold"} vs. ${kamp.opponent}`
+                              : `${kamp.opponent} vs. ${team?.name ?? "Hold"}`}
+                          </div>
+
+                          <div className="mt-1 text-xs leading-snug text-gray-500">
+                            {formatDate(kamp.match_date)}
+                            {kamp.location ? ` • ${kamp.location}` : ""}
+                            {kamp.round ? ` • Runde ${kamp.round}` : ""}
+                          </div>
+                        </div>
+
+                        <div
+                          className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${
+                            won
+                              ? "bg-green-100 text-green-700 ring-1 ring-green-200"
+                              : lost
+                              ? "bg-red-100 text-red-700 ring-1 ring-red-200"
+                              : "bg-gray-100 text-gray-700 ring-1 ring-gray-200"
+                          }`}
+                        >
+                          {formatDisplayedScore(kamp)}
+                        </div>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+
+              {senesteKampe.length > INITIAL_VISIBLE_MATCHES && (
+                <button
+                  onClick={() => setShowAllPlayed((prev) => !prev)}
+                  className="mt-3 w-full rounded-2xl bg-white px-4 py-2 text-sm font-semibold text-pink-700 shadow-sm ring-1 ring-pink-100"
+                >
+                  {showAllPlayed ? "Vis færre" : "Vis flere"}
+                </button>
+              )}
+            </>
+          )}
+        </section>
+
+        <section>
+          <div className="mb-3">
+            <h2 className="text-lg font-bold text-gray-800">Spiller stats</h2>
+            <p className="text-xs text-gray-500">
+              De seneste 3 sæsoner • sorteret efter winrate
+            </p>
+          </div>
+
+          {playerStats.length === 0 ? (
+            <div className="rounded-2xl bg-white p-5 text-center shadow-sm ring-1 ring-pink-100">
+              <div className="text-3xl">📊</div>
+              <p className="mt-2 text-sm text-gray-600">Ingen spillerstats fundet endnu.</p>
+            </div>
+          ) : (
+            <>
+              <div className="space-y-2">
+                {visiblePlayers.map((player, index) => (
+                  <div
+                    key={player.visningsnavn}
+                    className="rounded-2xl bg-white px-4 py-3 shadow-sm ring-1 ring-pink-100"
                   >
-                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                      <div>
-                        <p className="text-sm font-semibold text-pink-700">
-                          {team?.name ?? "Ukendt hold"} • {team?.division ?? ""}
-                        </p>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="rounded-full bg-pink-100 px-2 py-0.5 text-[11px] font-bold text-pink-700">
+                            #{index + 1}
+                          </span>
+                          <div className="truncate text-sm font-bold text-gray-900">
+                            {player.visningsnavn}
+                          </div>
+                        </div>
 
-                        <h3 className="mt-1 text-lg font-bold text-gray-900">
-                          {kamp.home_away === "home"
-                            ? `${team?.name ?? "Hold"} vs. ${kamp.opponent}`
-                            : `${kamp.opponent} vs. ${team?.name ?? "Hold"}`}
-                        </h3>
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs font-semibold">
+                          <span className="rounded-full bg-green-100 px-2 py-0.5 text-green-700">
+                            V {player.wins}
+                          </span>
+                          <span className="rounded-full bg-red-100 px-2 py-0.5 text-red-700">
+                            T {player.losses}
+                          </span>
+                          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-gray-700">
+                            {player.matches} kampe
+                          </span>
+                        </div>
 
-                        <p className="mt-1 text-sm text-gray-500">
-                          {formatDate(kamp.match_date)}
-                          {kamp.location ? ` • ${kamp.location}` : ""}
-                          {kamp.round ? ` • Runde ${kamp.round}` : ""}
-                        </p>
+                        <div className="mt-1 text-xs text-gray-500">
+                          Seneste vundne kamp: {formatShortDate(player.lastWonMatchDate)}
+                        </div>
                       </div>
 
-                      <div
-                        className={`self-start rounded-full px-4 py-2 text-sm font-bold ${
-                          won
-                            ? "bg-green-100 text-green-700 ring-1 ring-green-200"
-                            : lost
-                            ? "bg-red-100 text-red-700 ring-1 ring-red-200"
-                            : "bg-gray-100 text-gray-700 ring-1 ring-gray-200"
-                        }`}
-                      >
-                        {formatDisplayedScore(kamp)}
+                      <div className="shrink-0 rounded-full bg-pink-100 px-3 py-1 text-sm font-bold text-pink-700">
+                        {formatWinrate(player.winrate)}
                       </div>
                     </div>
-                  </Link>
-                );
-              })}
-            </div>
+                  </div>
+                ))}
+              </div>
+
+              {playerStats.length > INITIAL_VISIBLE_PLAYERS && (
+                <button
+                  onClick={() => setShowAllPlayers((prev) => !prev)}
+                  className="mt-3 w-full rounded-2xl bg-white px-4 py-2 text-sm font-semibold text-pink-700 shadow-sm ring-1 ring-pink-100"
+                >
+                  {showAllPlayers ? "Vis færre" : "Vis flere"}
+                </button>
+              )}
+            </>
           )}
         </section>
       </div>
