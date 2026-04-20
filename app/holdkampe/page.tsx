@@ -45,21 +45,17 @@ type MatchPlayerRow = {
   status: string | null;
 };
 
+type StatsMatchRow = {
+  id: string;
+  season: string | null;
+  match_date: string | null;
+};
+
 type PlayerStatsRow = {
   match_id: string;
   visningsnavn: string | null;
   wins: number | null;
   losses: number | null;
-  hold_matches:
-    | {
-        season: string | null;
-        match_date: string | null;
-      }
-    | {
-        season: string | null;
-        match_date: string | null;
-      }[]
-    | null;
 };
 
 type PlayerStats = {
@@ -76,6 +72,8 @@ const CURRENT_SEASON = "2026 forår";
 const INITIAL_VISIBLE_MATCHES = 3;
 const INITIAL_VISIBLE_PLAYERS = 3;
 const PLAYER_STATS_SEASONS = ["2025 forår", "2025 efterår", "2026 forår"];
+const PLAYER_STATS_MATCH_LIMIT = 3000;
+const PLAYER_STATS_ROW_LIMIT = 3000;
 
 function formatDate(dateString: string | null) {
   if (!dateString) return "Dato mangler";
@@ -281,19 +279,45 @@ export default function HoldkampeForside() {
         setSignupCountMap({});
       }
 
+      const statsMatchesRes = await supabase
+        .from("hold_matches")
+        .select("id, season, match_date")
+        .in("season", PLAYER_STATS_SEASONS)
+        .range(0, PLAYER_STATS_MATCH_LIMIT - 1);
+
+      if (cancelled) return;
+
+      if (statsMatchesRes.error) {
+        setError(statsMatchesRes.error.message);
+        setLoading(false);
+        return;
+      }
+
+      const statsMatches: StatsMatchRow[] = statsMatchesRes.data ?? [];
+      const statsMatchIds = statsMatches.map((match) => match.id);
+
+      if (statsMatchIds.length === 0) {
+        setPlayerStats([]);
+        setLoading(false);
+        return;
+      }
+
+      const matchMetaById = Object.fromEntries(
+        statsMatches.map((match) => [match.id, match])
+      ) as Record<string, StatsMatchRow>;
+
       const playerStatsRes = await supabase
         .from("hold_match_players")
         .select(`
           match_id,
           visningsnavn,
           wins,
-          losses,
-          hold_matches!inner (
-            season,
-            match_date
-          )
+          losses
         `)
-        .not("visningsnavn", "is", null);
+        .in("match_id", statsMatchIds)
+        .not("visningsnavn", "is", null)
+        .or("wins.gt.0,losses.gt.0")
+        .range(0, PLAYER_STATS_ROW_LIMIT - 1);
 
       if (cancelled) return;
 
@@ -310,10 +334,7 @@ export default function HoldkampeForside() {
         const name = row.visningsnavn?.trim();
         if (!name) continue;
 
-        const joinedMatch = Array.isArray(row.hold_matches)
-          ? row.hold_matches[0]
-          : row.hold_matches;
-
+        const joinedMatch = matchMetaById[row.match_id];
         const season = joinedMatch?.season ?? null;
         const matchDate = joinedMatch?.match_date ?? null;
 
