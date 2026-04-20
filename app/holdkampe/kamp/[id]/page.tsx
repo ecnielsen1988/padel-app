@@ -338,10 +338,10 @@ export default function HoldkampSide({
 
     const activeClass =
       statusOption === "afventer"
-        ? "bg-gray-800 text-white"
+        ? "bg-gray-800 text-white dark:bg-slate-200 dark:text-slate-900"
         : statusOption === "tilmeldt"
-        ? "bg-green-600 text-white"
-        : "bg-red-600 text-white";
+        ? "bg-green-600 text-white dark:bg-green-500 dark:text-white"
+        : "bg-red-600 text-white dark:bg-red-500 dark:text-white";
 
     return (
       <button
@@ -350,7 +350,7 @@ export default function HoldkampSide({
         className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition ${
           active
             ? activeClass
-            : "bg-white text-gray-700 ring-1 ring-gray-200 hover:bg-gray-50"
+            : "bg-white text-gray-700 ring-1 ring-gray-200 hover:bg-gray-50 dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700 dark:hover:bg-slate-700"
         }`}
       >
         {label}
@@ -366,13 +366,15 @@ export default function HoldkampSide({
       losses: 0,
     };
 
-    const boxBg = muted ? "bg-gray-50" : "bg-pink-50";
+    const boxBg = muted
+      ? "bg-gray-50 dark:bg-slate-800/70"
+      : "bg-pink-50 dark:bg-slate-800";
 
     return (
       <div key={player.id} className={`rounded-2xl ${boxBg} px-3 py-3`}>
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0 lg:w-[190px]">
-            <div className="truncate text-sm font-bold text-gray-900">
+            <div className="truncate text-sm font-bold text-gray-900 dark:text-slate-100">
               {player.visningsnavn}
             </div>
           </div>
@@ -385,7 +387,9 @@ export default function HoldkampSide({
 
           <div className="flex items-center gap-3 lg:justify-end">
             <div className="flex items-center gap-1.5">
-              <label className="text-[11px] font-bold text-gray-600">V</label>
+              <label className="text-[11px] font-bold text-gray-600 dark:text-slate-300">
+                V
+              </label>
               <input
                 type="number"
                 min={0}
@@ -393,12 +397,14 @@ export default function HoldkampSide({
                 onChange={(e) =>
                   updateNumberField(player.visningsnavn, "wins", e.target.value)
                 }
-                className="h-8 w-12 rounded-xl border border-pink-200 bg-white px-1 text-center text-sm outline-none focus:border-pink-400"
+                className="h-8 w-12 rounded-xl border border-pink-200 bg-white px-1 text-center text-sm text-gray-900 outline-none focus:border-pink-400 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-pink-400"
               />
             </div>
 
             <div className="flex items-center gap-1.5">
-              <label className="text-[11px] font-bold text-gray-600">T</label>
+              <label className="text-[11px] font-bold text-gray-600 dark:text-slate-300">
+                T
+              </label>
               <input
                 type="number"
                 min={0}
@@ -406,7 +412,7 @@ export default function HoldkampSide({
                 onChange={(e) =>
                   updateNumberField(player.visningsnavn, "losses", e.target.value)
                 }
-                className="h-8 w-12 rounded-xl border border-pink-200 bg-white px-1 text-center text-sm outline-none focus:border-pink-400"
+                className="h-8 w-12 rounded-xl border border-pink-200 bg-white px-1 text-center text-sm text-gray-900 outline-none focus:border-pink-400 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-pink-400"
               />
             </div>
           </div>
@@ -417,9 +423,9 @@ export default function HoldkampSide({
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-gradient-to-b from-pink-50 to-white p-3 md:p-6">
-        <div className="mx-auto max-w-5xl rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-100">
-          <p className="text-sm text-gray-500">Henter kamp...</p>
+      <main className="min-h-screen bg-gradient-to-b from-pink-50 to-white p-3 text-slate-900 dark:from-slate-950 dark:to-slate-900 dark:text-slate-100 md:p-6">
+        <div className="mx-auto max-w-5xl rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-100 dark:bg-slate-900 dark:ring-slate-800">
+          <p className="text-sm text-gray-500 dark:text-slate-400">Henter kamp...</p>
         </div>
       </main>
     );
@@ -427,36 +433,36 @@ export default function HoldkampSide({
 
   if (error && !match) {
     return (
-      <main className="min-h-screen bg-gradient-to-b from-pink-50 to-white p-3 md:p-6">
-        <div className="mx-auto max-w-5xl rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-100">
+      <main className="min-h-screen bg-gradient-to-b from-pink-50 to-white p-3 text-slate-900 dark:from-slate-950 dark:to-slate-900 dark:text-slate-100 md:p-6">
+        <div className="mx-auto max-w-5xl rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-100 dark:bg-slate-900 dark:ring-slate-800">
           <Link
             href="/holdkampe"
-            className="mb-3 inline-block text-sm font-semibold text-pink-700 hover:underline"
+            className="mb-3 inline-block text-sm font-semibold text-pink-700 hover:underline dark:text-pink-300"
           >
             ← Tilbage til holdkampe
           </Link>
-          <p className="text-sm text-red-600">Fejl: {error}</p>
+          <p className="text-sm text-red-600 dark:text-red-300">Fejl: {error}</p>
         </div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-pink-50 to-white p-3 md:p-6">
+    <main className="min-h-screen bg-gradient-to-b from-pink-50 to-white p-3 text-slate-900 dark:from-slate-950 dark:to-slate-900 dark:text-slate-100 md:p-6">
       <div className="mx-auto max-w-5xl space-y-5">
-        <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-100">
+        <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-100 dark:bg-slate-900 dark:ring-slate-800">
           <Link
             href={team ? `/holdkampe/${team.id}` : "/holdkampe"}
-            className="mb-3 inline-block text-sm font-semibold text-pink-700 hover:underline"
+            className="mb-3 inline-block text-sm font-semibold text-pink-700 hover:underline dark:text-pink-300"
           >
             ← Tilbage
           </Link>
 
-          <h1 className="text-2xl font-bold text-pink-700">
+          <h1 className="text-2xl font-bold text-pink-700 dark:text-pink-300">
             {match && team ? getMatchTitle(match, team) : "Holdkamp"}
           </h1>
 
-          <p className="mt-1 text-sm text-gray-600">
+          <p className="mt-1 text-sm text-gray-600 dark:text-slate-400">
             {team?.division ? `${team.division} • ` : ""}
             {match?.round ? `Runde ${match.round} • ` : ""}
             {match ? formatDate(match.match_date) : ""}
@@ -465,15 +471,15 @@ export default function HoldkampSide({
           </p>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <div className="rounded-full bg-pink-100 px-3 py-1 text-sm font-bold text-pink-700">
+            <div className="rounded-full bg-pink-100 px-3 py-1 text-sm font-bold text-pink-700 dark:bg-pink-500/20 dark:text-pink-300">
               Resultat: {resultFor}-{resultAgainst}
             </div>
 
             <div
               className={`rounded-full px-3 py-1 text-sm font-bold ${
                 match?.status === "played"
-                  ? "bg-green-100 text-green-700"
-                  : "bg-gray-100 text-gray-700"
+                  ? "bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300"
+                  : "bg-gray-100 text-gray-700 dark:bg-slate-800 dark:text-slate-300"
               }`}
             >
               {match?.status === "played" ? "Spillet" : "Kommende"}
@@ -482,26 +488,32 @@ export default function HoldkampSide({
         </div>
 
         {message && (
-          <div className="rounded-2xl bg-green-50 px-4 py-3 text-sm font-semibold text-green-700 ring-1 ring-green-100">
+          <div className="rounded-2xl bg-green-50 px-4 py-3 text-sm font-semibold text-green-700 ring-1 ring-green-100 dark:bg-green-950/40 dark:text-green-300 dark:ring-green-900">
             {message}
           </div>
         )}
 
         {error && (
-          <div className="rounded-2xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 ring-1 ring-red-100">
+          <div className="rounded-2xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 ring-1 ring-red-100 dark:bg-red-950/40 dark:text-red-300 dark:ring-red-900">
             {error}
           </div>
         )}
 
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-          <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-100">
+          <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-100 dark:bg-slate-900 dark:ring-slate-800">
             <div className="mb-3">
-              <h2 className="text-lg font-bold text-gray-800">Primært hold</h2>
-              <p className="text-xs text-gray-500">Vælg status og indtast V/T</p>
+              <h2 className="text-lg font-bold text-gray-800 dark:text-slate-100">
+                Primært hold
+              </h2>
+              <p className="text-xs text-gray-500 dark:text-slate-400">
+                Vælg status og indtast V/T
+              </p>
             </div>
 
             {primaryPlayers.length === 0 ? (
-              <p className="text-sm text-gray-500">Ingen primære spillere fundet.</p>
+              <p className="text-sm text-gray-500 dark:text-slate-400">
+                Ingen primære spillere fundet.
+              </p>
             ) : (
               <div className="space-y-2">
                 {primaryPlayers.map((player) => renderPlayerRow(player))}
@@ -509,14 +521,20 @@ export default function HoldkampSide({
             )}
           </section>
 
-          <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-100">
+          <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-100 dark:bg-slate-900 dark:ring-slate-800">
             <div className="mb-3">
-              <h2 className="text-lg font-bold text-gray-800">Reserver</h2>
-              <p className="text-xs text-gray-500">Samme funktioner som primært hold</p>
+              <h2 className="text-lg font-bold text-gray-800 dark:text-slate-100">
+                Reserver
+              </h2>
+              <p className="text-xs text-gray-500 dark:text-slate-400">
+                Samme funktioner som primært hold
+              </p>
             </div>
 
             {reservePlayers.length === 0 ? (
-              <p className="text-sm text-gray-500">Ingen reserver fundet.</p>
+              <p className="text-sm text-gray-500 dark:text-slate-400">
+                Ingen reserver fundet.
+              </p>
             ) : (
               <div className="space-y-2">
                 {reservePlayers.map((player) => renderPlayerRow(player, true))}
@@ -526,9 +544,9 @@ export default function HoldkampSide({
         </div>
 
         <div className="sticky bottom-4">
-          <div className="rounded-2xl bg-white p-4 shadow-lg ring-1 ring-pink-100">
+          <div className="rounded-2xl bg-white p-4 shadow-lg ring-1 ring-pink-100 dark:bg-slate-900 dark:ring-slate-800">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-sm text-gray-600">
+              <div className="text-sm text-gray-600 dark:text-slate-400">
                 2 spillersejre tæller som 1 holdpoint.
               </div>
 
@@ -536,7 +554,7 @@ export default function HoldkampSide({
                 type="button"
                 onClick={handleSave}
                 disabled={saving}
-                className="rounded-2xl bg-pink-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-pink-700 disabled:opacity-60"
+                className="rounded-2xl bg-pink-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-pink-700 disabled:opacity-60 dark:bg-pink-500 dark:hover:bg-pink-600"
               >
                 {saving ? "Gemmer..." : "Gem kamp"}
               </button>
