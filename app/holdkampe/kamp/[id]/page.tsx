@@ -43,8 +43,6 @@ type MatchPlayerRow = {
   losses: number;
 };
 
-const CURRENT_SEASON = "2026 forår";
-
 function formatDate(dateString: string | null) {
   if (!dateString) return "Dato mangler";
 
@@ -112,8 +110,7 @@ export default function HoldkampSide({
           result_against
         `)
         .eq("id", id)
-        .eq("season", CURRENT_SEASON)
-        .single();
+        .maybeSingle();
 
       if (cancelled) return;
 
@@ -131,14 +128,14 @@ export default function HoldkampSide({
           .from("hold_teams")
           .select("id, name, division, season")
           .eq("id", matchData.team_id)
-          .eq("season", CURRENT_SEASON)
-          .single(),
+          .eq("season", matchData.season)
+          .maybeSingle(),
 
         supabase
           .from("hold_team_members")
           .select("id, visningsnavn, member_type, sort_order")
           .eq("team_id", matchData.team_id)
-          .eq("season", CURRENT_SEASON)
+          .eq("season", matchData.season)
           .order("sort_order", { ascending: true }),
 
         supabase
@@ -163,6 +160,12 @@ export default function HoldkampSide({
 
       if (playersRes.error) {
         setError(playersRes.error.message);
+        setLoading(false);
+        return;
+      }
+
+      if (!teamRes.data) {
+        setError("Hold ikke fundet");
         setLoading(false);
         return;
       }
@@ -458,6 +461,7 @@ export default function HoldkampSide({
             {match?.round ? `Runde ${match.round} • ` : ""}
             {match ? formatDate(match.match_date) : ""}
             {match?.location ? ` • ${match.location}` : ""}
+            {match?.season ? ` • ${match.season}` : ""}
           </p>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">

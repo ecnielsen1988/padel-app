@@ -2,6 +2,7 @@
 
 export const dynamic = "force-dynamic";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -19,20 +20,22 @@ type MatchRow = {
   match_date: string | null;
   home_away: "home" | "away";
   location: string | null;
-  round: number | null;
   season: string;
   status: "upcoming" | "played";
   result_for: number | null;
   result_against: number | null;
-  hold_teams?: {
-    name: string;
-    division: string;
-  } | {
-    name: string;
-    division: string;
-  }[];
+  hold_teams?:
+    | {
+        name: string;
+        division: string;
+      }
+    | {
+        name: string;
+        division: string;
+      }[];
 };
 
+const SEASONS = ["2025 forår", "2025 efterår", "2026 forår"];
 const CURRENT_SEASON = "2026 forår";
 
 function formatDate(dateString: string | null) {
@@ -51,6 +54,7 @@ function formatDate(dateString: string | null) {
 
 function toDatetimeLocalValue(isoString: string | null) {
   if (!isoString) return "";
+
   const d = new Date(isoString);
   const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -63,7 +67,45 @@ function toDatetimeLocalValue(isoString: string | null) {
   return `${year}-${month}-${day}T${hour}:${minute}`;
 }
 
+function getMatchTimestamp(dateString: string | null) {
+  if (!dateString) return Number.MAX_SAFE_INTEGER;
+  const ts = new Date(dateString).getTime();
+  return Number.isNaN(ts) ? Number.MAX_SAFE_INTEGER : ts;
+}
+
+function getTeamRelation(match: MatchRow) {
+  return Array.isArray(match.hold_teams) ? match.hold_teams[0] : match.hold_teams;
+}
+
+function getDisplayMatchTitle(match: MatchRow) {
+  const team = getTeamRelation(match);
+  const teamName = team?.name ?? "Ukendt hold";
+
+  return match.home_away === "home"
+    ? `${teamName} vs. ${match.opponent}`
+    : `${match.opponent} vs. ${teamName}`;
+}
+
+function isWin(match: MatchRow) {
+  if (match.result_for === null || match.result_against === null) return false;
+  return match.result_for > match.result_against;
+}
+
+function isLoss(match: MatchRow) {
+  if (match.result_for === null || match.result_against === null) return false;
+  return match.result_for < match.result_against;
+}
+
+function formatDisplayedScore(match: MatchRow) {
+  if (match.result_for === null || match.result_against === null) return "—";
+
+  return match.home_away === "home"
+    ? `${match.result_for}-${match.result_against}`
+    : `${match.result_against}-${match.result_for}`;
+}
+
 export default function AdminHoldkampePage() {
+  const [selectedSeason, setSelectedSeason] = useState(CURRENT_SEASON);
   const [teams, setTeams] = useState<Team[]>([]);
   const [matches, setMatches] = useState<MatchRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,16 +113,32 @@ export default function AdminHoldkampePage() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const [editingMatchId, setEditingMatchId] = useState<string | null>(null);
+
   const [teamId, setTeamId] = useState("");
   const [opponent, setOpponent] = useState("");
   const [matchDate, setMatchDate] = useState("");
   const [homeAway, setHomeAway] = useState<"home" | "away">("home");
   const [location, setLocation] = useState("");
-  const [round, setRound] = useState("");
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [selectedSeason]);
+
+  function resetForm(nextTeams?: Team[]) {
+    setEditingMatchId(null);
+    setOpponent("");
+    setMatchDate("");
+    setHomeAway("home");
+    setLocation("");
+
+    const source = nextTeams ?? teams;
+    if (source.length > 0) {
+      setTeamId(source[0].id);
+    } else {
+      setTeamId("");
+    }
+  }
 
   async function fetchData() {
     setLoading(true);
@@ -90,8 +148,9 @@ export default function AdminHoldkampePage() {
       supabase
         .from("hold_teams")
         .select("id, name, division, season")
-        .eq("season", CURRENT_SEASON)
-        .order("division", { ascending: true }),
+        .eq("season", selectedSeason)
+        .order("division", { ascending: true })
+        .order("name", { ascending: true }),
 
       supabase
         .from("hold_matches")
@@ -102,7 +161,6 @@ export default function AdminHoldkampePage() {
           match_date,
           home_away,
           location,
-          round,
           season,
           status,
           result_for,
@@ -112,7 +170,7 @@ export default function AdminHoldkampePage() {
             division
           )
         `)
-        .eq("season", CURRENT_SEASON)
+        .eq("season", selectedSeason)
         .order("match_date", { ascending: true, nullsFirst: false }),
     ]);
 
@@ -128,31 +186,71 @@ export default function AdminHoldkampePage() {
       return;
     }
 
-    const nextTeams = teamsRes.data ?? [];
-    setTeams(nextTeams);
-    setMatches((matchesRes.data as MatchRow[]) ?? []);
+    const nextTeams = (teamsRes.data ?? []).slice().sort((a, b) => {
+      const divisionCompare = (a.division ?? "").localeCompare(b.division ?? "", "da");
+      if (divisionCompare !== 0) return divisionCompare;
+      return a.name.localeCompare(b.name, "da");
+    });
 
-    if (!teamId && nextTeams.length > 0) {
-      setTeamId(nextTeams[0].id);
+    const nextMatches = ((matchesRes.data as MatchRow[]) ?? []).slice().sort((a, b) => {
+      const aTeam = getTeamRelation(a);
+      const bTeam = getTeamRelation(b);
+
+      const divisionCompare = (aTeam?.division ?? "").localeCompare(
+        bTeam?.division ?? "",
+        "da"
+      );
+      if (divisionCompare !== 0) return divisionCompare;
+
+      const teamCompare = (aTeam?.name ?? "").localeCompare(bTeam?.name ?? "", "da");
+      if (teamCompare !== 0) return teamCompare;
+
+      return getMatchTimestamp(a.match_date) - getMatchTimestamp(b.match_date);
+    });
+
+    setTeams(nextTeams);
+    setMatches(nextMatches);
+
+    if (!editingMatchId) {
+      if (nextTeams.length > 0) {
+        setTeamId((prev) =>
+          prev && nextTeams.some((team) => team.id === prev) ? prev : nextTeams[0].id
+        );
+      } else {
+        setTeamId("");
+      }
     }
 
     setLoading(false);
   }
 
-  async function handleCreateMatch(e: React.FormEvent) {
+  function startEdit(match: MatchRow) {
+    setEditingMatchId(match.id);
+    setTeamId(match.team_id);
+    setOpponent(match.opponent);
+    setMatchDate(toDatetimeLocalValue(match.match_date));
+    setHomeAway(match.home_away);
+    setLocation(match.location ?? "");
+    setMessage(null);
+    setError(null);
+
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
     setMessage(null);
     setError(null);
 
     if (!teamId) {
-      setError("Vælg et hold.");
+      setError('Vælg et hold.');
       setSaving(false);
       return;
     }
 
     if (!opponent.trim()) {
-      setError("Skriv en modstander.");
+      setError('Skriv en modstander.');
       setSaving(false);
       return;
     }
@@ -163,34 +261,47 @@ export default function AdminHoldkampePage() {
       match_date: matchDate ? new Date(matchDate).toISOString() : null,
       home_away: homeAway,
       location: location.trim() || null,
-      round: round ? Number(round) : null,
-      season: CURRENT_SEASON,
+      season: selectedSeason,
       status: "upcoming" as const,
+      round: null,
     };
 
-    const { error: insertError } = await supabase
-      .from("hold_matches")
-      .insert(payload);
+    if (editingMatchId) {
+      const { error: updateError } = await supabase
+        .from("hold_matches")
+        .update(payload)
+        .eq("id", editingMatchId);
 
-    if (insertError) {
-      setError(insertError.message);
-      setSaving(false);
-      return;
+      if (updateError) {
+        setError(updateError.message);
+        setSaving(false);
+        return;
+      }
+
+      setMessage("Kampen er opdateret.");
+    } else {
+      const { error: insertError } = await supabase
+        .from("hold_matches")
+        .insert(payload);
+
+      if (insertError) {
+        setError(insertError.message);
+        setSaving(false);
+        return;
+      }
+
+      setMessage("Kampen er oprettet.");
     }
 
-    setMessage("Kampen er oprettet.");
-    setOpponent("");
-    setMatchDate("");
-    setHomeAway("home");
-    setLocation("");
-    setRound("");
-
     await fetchData();
+    resetForm();
     setSaving(false);
   }
 
   async function handleDeleteMatch(matchId: string) {
-    const ok = window.confirm("Vil du slette denne kamp?");
+    const ok = window.confirm(
+      "Vil du slette denne kamp? Det kan påvirke tilmeldinger og spillerdata på kampen."
+    );
     if (!ok) return;
 
     setError(null);
@@ -206,221 +317,325 @@ export default function AdminHoldkampePage() {
       return;
     }
 
+    if (editingMatchId === matchId) {
+      resetForm();
+    }
+
     setMessage("Kampen blev slettet.");
     await fetchData();
   }
 
   const groupedMatches = useMemo(() => {
-    const map = new Map<string, MatchRow[]>();
+    const map = new Map<string, { division: string; teamName: string; matches: MatchRow[] }>();
 
     for (const match of matches) {
-      const team = Array.isArray(match.hold_teams)
-        ? match.hold_teams[0]
-        : match.hold_teams;
-
+      const team = getTeamRelation(match);
+      const division = team?.division ?? "Ukendt serie";
       const teamName = team?.name ?? "Ukendt hold";
+      const key = `${division}___${teamName}`;
 
-      if (!map.has(teamName)) {
-        map.set(teamName, []);
+      if (!map.has(key)) {
+        map.set(key, { division, teamName, matches: [] });
       }
 
-      map.get(teamName)!.push(match);
+      map.get(key)!.matches.push(match);
     }
 
-    return Array.from(map.entries());
+    return Array.from(map.values()).sort((a, b) => {
+      const divisionCompare = a.division.localeCompare(b.division, "da");
+      if (divisionCompare !== 0) return divisionCompare;
+      return a.teamName.localeCompare(b.teamName, "da");
+    });
   }, [matches]);
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-gradient-to-b from-pink-50 to-white p-4 md:p-8">
-        <div className="mx-auto max-w-6xl rounded-3xl bg-white p-6 shadow-sm ring-1 ring-pink-100">
-          <h1 className="text-3xl font-bold text-pink-700">Admin • Holdkampe</h1>
-          <p className="mt-3 text-gray-500">Henter data...</p>
+      <main className="min-h-screen bg-gradient-to-b from-pink-50 to-white p-3 text-slate-900 dark:from-slate-950 dark:to-slate-900 dark:text-slate-100 md:p-6">
+        <div className="mx-auto max-w-6xl rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-100 dark:bg-slate-900 dark:ring-slate-800">
+          <h1 className="text-2xl font-bold text-pink-700 dark:text-pink-300">
+            Admin • Holdkampe
+          </h1>
+          <p className="mt-2 text-sm text-gray-500 dark:text-slate-400">Henter data...</p>
         </div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-pink-50 to-white p-4 md:p-8">
-      <div className="mx-auto max-w-6xl">
-        <div className="mb-6 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-pink-100">
-          <h1 className="text-3xl font-bold text-pink-700">Admin • Holdkampe</h1>
-          <p className="mt-2 text-gray-600">
-            Opret og administrér holdkampe for {CURRENT_SEASON}.
-          </p>
+    <main className="min-h-screen bg-gradient-to-b from-pink-50 to-white p-3 text-slate-900 dark:from-slate-950 dark:to-slate-900 dark:text-slate-100 md:p-6">
+      <div className="mx-auto max-w-6xl space-y-5">
+        <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-100 dark:bg-slate-900 dark:ring-slate-800">
+          <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-pink-700 dark:text-pink-300">
+                Admin • Holdkampe
+              </h1>
+              <p className="mt-1 text-sm text-gray-600 dark:text-slate-400">
+                Opret, redigér og slet kampe. Gå derefter ind på kampen for at indtaste spillerresultater.
+              </p>
+            </div>
+
+            <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:items-center">
+              <Link
+                href="/admin/hold"
+                className="rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-pink-700 ring-1 ring-pink-200 transition hover:bg-pink-100 dark:bg-slate-900 dark:text-pink-300 dark:ring-slate-700 dark:hover:bg-slate-800"
+              >
+                Admin for hold
+              </Link>
+
+              <div className="w-full md:w-64">
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400">
+                  Sæson
+                </label>
+                <select
+                  value={selectedSeason}
+                  onChange={(e) => {
+                    setSelectedSeason(e.target.value);
+                    setEditingMatchId(null);
+                    setMessage(null);
+                    setError(null);
+                  }}
+                  className="w-full rounded-2xl border border-pink-200 bg-pink-50 px-4 py-3 text-sm outline-none focus:border-pink-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-pink-400"
+                >
+                  {SEASONS.map((season) => (
+                    <option key={season} value={season}>
+                      {season}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <section className="mb-6 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-pink-100">
-          <h2 className="text-xl font-bold text-gray-800">Opret kamp</h2>
-
-          <form onSubmit={handleCreateMatch} className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+        <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-100 dark:bg-slate-900 dark:ring-slate-800">
+          <div className="mb-4 flex items-center justify-between gap-3">
             <div>
-              <label className="mb-2 block text-sm font-semibold text-gray-700">
+              <h2 className="text-lg font-bold text-gray-800 dark:text-slate-100">
+                {editingMatchId ? "Redigér kamp" : "Opret kamp"}
+              </h2>
+              <p className="text-xs text-gray-500 dark:text-slate-400">
+                Kampen oprettes i sæsonen {selectedSeason}
+              </p>
+            </div>
+
+            {editingMatchId && (
+              <button
+                type="button"
+                onClick={() => resetForm()}
+                className="rounded-full bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+              >
+                Annullér redigering
+              </button>
+            )}
+          </div>
+
+          <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold text-gray-700 dark:text-slate-200">
                 Hold
               </label>
               <select
                 value={teamId}
                 onChange={(e) => setTeamId(e.target.value)}
-                className="w-full rounded-2xl border border-pink-200 bg-pink-50 px-4 py-3 outline-none focus:border-pink-400"
+                className="w-full rounded-2xl border border-pink-200 bg-pink-50 px-4 py-3 text-sm outline-none focus:border-pink-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-pink-400"
               >
-                {teams.map((team) => (
-                  <option key={team.id} value={team.id}>
-                    {team.name} • {team.division}
-                  </option>
-                ))}
+                {teams.length === 0 ? (
+                  <option value="">Ingen hold i denne sæson</option>
+                ) : (
+                  teams.map((team) => (
+                    <option key={team.id} value={team.id}>
+                      {team.division} • {team.name}
+                    </option>
+                  ))
+                )}
               </select>
             </div>
 
             <div>
-              <label className="mb-2 block text-sm font-semibold text-gray-700">
+              <label className="mb-1.5 block text-sm font-semibold text-gray-700 dark:text-slate-200">
                 Modstander
               </label>
               <input
                 value={opponent}
                 onChange={(e) => setOpponent(e.target.value)}
                 placeholder="Fx Hillerød Padel Club"
-                className="w-full rounded-2xl border border-pink-200 bg-pink-50 px-4 py-3 outline-none focus:border-pink-400"
+                className="w-full rounded-2xl border border-pink-200 bg-pink-50 px-4 py-3 text-sm outline-none focus:border-pink-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-pink-400"
               />
             </div>
 
             <div>
-              <label className="mb-2 block text-sm font-semibold text-gray-700">
+              <label className="mb-1.5 block text-sm font-semibold text-gray-700 dark:text-slate-200">
                 Dato og tid
               </label>
               <input
                 type="datetime-local"
                 value={matchDate}
                 onChange={(e) => setMatchDate(e.target.value)}
-                className="w-full rounded-2xl border border-pink-200 bg-pink-50 px-4 py-3 outline-none focus:border-pink-400"
+                className="w-full rounded-2xl border border-pink-200 bg-pink-50 px-4 py-3 text-sm outline-none focus:border-pink-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-pink-400"
               />
             </div>
 
             <div>
-              <label className="mb-2 block text-sm font-semibold text-gray-700">
+              <label className="mb-1.5 block text-sm font-semibold text-gray-700 dark:text-slate-200">
                 Hjemme / ude
               </label>
               <select
                 value={homeAway}
                 onChange={(e) => setHomeAway(e.target.value as "home" | "away")}
-                className="w-full rounded-2xl border border-pink-200 bg-pink-50 px-4 py-3 outline-none focus:border-pink-400"
+                className="w-full rounded-2xl border border-pink-200 bg-pink-50 px-4 py-3 text-sm outline-none focus:border-pink-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-pink-400"
               >
                 <option value="home">Hjemme</option>
                 <option value="away">Ude</option>
               </select>
             </div>
 
-            <div>
-              <label className="mb-2 block text-sm font-semibold text-gray-700">
+            <div className="md:col-span-2">
+              <label className="mb-1.5 block text-sm font-semibold text-gray-700 dark:text-slate-200">
                 Lokation
               </label>
               <input
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
                 placeholder="Fx Padelhuset Hillerød"
-                className="w-full rounded-2xl border border-pink-200 bg-pink-50 px-4 py-3 outline-none focus:border-pink-400"
+                className="w-full rounded-2xl border border-pink-200 bg-pink-50 px-4 py-3 text-sm outline-none focus:border-pink-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-pink-400"
               />
             </div>
 
-            <div>
-              <label className="mb-2 block text-sm font-semibold text-gray-700">
-                Runde
-              </label>
-              <input
-                type="number"
-                min={1}
-                max={6}
-                value={round}
-                onChange={(e) => setRound(e.target.value)}
-                placeholder="Fx 1"
-                className="w-full rounded-2xl border border-pink-200 bg-pink-50 px-4 py-3 outline-none focus:border-pink-400"
-              />
-            </div>
-
-            <div className="md:col-span-2">
+            <div className="md:col-span-2 xl:col-span-3 flex flex-wrap gap-2 pt-1">
               <button
                 type="submit"
-                disabled={saving}
-                className="rounded-2xl bg-pink-600 px-5 py-3 font-semibold text-white transition hover:bg-pink-700 disabled:opacity-60"
+                disabled={saving || teams.length === 0}
+                className="rounded-2xl bg-pink-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-pink-700 disabled:opacity-60"
               >
-                {saving ? "Gemmer..." : "Opret kamp"}
+                {saving ? "Gemmer..." : editingMatchId ? "Gem ændringer" : "Opret kamp"}
               </button>
+
+              {editingMatchId && (
+                <button
+                  type="button"
+                  onClick={() => resetForm()}
+                  className="rounded-2xl bg-gray-100 px-5 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                >
+                  Annullér
+                </button>
+              )}
             </div>
           </form>
 
           {message && (
-            <p className="mt-4 rounded-2xl bg-green-50 px-4 py-3 text-sm font-medium text-green-700">
+            <div className="mt-4 rounded-2xl bg-green-50 px-4 py-3 text-sm font-semibold text-green-700 ring-1 ring-green-100 dark:bg-green-950/40 dark:text-green-300 dark:ring-green-900">
               {message}
-            </p>
+            </div>
           )}
 
           {error && (
-            <p className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+            <div className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 ring-1 ring-red-100 dark:bg-red-950/40 dark:text-red-300 dark:ring-red-900">
               {error}
-            </p>
+            </div>
+          )}
+
+          {teams.length === 0 && (
+            <div className="mt-4 rounded-2xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800 ring-1 ring-amber-100 dark:bg-amber-950/30 dark:text-amber-200 dark:ring-amber-900">
+              Der findes ingen hold i sæsonen {selectedSeason}. Opret holdene i `hold_teams` først, før du kan oprette kampe.
+            </div>
           )}
         </section>
 
-        <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-pink-100">
-          <h2 className="text-xl font-bold text-gray-800">Eksisterende kampe</h2>
+        <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-100 dark:bg-slate-900 dark:ring-slate-800">
+          <div className="mb-4">
+            <h2 className="text-lg font-bold text-gray-800 dark:text-slate-100">
+              Eksisterende kampe
+            </h2>
+            <p className="text-xs text-gray-500 dark:text-slate-400">
+              {matches.length} kampe i {selectedSeason}
+            </p>
+          </div>
 
           {matches.length === 0 ? (
-            <div className="mt-4 rounded-2xl bg-pink-50 p-6 text-center">
+            <div className="rounded-2xl bg-pink-50 p-5 text-center dark:bg-slate-800">
               <div className="text-3xl">📅</div>
-              <p className="mt-3 font-semibold text-gray-800">
+              <p className="mt-2 text-sm font-semibold text-gray-800 dark:text-slate-100">
                 Der er ikke oprettet nogen kampe endnu
               </p>
             </div>
           ) : (
-            <div className="mt-4 space-y-6">
-              {groupedMatches.map(([teamName, teamMatches]) => (
-                <div key={teamName}>
-                  <h3 className="mb-3 text-lg font-bold text-pink-700">{teamName}</h3>
+            <div className="space-y-5">
+              {groupedMatches.map((group) => (
+                <div key={`${group.division}-${group.teamName}`}>
+                  <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-pink-700 dark:text-pink-300">
+                    {group.division} • {group.teamName}
+                  </h3>
 
-                  <div className="space-y-3">
-                    {teamMatches.map((match) => (
-                      <div
-                        key={match.id}
-                        className="flex flex-col gap-3 rounded-2xl bg-pink-50 p-4 md:flex-row md:items-center md:justify-between"
-                      >
-                        <div>
-                          <p className="text-sm font-semibold text-pink-700">
-                            {match.round ? `Runde ${match.round}` : "Ingen runde"}
-                          </p>
+                  <div className="space-y-2">
+                    {group.matches.map((match) => {
+                      const played = match.status === "played";
+                      const won = isWin(match);
+                      const lost = isLoss(match);
 
-                          <h4 className="text-lg font-bold text-gray-900">
-                            {match.home_away === "home" ? "vs." : "ude mod"} {match.opponent}
-                          </h4>
+                      return (
+                        <div
+                          key={match.id}
+                          className="rounded-2xl bg-pink-50 px-4 py-3 dark:bg-slate-800"
+                        >
+                          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                            <div className="min-w-0 flex-1">
+                              <h4 className="text-sm font-bold text-gray-900 dark:text-slate-100 sm:text-base">
+                                {getDisplayMatchTitle(match)}
+                              </h4>
 
-                          <p className="text-sm text-gray-500">
-                            {formatDate(match.match_date)}
-                            {match.location ? ` • ${match.location}` : ""}
-                          </p>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          {match.status === "played" &&
-                          match.result_for !== null &&
-                          match.result_against !== null ? (
-                            <div className="rounded-full bg-white px-4 py-2 text-sm font-bold text-pink-700 ring-1 ring-pink-200">
-                              {match.result_for}-{match.result_against}
+                              <p className="mt-1 text-xs leading-snug text-gray-500 dark:text-slate-400">
+                                {formatDate(match.match_date)}
+                                {match.location ? ` • ${match.location}` : ""}
+                              </p>
                             </div>
-                          ) : (
-                            <div className="rounded-full bg-white px-4 py-2 text-xs font-semibold text-gray-600 ring-1 ring-pink-200">
-                              Kommende kamp
-                            </div>
-                          )}
 
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteMatch(match.id)}
-                            className="rounded-full bg-white px-4 py-2 text-xs font-semibold text-red-600 ring-1 ring-red-200 hover:bg-red-50"
-                          >
-                            Slet
-                          </button>
+                            <div className="flex flex-wrap items-center gap-2">
+                              {played ? (
+                                <div
+                                  className={`rounded-full px-3 py-1 text-xs font-bold ring-1 ${
+                                    won
+                                      ? "bg-green-100 text-green-700 ring-green-200 dark:bg-green-950/40 dark:text-green-300 dark:ring-green-900"
+                                      : lost
+                                      ? "bg-red-100 text-red-700 ring-red-200 dark:bg-red-950/40 dark:text-red-300 dark:ring-red-900"
+                                      : "bg-white text-gray-700 ring-gray-200 dark:bg-slate-900 dark:text-slate-200 dark:ring-slate-700"
+                                  }`}
+                                >
+                                  {formatDisplayedScore(match)}
+                                </div>
+                              ) : (
+                                <div className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-gray-600 ring-1 ring-pink-200 dark:bg-slate-900 dark:text-slate-300 dark:ring-slate-700">
+                                  Kommende
+                                </div>
+                              )}
+
+                              <Link
+                                href={`/holdkampe/kamp/${match.id}`}
+                                className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-pink-700 ring-1 ring-pink-200 transition hover:bg-pink-100 dark:bg-slate-900 dark:text-pink-300 dark:ring-slate-700 dark:hover:bg-slate-700"
+                              >
+                                Resultater
+                              </Link>
+
+                              <button
+                                type="button"
+                                onClick={() => startEdit(match)}
+                                className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-gray-700 ring-1 ring-gray-200 transition hover:bg-gray-100 dark:bg-slate-900 dark:text-slate-200 dark:ring-slate-700 dark:hover:bg-slate-700"
+                              >
+                                Redigér
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteMatch(match.id)}
+                                className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-red-600 ring-1 ring-red-200 transition hover:bg-red-50 dark:bg-slate-900 dark:text-red-300 dark:ring-red-900 dark:hover:bg-red-950/30"
+                              >
+                                Slet
+                              </button>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               ))}
