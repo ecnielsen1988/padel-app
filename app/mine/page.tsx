@@ -1,4 +1,3 @@
-// app/mine/page.tsx
 'use client';
 export const dynamic = 'force-dynamic';
 
@@ -20,13 +19,11 @@ export default function MineKampeSide() {
   const [mitNavn, setMitNavn] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Hjælper: hent visningsnavn (profiles → auth metadata → name/email)
   async function hentVisningsnavn(): Promise<string | null> {
     const { data: auth } = await supabase.auth.getUser();
     const user = auth?.user;
     if (!user) return null;
 
-    // 1) profiles
     const profRes = await (supabase.from('profiles') as any)
       .select('visningsnavn')
       .eq('id', user.id)
@@ -35,10 +32,8 @@ export default function MineKampeSide() {
 
     let navn = (profile?.visningsnavn ?? '').toString().trim();
 
-    // 2) auth.user_metadata.visningsnavn
     if (!navn) navn = (((user as any).user_metadata?.visningsnavn) ?? '').toString().trim();
 
-    // 3) fallback name/email
     if (!navn) {
       navn =
         (((user as any).user_metadata?.name) ?? '').toString().trim() ||
@@ -47,43 +42,42 @@ export default function MineKampeSide() {
     return navn || null;
   }
 
-  // 1) Find mit visningsnavn
   useEffect(() => {
     (async () => {
       const navn = await hentVisningsnavn();
       setMitNavn(navn);
       setLoading(false);
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 2) Hent alle resultater, beregn Elo, og filtrér til kun mine kampe
   useEffect(() => {
     if (!mitNavn) return;
 
     async function hentAlleResultater(): Promise<Kamp[]> {
       const batchSize = 1000;
       let alleResultater: Kamp[] = [];
-      let lastId = 0;
+      let offset = 0;
+      let batch: Kamp[] = [];
 
-      while (true) {
+      do {
         const res = await (supabase.from('newresults') as any)
           .select('*')
           .order('date', { ascending: true })
           .order('id', { ascending: true })
-          .gt('id', lastId)
-          .limit(batchSize);
+          .range(offset, offset + batchSize - 1);
 
-        const batch = (res?.data ?? []) as any[];
+        const data = (res?.data ?? []) as Kamp[];
         const error = res?.error as any;
 
-        if (error) break;
-        if (!batch || batch.length === 0) break;
+        if (error) {
+          console.error('Fejl ved hentning af resultater:', error);
+          break;
+        }
 
-        alleResultater = alleResultater.concat(batch as unknown as Kamp[]);
-        lastId = Number((batch[batch.length - 1] as any).id) || lastId;
-        if (batch.length < batchSize) break;
-      }
+        batch = data;
+        alleResultater = alleResultater.concat(batch);
+        offset += batchSize;
+      } while (batch.length === batchSize);
 
       return alleResultater;
     }
@@ -91,7 +85,6 @@ export default function MineKampeSide() {
     async function hentResultaterOgBeregnElo() {
       setLoading(true);
 
-      // Hent spillere for initialEloMap
       const profRes = await (supabase.from('profiles') as any).select('*');
       const spillereData = (profRes?.data ?? []) as any[];
       if (!spillereData) {
@@ -111,10 +104,8 @@ export default function MineKampeSide() {
         return;
       }
 
-      // Beregn Elo på hele historikken for korrekte before/after
       const { nyEloMap, eloChanges } = beregnEloForKampe(resultaterData, initialEloMap);
 
-      // Gruppér i kampe
       const grupper: Record<number, Kamp[]> = {};
       resultaterData.forEach((kamp) => {
         const key = Number((kamp as any).kampid ?? 0);
@@ -122,7 +113,6 @@ export default function MineKampeSide() {
         grupper[key].push(kamp);
       });
 
-      // Filtrér til mine kampe
       const myName = (mitNavn ?? '').trim();
       const kampGrupperArray: KampGruppe[] = Object.entries(grupper)
         .map(([kampid, sætUnTyped]) => {
@@ -174,7 +164,6 @@ export default function MineKampeSide() {
     return '💩💩';
   }
 
-  // Indsend kommentar til admin (samme TS-mønster som /lastgames)
   async function sendBeskedTilAdmin(kampid: number) {
     const raw = kommentarer[kampid];
     const besked = (raw ?? '').toString().trim();
@@ -210,7 +199,6 @@ export default function MineKampeSide() {
   if (loading && !mitNavn) {
     return (
       <div style={{ padding: '1rem', maxWidth: 700, margin: 'auto', position: 'relative' }}>
-        {/* Tilbage-knap */}
         <button
           onClick={() => {
             if (typeof window !== 'undefined') window.history.back();
@@ -245,7 +233,6 @@ export default function MineKampeSide() {
   if (!mitNavn) {
     return (
       <div style={{ padding: '1rem', maxWidth: 700, margin: 'auto', position: 'relative' }}>
-        {/* Tilbage-knap */}
         <button
           onClick={() => {
             if (typeof window !== 'undefined') window.history.back();
@@ -293,7 +280,6 @@ export default function MineKampeSide() {
         position: 'relative',
       }}
     >
-      {/* Tilbage-knap */}
       <button
         onClick={() => {
           if (typeof window !== 'undefined') window.history.back();
@@ -376,7 +362,6 @@ export default function MineKampeSide() {
               📅 {new Date(førsteSæt.date).toLocaleDateString('da-DK')}
             </div>
 
-            {/* Øverste spilleroversigt */}
             <div
               style={{
                 display: 'flex',
@@ -396,7 +381,7 @@ export default function MineKampeSide() {
                     lineHeight: '1.2',
                   }}
                 >
-                  <span style={{ fontSize: 'clamp(0.9rem, 3vw, 1rem)', marginRight: '0.4rem)' }}>
+                  <span style={{ fontSize: 'clamp(0.9rem, 3vw, 1rem)', marginRight: '0.4rem' }}>
                     🎾
                   </span>
                   <strong
@@ -416,7 +401,6 @@ export default function MineKampeSide() {
               ))}
             </div>
 
-            {/* Sætvisning */}
             <div style={{ marginBottom: '1rem' }}>
               {sæt.map((kamp, index) => {
                 const changes = eloChanges[kamp.id];
@@ -458,7 +442,6 @@ export default function MineKampeSide() {
               })}
             </div>
 
-            {/* Elo efter kampen */}
             <div
               style={{
                 display: 'flex',
@@ -500,7 +483,6 @@ export default function MineKampeSide() {
               ))}
             </div>
 
-            {/* Indberettet af */}
             {(indberettetAf ?? '').toString().trim() && (
               <div
                 style={{
@@ -515,10 +497,14 @@ export default function MineKampeSide() {
               </div>
             )}
 
-            {/* Indrapportér fejl */}
             <div style={{ marginTop: '1.5rem' }}>
               <label
-                style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.85rem', fontWeight: 'bold' }}
+                style={{
+                  display: 'block',
+                  marginBottom: '0.3rem',
+                  fontSize: '0.85rem',
+                  fontWeight: 'bold',
+                }}
               >
                 🚫 Indberet fejl i kampen:
               </label>
@@ -562,4 +548,3 @@ export default function MineKampeSide() {
     </div>
   );
 }
-
