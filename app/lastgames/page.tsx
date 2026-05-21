@@ -1,4 +1,3 @@
-// app/lastgames/page.tsx
 'use client';
 export const dynamic = 'force-dynamic';
 
@@ -22,26 +21,28 @@ export default function SenesteKampeSide() {
     async function hentAlleResultater(): Promise<Kamp[]> {
       const batchSize = 1000;
       let alleResultater: Kamp[] = [];
-      let lastId = 0;
+      let offset = 0;
+      let batch: Kamp[] = [];
 
-      while (true) {
+      do {
         const res = await (supabase.from('newresults') as any)
           .select('*')
           .order('date', { ascending: true })
           .order('id', { ascending: true })
-          .gt('id', lastId)
-          .limit(batchSize);
+          .range(offset, offset + batchSize - 1);
 
-        const batch = (res?.data ?? []) as any[];
+        const data = (res?.data ?? []) as Kamp[];
         const error = res?.error as any;
 
-        if (error) break;
-        if (!batch || batch.length === 0) break;
+        if (error) {
+          console.error('Fejl ved hentning af resultater:', error);
+          break;
+        }
 
-        alleResultater = alleResultater.concat(batch as unknown as Kamp[]);
-        lastId = Number((batch[batch.length - 1] as any).id) || lastId;
-        if (batch.length < batchSize) break;
-      }
+        batch = data;
+        alleResultater = alleResultater.concat(batch);
+        offset += batchSize;
+      } while (batch.length === batchSize);
 
       return alleResultater;
     }
@@ -187,7 +188,6 @@ export default function SenesteKampeSide() {
         position: 'relative',
       }}
     >
-      {/* Tilbage-knap øverst venstre */}
       <button
         onClick={() => {
           if (typeof window !== 'undefined') window.history.back();
@@ -270,7 +270,6 @@ export default function SenesteKampeSide() {
               📅 {new Date(førsteSæt.date).toLocaleDateString('da-DK')}
             </div>
 
-            {/* Øverste spilleroversigt */}
             <div
               style={{
                 display: 'flex',
@@ -310,7 +309,6 @@ export default function SenesteKampeSide() {
               ))}
             </div>
 
-            {/* Sætvisning */}
             <div style={{ marginBottom: '1rem' }}>
               {sæt.map((kamp, index) => {
                 const changes = eloChanges[kamp.id];
@@ -352,7 +350,6 @@ export default function SenesteKampeSide() {
               })}
             </div>
 
-            {/* Elo efter kampen */}
             <div
               style={{
                 display: 'flex',
@@ -395,7 +392,6 @@ export default function SenesteKampeSide() {
               ))}
             </div>
 
-            {/* Indberettet af */}
             {(indberettetAf ?? '').toString().trim() && (
               <div
                 style={{
@@ -410,7 +406,6 @@ export default function SenesteKampeSide() {
               </div>
             )}
 
-            {/* Indrapportér fejl */}
             <div style={{ marginTop: '1.5rem' }}>
               <label
                 style={{
@@ -459,4 +454,3 @@ export default function SenesteKampeSide() {
     </div>
   );
 }
-
