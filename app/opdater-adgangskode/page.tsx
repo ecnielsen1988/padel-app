@@ -14,49 +14,13 @@ export default function OpdaterAdgangskode() {
   useEffect(() => {
     let mounted = true;
 
-    const finishReady = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (!mounted) return;
-
-      if (session) {
-        setBesked("");
-      } else {
-        setBesked(
-          "⚠️ Linket kunne ikke oprette en aktiv session. Bed om et nyt reset-link."
-        );
-      }
-
-      setKlar(true);
-    };
-
     const init = async () => {
       try {
         const url = new URL(window.location.href);
-        const code = url.searchParams.get("code");
         const tokenHash = url.searchParams.get("token_hash");
         const type = url.searchParams.get("type");
 
-        const {
-          data: { subscription },
-        } = supabase.auth.onAuthStateChange((event, session) => {
-          if (!mounted) return;
-
-          if (
-            (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN") &&
-            session
-          ) {
-            setBesked("");
-            setKlar(true);
-          }
-        });
-
-        if (code) {
-          const { error } = await supabase.auth.exchangeCodeForSession(code);
-          if (error) throw error;
-        } else if (tokenHash && type === "recovery") {
+        if (tokenHash && type === "recovery") {
           const { error } = await supabase.auth.verifyOtp({
             token_hash: tokenHash,
             type: "recovery",
@@ -76,30 +40,28 @@ export default function OpdaterAdgangskode() {
           }
         }
 
-        setTimeout(() => {
-          void finishReady();
-        }, 1200);
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
 
-        return () => subscription.unsubscribe();
+        if (!mounted) return;
+
+        if (!session) {
+          setBesked("⚠️ Linket kunne ikke oprette en aktiv session. Bed om et nyt reset-link.");
+        }
+
+        setKlar(true);
       } catch (err: any) {
         if (!mounted) return;
-        setBesked(
-          "⚠️ Kunne ikke oprette session fra linket: " +
-            (err?.message ?? String(err))
-        );
+        setBesked("⚠️ Kunne ikke oprette session fra linket: " + (err?.message ?? String(err)));
         setKlar(true);
       }
     };
 
-    let cleanup: void | (() => void);
-
-    void init().then((fn) => {
-      cleanup = fn;
-    });
+    void init();
 
     return () => {
       mounted = false;
-      if (cleanup) cleanup();
     };
   }, []);
 
@@ -132,9 +94,7 @@ export default function OpdaterAdgangskode() {
   return (
     <main style={styles.main}>
       <h1>Ny adgangskode</h1>
-      <p style={{ marginBottom: "1rem" }}>
-        Indtast din nye adgangskode herunder.
-      </p>
+      <p style={{ marginBottom: "1rem" }}>Indtast din nye adgangskode herunder.</p>
 
       <form onSubmit={handleSubmit}>
         <input
@@ -147,20 +107,13 @@ export default function OpdaterAdgangskode() {
           minLength={8}
           disabled={!klar || loading}
         />
-
-        <button
-          type="submit"
-          style={styles.button}
-          disabled={!klar || loading}
-        >
+        <button type="submit" style={styles.button} disabled={!klar || loading}>
           {loading ? "Gemmer..." : "Gem adgangskode"}
         </button>
       </form>
 
       {besked && <p style={{ marginTop: "1rem" }}>{besked}</p>}
-      {!besked && !klar && (
-        <p style={{ marginTop: "1rem" }}>Tjekker link og opretter session…</p>
-      )}
+      {!besked && !klar && <p style={{ marginTop: "1rem" }}>Tjekker link og opretter session…</p>}
     </main>
   );
 }
