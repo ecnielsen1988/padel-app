@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabaseClient";
 
@@ -9,69 +9,106 @@ export default function OpdaterAdgangskode() {
   const [nyAdgangskode, setNyAdgangskode] = useState("");
   const [besked, setBesked] = useState("");
   const [loading, setLoading] = useState(false);
-  const [klar, setKlar] = useState(false); // når session er forsøgt etableret
+  const [klar, setKlar] = useState(false);
 
-  // 1) Forsøg at etablere session fra URL (PKCE ?code=... eller hash tokens)
   useEffect(() => {
+    let mounted = true;
+
     const init = async () => {
       try {
         const url = new URL(window.location.href);
+
         const code = url.searchParams.get("code");
+        const tokenHash = url.searchParams.get("token_hash");
+        const type = url.searchParams.get("type");
 
         if (code) {
-          // Ny OTP/PKCE flow: ?code=...
-          const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+          const { error } = await supabase.auth.exchangeCodeForSession(code);
+          if (error) throw error;
+        } else if (tokenHash && type === "recovery") {
+          const { error } = await supabase.auth.verifyOtp({
+            token_hash: tokenHash,
+            type: "recovery",
+          });
           if (error) throw error;
         } else if (url.hash) {
-          // Ældre flow: #access_token=...&refresh_token=...
           const params = new URLSearchParams(url.hash.replace("#", ""));
           const access_token = params.get("access_token");
           const refresh_token = params.get("refresh_token");
+
           if (access_token && refresh_token) {
-            const { error } = await supabase.auth.setSession({ access_token, refresh_token });
+            const { error } = await supabase.auth.setSession({
+              access_token,
+              refresh_token,
+            });
             if (error) throw error;
           }
         }
 
-        // Tjek at vi nu har en session
-        const { data: s } = await supabase.auth.getSession();
-        if (!s.session) {
-          setBesked("⚠️ Der mangler en aktiv session. Åbn linket direkte fra din e-mail igen.");
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (!session) {
+          if (mounted) {
+            setBesked(
+              "⚠️ Linket kunne ikke oprette en aktiv session. Bed om et nyt reset-link og åbn det direkte fra e-mailen."
+            );
+          }
+          return;
+        }
+
+        if (mounted) {
+          setBesked("");
         }
       } catch (err: any) {
-        setBesked("⚠️ Kunne ikke oprette session fra linket: " + (err?.message ?? String(err)));
+        if (mounted) {
+          setBesked(
+            "⚠️ Kunne ikke oprette session fra linket: " +
+              (err?.message ?? String(err))
+          );
+        }
       } finally {
-        setKlar(true);
+        if (mounted) {
+          setKlar(true);
+        }
       }
     };
-    init();
+
+    void init();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  // 2) Gem ny adgangskode
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setBesked("");
 
-    try {
-      // Simpelt klientcheck — tilpas regler efter behov
-      if (nyAdgangskode.length < 8) {
-        setBesked("❌ Adgangskoden skal mindst være 8 tegn.");
-        setLoading(false);
-        return;
-      }
+    if (nyAdgangskode.length < 8) {
+      setBesked("❌ Adgangskoden skal mindst være 8 tegn.");
+      return;
+    }
 
-      const { error } = await supabase.auth.updateUser({ password: nyAdgangskode });
+    setLoading(true);
+
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: nyAdgangskode,
+      });
 
       if (error) {
-        // Almindelige Supabase-fejl, fx “New password should be different…”
         setBesked("❌ Fejl: " + error.message);
         setLoading(false);
         return;
       }
 
       setBesked("✅ Adgangskoden er opdateret. Du sendes videre…");
-      setTimeout(() => router.push("/startside"), 1500);
+      setLoading(false);
+      setTimeout(() => {
+        router.push("/startside");
+      }, 1500);
     } catch (err: any) {
       setBesked("❌ Uventet fejl: " + (err?.message ?? String(err)));
       setLoading(false);
@@ -85,7 +122,6 @@ export default function OpdaterAdgangskode() {
         Indtast din nye adgangskode herunder.
       </p>
 
-      {/* Vis formularen selv hvis vi ikke har session endnu — nogle brugere refresher siden efter klik */}
       <form onSubmit={handleSubmit}>
         <input
           type="password"
@@ -94,15 +130,23 @@ export default function OpdaterAdgangskode() {
           onChange={(e) => setNyAdgangskode(e.target.value)}
           style={styles.input}
           required
-          disabled={!klar}
+          minLength={8}
+          disabled={!klar || loading}
         />
-        <button type="submit" style={styles.button} disabled={loading || !klar}>
+
+        <button
+          type="submit"
+          style={styles.button}
+          disabled={!klar || loading}
+        >
           {loading ? "Gemmer..." : "Gem adgangskode"}
         </button>
       </form>
 
       {besked && <p style={{ marginTop: "1rem" }}>{besked}</p>}
-      {!besked && !klar && <p style={{ marginTop: "1rem" }}>Tjekker link og opretter session…</p>}
+      {!besked && !klar && (
+        <p style={{ marginTop: "1rem" }}>Tjekker link og opretter session…</p>
+      )}
     </main>
   );
 }
@@ -137,6 +181,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: "1.2rem",
     cursor: "pointer",
     marginTop: "1rem",
+    width: "100%",
   },
 };
-
