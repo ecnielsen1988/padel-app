@@ -14,13 +14,44 @@ export default function OpdaterAdgangskode() {
   useEffect(() => {
     let mounted = true;
 
+    const finishReady = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!mounted) return;
+
+      if (session) {
+        setBesked("");
+      } else {
+        setBesked(
+          "⚠️ Linket kunne ikke oprette en aktiv session. Bed om et nyt reset-link."
+        );
+      }
+
+      setKlar(true);
+    };
+
     const init = async () => {
       try {
         const url = new URL(window.location.href);
-
         const code = url.searchParams.get("code");
         const tokenHash = url.searchParams.get("token_hash");
         const type = url.searchParams.get("type");
+
+        const {
+          data: { subscription },
+        } = supabase.auth.onAuthStateChange((event, session) => {
+          if (!mounted) return;
+
+          if (
+            (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN") &&
+            session
+          ) {
+            setBesked("");
+            setKlar(true);
+          }
+        });
 
         if (code) {
           const { error } = await supabase.auth.exchangeCodeForSession(code);
@@ -45,40 +76,30 @@ export default function OpdaterAdgangskode() {
           }
         }
 
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
+        setTimeout(() => {
+          void finishReady();
+        }, 1200);
 
-        if (!session) {
-          if (mounted) {
-            setBesked(
-              "⚠️ Linket kunne ikke oprette en aktiv session. Bed om et nyt reset-link og åbn det direkte fra e-mailen."
-            );
-          }
-          return;
-        }
-
-        if (mounted) {
-          setBesked("");
-        }
+        return () => subscription.unsubscribe();
       } catch (err: any) {
-        if (mounted) {
-          setBesked(
-            "⚠️ Kunne ikke oprette session fra linket: " +
-              (err?.message ?? String(err))
-          );
-        }
-      } finally {
-        if (mounted) {
-          setKlar(true);
-        }
+        if (!mounted) return;
+        setBesked(
+          "⚠️ Kunne ikke oprette session fra linket: " +
+            (err?.message ?? String(err))
+        );
+        setKlar(true);
       }
     };
 
-    void init();
+    let cleanup: void | (() => void);
+
+    void init().then((fn) => {
+      cleanup = fn;
+    });
 
     return () => {
       mounted = false;
+      if (cleanup) cleanup();
     };
   }, []);
 
@@ -93,26 +114,19 @@ export default function OpdaterAdgangskode() {
 
     setLoading(true);
 
-    try {
-      const { error } = await supabase.auth.updateUser({
-        password: nyAdgangskode,
-      });
+    const { error } = await supabase.auth.updateUser({
+      password: nyAdgangskode,
+    });
 
-      if (error) {
-        setBesked("❌ Fejl: " + error.message);
-        setLoading(false);
-        return;
-      }
+    setLoading(false);
 
-      setBesked("✅ Adgangskoden er opdateret. Du sendes videre…");
-      setLoading(false);
-      setTimeout(() => {
-        router.push("/startside");
-      }, 1500);
-    } catch (err: any) {
-      setBesked("❌ Uventet fejl: " + (err?.message ?? String(err)));
-      setLoading(false);
+    if (error) {
+      setBesked("❌ Fejl: " + error.message);
+      return;
     }
+
+    setBesked("✅ Adgangskoden er opdateret. Du sendes videre…");
+    setTimeout(() => router.push("/startside"), 1500);
   };
 
   return (
