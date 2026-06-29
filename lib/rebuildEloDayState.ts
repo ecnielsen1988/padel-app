@@ -58,13 +58,15 @@ export async function rebuildEloDayState() {
     return { inserted: 0 };
   }
 
+  const resultRows = (rows ?? []) as any[];
+
   //
   // 3. Gruppér rows pr. dato
   //
   // byDate["2025-10-24"] = [ alle sæt den dato ]
   //
   const byDate = new Map<string, any[]>();
-  for (const r of rows) {
+  for (const r of resultRows) {
     if (!r.date) continue;
     if (!byDate.has(r.date)) byDate.set(r.date, []);
     byDate.get(r.date)!.push(r);
@@ -190,8 +192,8 @@ export async function rebuildEloDayState() {
   for (let i = 0; i < dayStateRows.length; i += CHUNK) {
     const slice = dayStateRows.slice(i, i + CHUNK);
 
-    const { error: upErr } = await supabaseServiceRole
-      .from("elo_day_state")
+    const { error: upErr } = await (supabaseServiceRole
+      .from("elo_day_state") as any)
       .upsert(slice, {
         onConflict: "dato,visningsnavn",
       });
@@ -210,4 +212,3 @@ export async function rebuildEloDayState() {
 
   return { inserted: totalInserted };
 }
-

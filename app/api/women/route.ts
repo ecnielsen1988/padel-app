@@ -8,11 +8,14 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { beregnNyRangliste } from "@/lib/beregnNyRangliste";
 
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { persistSession: false } }
-);
+function getSupabase() {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) {
+    throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+  }
+  return createClient(url, key, { auth: { persistSession: false } });
+}
 
 type RangRow = {
   visningsnavn: string | null;
@@ -22,6 +25,7 @@ type RangRow = {
 
 export async function GET(req: Request) {
   try {
+    const supabase = getSupabase();
     // 1) Hent fuld rangliste (samme som /api/rangliste)
     const raw = await beregnNyRangliste();
 
@@ -34,8 +38,8 @@ export async function GET(req: Request) {
     // 2) Hent aktive kvinder fra profiles
     const { data: womenProfiles, error: womenErr } = await supabase
       .from("profiles")
-      .select("visningsnavn, koen, active")
-      .eq("active", true)
+      .select("visningsnavn, koen, status")
+      .eq("status", "active")
       .eq("koen", "kvinde");
 
     if (womenErr) {

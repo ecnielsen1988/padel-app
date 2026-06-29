@@ -7,19 +7,31 @@ import * as webpush from 'web-push'; // ⬅️ CJS-kompatibel import
 import { createClient } from '@supabase/supabase-js';
 
 const VAPID_MAILTO = process.env.VAPID_MAILTO ?? 'mailto:info@padelhuset.dk';
-const VAPID_PUBLIC = process.env.VAPID_PUBLIC!;
-const VAPID_PRIVATE = process.env.VAPID_PRIVATE!;
+const VAPID_PUBLIC = process.env.VAPID_PUBLIC;
+const VAPID_PRIVATE = process.env.VAPID_PRIVATE;
 
-const SUPABASE_URL = process.env.SUPABASE_URL!;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-webpush.setVapidDetails(VAPID_MAILTO, VAPID_PUBLIC, VAPID_PRIVATE);
+let webpushReady = false;
 
-// Service-role klient (server only)
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+function ensureNotifySetup() {
+  if (!VAPID_PUBLIC || !VAPID_PRIVATE) {
+    throw new Error('Missing VAPID_PUBLIC or VAPID_PRIVATE');
+  }
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+  }
+  if (!webpushReady) {
+    webpush.setVapidDetails(VAPID_MAILTO, VAPID_PUBLIC, VAPID_PRIVATE);
+    webpushReady = true;
+  }
+  return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+}
 
 export async function POST(req: NextRequest) {
   try {
+    const supabase = ensureNotifySetup();
     const { user_id, title, body, url } = await req.json();
 
     if (!user_id) {

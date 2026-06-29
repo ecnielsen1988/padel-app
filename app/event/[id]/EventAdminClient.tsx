@@ -4,6 +4,11 @@ import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { beregnEloForKampe } from "@/lib/beregnElo";
+import {
+  getEventKampidForGroup,
+  getEventKampidRange,
+  getEventSubmissionState,
+} from "@/lib/eventSubmission";
 
 /* ======================== Typer ======================== */
 type EventRow = {
@@ -373,30 +378,6 @@ async function persistGroupMeta(
     });
 }
 
-async function getNextKampId(): Promise<number> {
-  type KampIdRow = { kampid: number | string | null };
-  const { data, error } = await supabase
-    .from("newresults")
-    .select("kampid")
-    .order("kampid", { ascending: false })
-    .limit(1);
-
-  if (error) {
-    console.warn("Kunne ikke hente max kampid, starter fra 1:", error.message);
-    return 1;
-  }
-
-  const lastAny = (data as KampIdRow[] | null)?.[0]?.kampid;
-  const lastNum =
-    typeof lastAny === "number"
-      ? lastAny
-      : typeof lastAny === "string"
-      ? parseInt(lastAny, 10)
-      : 0;
-
-  return (Number.isFinite(lastNum) ? lastNum : 0) + 1;
-}
-
 /* ======================== Hovedkomponent ======================== */
 export default function EventAdminClient({ eventId }: { eventId: string }) {
   const router = useRouter();
@@ -422,6 +403,9 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
   const [scores, setScores] = useState<Record<string, Score>>({});
   const [groupOrder, setGroupOrder] = useState<number[]>([]);
   const [dbGroups, setDbGroups] = useState<EventPlayer[][] | null>(null);
+  const [resultsSubmitted, setResultsSubmitted] = useState(false);
+  const [submittedSetCount, setSubmittedSetCount] = useState(0);
+  const [submissionBusy, setSubmissionBusy] = useState(false);
 
   // 🔒 Låse-flag når programmet er offentliggjort
   const locked = event?.status === "published";
@@ -442,6 +426,26 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
       setEventsList((json?.data ?? []) as EventRow[]);
     })();
   }, [eventId]);
+
+  const refreshSubmissionState = useCallback(
+    async (nextEvent?: EventRow | null) => {
+      const targetEvent = nextEvent ?? event;
+      if (!targetEvent?.id || !targetEvent?.date) {
+        setResultsSubmitted(false);
+        setSubmittedSetCount(0);
+        return;
+      }
+
+      try {
+        const state = await getEventSubmissionState(supabase, targetEvent);
+        setResultsSubmitted(state.submitted);
+        setSubmittedSetCount(state.count);
+      } catch (error) {
+        console.warn("submission state load error", error);
+      }
+    },
+    [event]
+  );
 
   /* --- Elo map fra /api/rangliste (første load) --- */
   useEffect(() => {
@@ -499,6 +503,10 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
     void loadPlayers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId, eloReady, event?.status]);
+
+  useEffect(() => {
+    void refreshSubmissionState();
+  }, [refreshSubmissionState, event?.id, event?.date]);
 
   async function loadPlayers() {
     setLoadingPlayers(true);
@@ -625,6 +633,17 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
     void loadEventResultsToState(eventId, setScores, setRoundsPerCourt);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
+
+  useEffect(() => {
+    if (!eventId) return;
+
+    const interval = window.setInterval(() => {
+      void loadEventResultsToState(eventId, setScores, setRoundsPerCourt);
+      void refreshSubmissionState();
+    }, 60000);
+
+    return () => window.clearInterval(interval);
+  }, [eventId, refreshSubmissionState]);
 
   /* --- hjælpefindere --- */
   const findVisningsnavn = useCallback(
@@ -1221,102 +1240,131 @@ useEffect(() => {
 
   /* --- Submit til newresults --- */
   async function submitResults() {
-    if (!event) return;
+    if (!event || submissionBusy) return;
 
-    const { data: auth } = await supabase.auth.getUser();
-    const reporter =
-      (auth?.user?.user_metadata as any)?.visningsnavn ??
-      auth?.user?.email ??
-      "EventAdmin";
+    setSubmissionBusy(true);
+    try {
+      const state = await getEventSubmissionState(supabase, event);
+      if (state.submitted) {
+        setResultsSubmitted(true);
+        setSubmittedSetCount(state.count);
+        alert("Eventet er allerede indberettet.");
+        return;
+      }
 
-    const startKampId = await getNextKampId();
+      const { data: auth } = await supabase.auth.getUser();
+      const reporter =
+        (auth?.user?.user_metadata as any)?.visningsnavn ??
+        auth?.user?.email ??
+        "EventAdmin";
 
-    const giHasData: boolean[] = [];
-    basePlan.forEach((_, gi) => {
-      const r = roundsPerCourt[gi] ?? 3;
-      for (let si = 0; si < r; si++) {
-        const sc =
-          scores[`${gi}-${si}`] ?? { a: 0, b: 0 };
-        if (sc.a !== 0 || sc.b !== 0) {
-          giHasData[gi] = true;
-          break;
+      const rows: NewResultInsert[] = [];
+      basePlan.forEach((g, gi) => {
+        const kampid = getEventKampidForGroup(event, gi);
+        if (kampid == null) return;
+
+        const r = roundsPerCourt[gi] ?? 3;
+        for (let si = 0; si < r; si++) {
+          const rot = ROTATIONS[si % ROTATIONS.length];
+          const a1 = g.players[rot[0][0]]?.visningsnavn || "";
+          const a2 = g.players[rot[0][1]]?.visningsnavn || "";
+          const b1 = g.players[rot[1][0]]?.visningsnavn || "";
+          const b2 = g.players[rot[1][1]]?.visningsnavn || "";
+          const sc = scores[`${gi}-${si}`] ?? { a: 0, b: 0 };
+
+          if (sc.a === 0 && sc.b === 0) continue;
+
+          rows.push({
+            date: event.date,
+            finish: erFærdigtSæt(sc.a, sc.b),
+            tiebreak: false,
+            event: true,
+            kampid,
+            holdA1: a1,
+            holdA2: a2,
+            holdB1: b1,
+            holdB2: b2,
+            scoreA: sc.a,
+            scoreB: sc.b,
+            indberettet_af: reporter,
+          });
+        }
+      });
+
+      if (!rows.length) {
+        alert("Ingen sæt at indsende (alle står 0–0).");
+        return;
+      }
+
+      const newresultsTbl = supabase.from("newresults") as any;
+      const { error } = await newresultsTbl.insert(rows as any[]);
+      if (error) {
+        alert("Kunne ikke indsende: " + error.message);
+        return;
+      }
+
+      const spillereISubmit = Array.from(
+        new Set(
+          rows
+            .flatMap((r) => [r.holdA1, r.holdA2, r.holdB1, r.holdB2])
+            .filter(Boolean)
+            .map((navn) => String(navn).trim())
+        )
+      );
+
+      if (spillereISubmit.length > 0) {
+        const { error: statusError } = await supabase
+          .from("profiles")
+          .update({ status: "active" })
+          .in("visningsnavn", spillereISubmit)
+          .neq("status", "inactive");
+
+        if (statusError) {
+          console.error("Kunne ikke sætte event-spillere til active:", statusError);
         }
       }
-    });
 
-    let nextId = startKampId;
-    const kampidByGi: Record<number, number> = {};
-    basePlan.forEach((_, gi) => {
-      if (giHasData[gi]) kampidByGi[gi] = nextId++;
-    });
+      setResultsSubmitted(true);
+      setSubmittedSetCount(rows.length);
+      alert(`Indsendt ${rows.length} sæt ✔️`);
+    } finally {
+      setSubmissionBusy(false);
+    }
+  }
 
-    const rows: NewResultInsert[] = [];
-    basePlan.forEach((g, gi) => {
-      const r = roundsPerCourt[gi] ?? 3;
-      for (let si = 0; si < r; si++) {
-        const rot = ROTATIONS[si % ROTATIONS.length];
-        const a1 = g.players[rot[0][0]]?.visningsnavn || "";
-        const a2 = g.players[rot[0][1]]?.visningsnavn || "";
-        const b1 = g.players[rot[1][0]]?.visningsnavn || "";
-        const b2 = g.players[rot[1][1]]?.visningsnavn || "";
-        const sc =
-          scores[`${gi}-${si}`] ?? { a: 0, b: 0 };
-
-        if (sc.a === 0 && sc.b === 0) continue;
-
-        rows.push({
-          date: event.date,
-          finish: erFærdigtSæt(sc.a, sc.b),
-          tiebreak: false,
-          event: true,
-          kampid: kampidByGi[gi],
-          holdA1: a1,
-          holdA2: a2,
-          holdB1: b1,
-          holdB2: b2,
-          scoreA: sc.a,
-          scoreB: sc.b,
-          indberettet_af: reporter,
-        });
-      }
-    });
-
-    if (!rows.length) {
-      alert("Ingen sæt at indsende (alle står 0–0).");
+  async function undoSubmittedResults() {
+    if (!event || submissionBusy) return;
+    if (!confirm("Vil du fortryde hele event-indberetningen? Alle indberettede sæt slettes fra ranglisten.")) {
       return;
     }
 
-    const newresultsTbl = supabase.from("newresults") as any;
-const { error } = await newresultsTbl.insert(rows as any[]);
-if (error) {
-  alert("Kunne ikke indsende: " + error.message);
-  return;
-}
+    const range = getEventKampidRange(event);
+    if (!range) {
+      alert("Eventet mangler en gyldig dato.");
+      return;
+    }
 
-// Sæt alle deltagende spillere til active
-const spillereISubmit = Array.from(
-  new Set(
-    rows.flatMap((r) => [r.holdA1, r.holdA2, r.holdB1, r.holdB2])
-      .filter(Boolean)
-      .map((navn) => String(navn).trim())
-  )
-);
+    setSubmissionBusy(true);
+    try {
+      const { error } = await supabase
+        .from("newresults")
+        .delete()
+        .gte("kampid", range.from)
+        .lte("kampid", range.to)
+        .eq("date", event.date)
+        .eq("event", true);
 
-if (spillereISubmit.length > 0) {
-  const { error: statusError } = await supabase
-    .from("profiles")
-    .update({ status: "active" })
-    .in("visningsnavn", spillereISubmit)
-    .neq("status", "inactive");
+      if (error) {
+        alert("Kunne ikke fortryde indberetning: " + error.message);
+        return;
+      }
 
-  if (statusError) {
-    console.error("Kunne ikke sætte event-spillere til active:", statusError);
-  }
-}
-
-alert(
-  `Indsendt ${rows.length} sæt ✔️ (første kampid i batch: ${startKampId})`
-);
+      setResultsSubmitted(false);
+      setSubmittedSetCount(0);
+      alert("Indberetningen er fortrudt. Eventet kan nu indberettes igen.");
+    } finally {
+      setSubmissionBusy(false);
+    }
   }
 
   if (!event) return <div className="p-4">Indlæser…</div>;
@@ -1345,6 +1393,11 @@ alert(
           {locked && (
             <span className="ml-2 text-xs align-middle px-2 py-0.5 rounded-full bg-pink-600 text-white">
               🔒 Offentliggjort
+            </span>
+          )}
+          {resultsSubmitted && (
+            <span className="ml-2 text-xs align-middle px-2 py-0.5 rounded-full bg-emerald-600 text-white">
+              ✅ Resultater indberettet
             </span>
           )}
         </h1>
@@ -1571,6 +1624,7 @@ alert(
               eloMap={eloMap}
               event={event}
               courtSuggestions={courtSuggestions}
+              submittedLocked={resultsSubmitted}
             />
           )}
         </section>
@@ -1610,14 +1664,32 @@ alert(
             </div>
           )}
           <div className="mt-3">
-            <button
-              type="button"
-              onClick={submitResults}
-              className="w-full px-3 py-2 rounded-md bg-pink-600 text-white hover:bg-pink-700"
-              title="Indsend alle gyldige sæt til newresults"
-            >
-              ✅ Indsend resultater
-            </button>
+            {resultsSubmitted ? (
+              <button
+                type="button"
+                onClick={undoSubmittedResults}
+                disabled={submissionBusy}
+                className="w-full px-3 py-2 rounded-md bg-amber-500 text-white hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
+                title="Slet alle indberettede sæt for eventet"
+              >
+                ↩️ Fortryd indberetning
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={submitResults}
+                disabled={submissionBusy}
+                className="w-full px-3 py-2 rounded-md bg-pink-600 text-white hover:bg-pink-700 disabled:cursor-not-allowed disabled:opacity-60"
+                title="Indsend alle gyldige sæt til newresults"
+              >
+                ✅ Indsend resultater
+              </button>
+            )}
+            <p className="mt-2 text-center text-xs text-zinc-500 dark:text-zinc-400">
+              {resultsSubmitted
+                ? `${submittedSetCount} sæt er allerede sendt til ranglisten.`
+                : "Hele eventet indberettes samlet herfra."}
+            </p>
           </div>
         </section>
       </div>
@@ -1680,6 +1752,7 @@ function CenterMatches({
   eloMap,
   event,
   courtSuggestions,
+  submittedLocked,
 }: {
   plan: Array<{ gi: number; court: string | number; players: EventPlayer[] }>;
   courtsOrder: (string | number)[];
@@ -1696,6 +1769,7 @@ function CenterMatches({
   eloMap: Record<string, number>;
   event: EventRow;
   courtSuggestions: string[];
+  submittedLocked: boolean;
 }) {
   const setKey = (gi: number, si: number) => `${gi}-${si}`;
   const scoreOf = (s?: { a: number; b: number }) => ({
@@ -1720,6 +1794,7 @@ function CenterMatches({
       value={String(value)}
       onFocus={(e) => e.currentTarget.select()}
       onChange={(e) => onChange(e.target.value)}
+      disabled={submittedLocked}
       className="w-7 border rounded px-0.5 py-0.5 text-center text-sm tabnums bg-white dark:bg-zinc-900 border-pink-300 dark:border-pink-700"
       title={title}
     />
@@ -1753,6 +1828,7 @@ function CenterMatches({
                   <select
                     className="border rounded px-2 py-1 text-sm bg-white dark:bg-zinc-900 border-pink-300 dark:border-pink-700"
                     value={String(courtsOrder[gi] ?? "")}
+                    disabled={submittedLocked}
                     onChange={(e) =>
                       setCourtLabel(gi, e.target.value)
                     }
@@ -1769,6 +1845,7 @@ function CenterMatches({
                     type="time"
                     name="start"
                     value={mt.start}
+                    disabled={submittedLocked}
                     onChange={(e) => {
                       const nv = e.target.value;
                       setMatchTimes((p) => ({
@@ -1794,6 +1871,7 @@ function CenterMatches({
                     type="time"
                     name="end"
                     value={mt.end}
+                    disabled={submittedLocked}
                     onChange={(e) => {
                       const nv = e.target.value;
                       setMatchTimes((p) => ({
@@ -1820,6 +1898,7 @@ function CenterMatches({
                 <button
                   type="button"
                   onClick={() => addRoundForMatch(gi)}
+                  disabled={submittedLocked}
                   className="text-xs px-2 py-1 rounded border bg-white/80 hover:bg-pink-50 border-pink-300 dark:border-pink-700 dark:bg-zinc-900"
                   title="Tilføj sæt"
                 >
@@ -1828,6 +1907,7 @@ function CenterMatches({
                 <button
                   type="button"
                   onClick={() => moveCourtUp(gi)}
+                  disabled={submittedLocked}
                   className="text-xs px-2 py-1 rounded border bg-white/80 hover:bg-pink-50 border-pink-300 dark:border-pink-700 dark:bg-zinc-900"
                   title="Ryk kampen op"
                 >
@@ -1988,8 +2068,8 @@ function CenterMatches({
                         </span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <div className="flex items-center gap-1">
+                    <div className="ml-auto flex min-w-[8rem] shrink-0 items-center justify-end gap-1">
+                      <div className="flex w-[4.75rem] items-center justify-end gap-1">
                         <ScoreBox
                           value={sc.a}
                           onChange={(val) =>
@@ -2008,8 +2088,14 @@ function CenterMatches({
                           title="Score B (0–7)"
                         />
                       </div>
-                      <span className="text-pink-700 font-semibold tabnums min-w-[36px] text-right">
-                        {plusTxt}
+                      <span
+                        className={`w-[3rem] font-semibold tabnums text-right ${
+                          plusTxt
+                            ? "text-pink-700"
+                            : "text-transparent"
+                        }`}
+                      >
+                        {plusTxt || "+00,0"}
                       </span>
                     </div>
                   </div>

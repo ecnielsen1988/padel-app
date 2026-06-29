@@ -1,6 +1,7 @@
 import Image from "next/image"
 import Link from "next/link"
 import { beregnNyRangliste } from "@/lib/beregnNyRangliste"
+import { PageShell } from "./components/ui"
 import { supabase } from "@/lib/supabaseClient"
 
 type Spiller = {
@@ -39,128 +40,103 @@ export default async function Home() {
   const top5 = aktiveRangliste.slice(0, 5)
 
   return (
-    <main style={styles.main}>
-      <div style={styles.logoContainer}>
-        <Image
-          src="/padelhuset-logo.png"
-          alt="Padelhuset Logo"
-          width={200}
-          height={60}
-          priority
-        />
-      </div>
+    <PageShell>
+      <section className="padel-surface padel-hero overflow-hidden">
+        <div className="grid gap-10 lg:grid-cols-[1.4fr_0.9fr] lg:items-center">
+          <div className="space-y-8">
+            <div className="space-y-5">
+              <div className="inline-flex rounded-full border border-[var(--border)] bg-white/55 px-4 py-2">
+                <Image
+                  src="/padelhuset-logo.png"
+                  alt="Padelhuset Logo"
+                  width={180}
+                  height={54}
+                  priority
+                />
+              </div>
+              <div className="space-y-4">
+                <p className="padel-eyebrow">Padelhuset Helsinge</p>
+                <h1 className="padel-title max-w-3xl">
+                  Ranglisten, resultaterne og rivaliseringen samlet ét sted.
+                </h1>
+                <p className="padel-lead">
+                  Hold styr på dine kampe, se din udvikling og følg med i hvem
+                  der rykker lige nu. Appen samler ranglister, events og
+                  profiler i et hurtigere og mere levende overblik.
+                </p>
+              </div>
+            </div>
 
-      <h1 style={styles.title}>Velkommen til PADELHUSETS rangliste</h1>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {[
+                "Live rangliste med aktive spillere",
+                "Profiler med Elo, streaks og historik",
+                "Nem registrering af kampe og resultater",
+                "Kommende events og aktuelle highlights",
+              ].map((feature) => (
+                <div
+                  key={feature}
+                  className="rounded-2xl border border-[var(--border)] bg-white/55 px-4 py-3 text-sm font-semibold text-[color:var(--foreground)]"
+                >
+                  {feature}
+                </div>
+              ))}
+            </div>
 
-      <p style={styles.text}>
-        Hold styr på dine kampe, følg din udvikling og kæmp om pladserne på
-        ranglisten 💪
-      </p>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <Link href="/login" className="padel-primary-button inline-flex">
+                Log ind
+              </Link>
+              <Link href="/signup" className="padel-secondary-button inline-flex">
+                Opret profil
+              </Link>
+            </div>
+          </div>
 
-      <ul style={styles.features}>
-        <li>🔥 Live rangliste</li>
-        <li>🏆 Se dine resultater og Elo-point</li>
-        <li>📝 Tilmeld kampe og events</li>
-        <li>📊 Følg udviklingen over tid</li>
-      </ul>
-
-      <div style={styles.buttonRow}>
-        <Link href="/login" style={styles.button}>
-          Log ind
-        </Link>
-        <Link
-          href="/signup"
-          style={{ ...styles.button, backgroundColor: "#333" }}
-        >
-          Opret profil
-        </Link>
-      </div>
-
-      <div style={styles.teaser}>
-        <h2 style={styles.teaserTitle}>Top 5 lige nu</h2>
-        <ol style={styles.topList}>
-          {top5.map((spiller, index) => (
-            <li key={spiller.visningsnavn}>
-              {index === 0 && "👑 "}
-              {index === 1 && "🥈 "}
-              {index === 2 && "🥉 "}
-              {index > 2 && `${index + 1}. `}
-              {spiller.visningsnavn} ({Math.round(spiller.elo)})
-            </li>
-          ))}
-        </ol>
-      </div>
-    </main>
+          <aside className="padel-surface bg-white/55">
+            <div className="mb-5 flex items-center justify-between gap-4">
+              <div>
+                <p className="padel-eyebrow">Lige nu</p>
+                <h2 className="font-[var(--font-display)] text-2xl font-bold tracking-tight">
+                  Top 5 aktive
+                </h2>
+              </div>
+              <span className="rounded-full bg-[color:var(--gold)]/15 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-[color:var(--gold)]">
+                Live
+              </span>
+            </div>
+            <ol className="space-y-3">
+              {top5.map((spiller, index) => (
+                <li
+                  key={spiller.visningsnavn}
+                  className="flex items-center justify-between rounded-2xl border border-[var(--border)] bg-white/70 px-4 py-3"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[color:var(--brand)]/12 text-sm font-extrabold text-[color:var(--brand-strong)]">
+                      {index === 0 ? "1" : index + 1}
+                    </span>
+                    <div>
+                      <p className="font-semibold">{spiller.visningsnavn}</p>
+                      <p className="text-sm text-[color:var(--muted)]">
+                        {index === 0
+                          ? "Fører feltet"
+                          : index === 1
+                            ? "Ligger lige efter"
+                            : index === 2
+                              ? "På podiet"
+                              : "Jager toppen"}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-sm font-bold text-[color:var(--foreground)]">
+                    {Math.round(spiller.elo)} Elo
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </aside>
+        </div>
+      </section>
+    </PageShell>
   )
 }
-
-const styles: { [key: string]: React.CSSProperties } = {
-  main: {
-    maxWidth: 600,
-    margin: "3rem auto",
-    padding: "2rem",
-    backgroundColor: "#222",
-    borderRadius: 12,
-    color: "white",
-    textAlign: "center",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    gap: "1.5rem",
-  },
-  logoContainer: {
-    marginBottom: "1rem",
-  },
-  title: {
-    fontSize: "2.2rem",
-    fontWeight: "bold",
-    marginBottom: "0.5rem",
-  },
-  text: {
-    marginBottom: "1rem",
-    maxWidth: 500,
-  },
-  features: {
-    textAlign: "left",
-    listStyle: "none",
-    padding: 0,
-    margin: "0 0 1rem",
-    lineHeight: 1.6,
-  },
-  buttonRow: {
-    display: "flex",
-    gap: "1rem",
-    justifyContent: "center",
-    marginBottom: "1.5rem",
-  },
-  button: {
-    backgroundColor: "#ff69b4",
-    color: "white",
-    padding: "0.8rem 1.6rem",
-    borderRadius: 6,
-    textDecoration: "none",
-    fontWeight: "bold",
-    fontSize: "1.1rem",
-    cursor: "pointer",
-    transition: "background-color 0.3s ease",
-  },
-  teaser: {
-    backgroundColor: "#333",
-    padding: "1rem",
-    borderRadius: 8,
-    width: "100%",
-    maxWidth: 400,
-  },
-  teaserTitle: {
-    fontSize: "1.4rem",
-    marginBottom: "0.5rem",
-    fontWeight: "bold",
-  },
-  topList: {
-    textAlign: "left",
-    paddingLeft: "1.2rem",
-    margin: 0,
-    lineHeight: 1.6,
-  },
-}
-

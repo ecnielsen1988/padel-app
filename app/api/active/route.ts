@@ -6,13 +6,16 @@ export const fetchCache = "force-no-store";
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { beregnEloÆndringerForIndeværendeMåned } from "@/lib/beregnEloChange";
+import { beregnEloÆndringerForMåned } from "@/lib/beregnEloMonthly";
 
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { persistSession: false } }
-);
+function getSupabase() {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) {
+    throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+  }
+  return createClient(url, key, { auth: { persistSession: false } });
+}
 
 type Row = { holdA1: string | null; holdA2: string | null; holdB1: string | null; holdB2: string | null };
 type AktivSpiller = { visningsnavn: string; sæt: number; pluspoint: number };
@@ -34,6 +37,7 @@ function nextMonthStartCph(year: number, month1_12: number): string {
 }
 
 export async function GET(req: Request) {
+  const supabase = getSupabase();
   const url = new URL(req.url);
   const y = url.searchParams.get("year");
   const m = url.searchParams.get("month");
@@ -60,7 +64,7 @@ export async function GET(req: Request) {
   const endExclusive = nextMonthStartCph(year, month);
 
   // Elo-netto for samme måned (matcher “månedens spillere”)
-  const eloNetto = await beregnEloÆndringerForIndeværendeMåned({ year, month });
+  const eloNetto = await beregnEloÆndringerForMåned(year, month);
 
   const { data, error } = await (supabase.from("newresults") as any)
     .select("holdA1, holdA2, holdB1, holdB2")
@@ -93,4 +97,3 @@ export async function GET(req: Request) {
     { headers: { "Cache-Control": "no-store" } }
   );
 }
-

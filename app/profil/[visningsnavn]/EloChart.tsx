@@ -128,11 +128,13 @@ export function EloChart({
   const hasChart = chartData.length > 1 && domainX[0] !== domainX[1]
 
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-      <h2 className="text-lg font-semibold mb-2">Elo over tid</h2>
+    <div className="rounded-[20px] border border-[#ececf1] bg-white p-4 shadow-[0_6px_20px_rgba(15,23,42,0.06)]">
+      <h2 className="mb-2 text-[13px] font-bold uppercase tracking-[0.12em] text-[#2d3340]">
+        Elo over tid
+      </h2>
 
       {!hasChart ? (
-        <p className="text-sm text-slate-400">
+        <p className="text-sm text-[#6d7280]">
           Der er endnu ikke registreret nok data til at vise en graf for{" "}
           <strong>{visningsnavn}</strong>.
         </p>
@@ -151,11 +153,11 @@ export function EloChart({
                     month: "2-digit",
                   })
                 }
-                tick={{ fontSize: 11, fill: "#cbd5f5" }}
+                tick={{ fontSize: 11, fill: "#6d7280" }}
               />
               <YAxis
                 domain={domainY}
-                tick={{ fontSize: 11, fill: "#cbd5f5" }}
+                tick={{ fontSize: 11, fill: "#6d7280" }}
                 width={50}
               />
               <Tooltip
@@ -176,8 +178,8 @@ export function EloChart({
                   })
                 }
                 contentStyle={{
-                  background: "#020617",
-                  border: "1px solid #f472b6",
+                  background: "#ffffff",
+                  border: "1px solid #f7a9c8",
                   borderRadius: "0.75rem",
                   fontSize: "0.75rem",
                 }}
@@ -220,7 +222,7 @@ export function EloChart({
       )}
 
       {hasChart && (
-        <p className="mt-3 text-xs text-slate-500">
+        <p className="mt-3 text-xs text-[#8a8f9c]">
           Grafen viser din sidste Elo for hver dag, hvor du har spillet – og
           eventuelt en ekstra spiller til sammenligning. Y-aksen er rundet til
           nærmeste 100 for at fremhæve udviklingen.

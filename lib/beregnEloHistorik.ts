@@ -118,27 +118,33 @@ export function hentEloHistorikForSpiller(
 ): EloPoint[] {
   const sorted = sortKampeChrono(kampe)
   const history: EloPoint[] = []
+  const result = beregnEloForKampe(sorted, initialEloMap)
+  const eloChanges = (result as any)?.eloChanges as
+    | Record<number, Record<string, { after: number }>>
+    | undefined
 
-  for (let i = 0; i < sorted.length; i++) {
-    const kamp = sorted[i]
-
-    // Spring kamp over hvis spilleren slet ikke er med
-    if (!playerInKamp(kamp, visningsnavn)) continue
-
-    const subset = sorted.slice(0, i + 1)
-
-    const result = beregnEloForKampe(subset, initialEloMap)
+  if (!eloChanges) {
     const eloMap = extractEloMap(result)
-    const eloForSpiller = eloMap?.[visningsnavn]
-
-    if (typeof eloForSpiller === "number") {
-      const date: string | null = kamp.date ?? kamp.dato ?? null
-
+    const current = eloMap?.[visningsnavn]
+    if (typeof current === "number" && sorted.length > 0) {
       history.push({
-        date,
-        elo: eloForSpiller,
+        date: sorted[sorted.length - 1]?.date ?? sorted[sorted.length - 1]?.dato ?? null,
+        elo: current,
       })
     }
+    return history
+  }
+
+  for (const kamp of sorted) {
+    if (!playerInKamp(kamp, visningsnavn)) continue
+
+    const change = eloChanges[kamp.id]?.[visningsnavn]
+    if (!change || typeof change.after !== "number") continue
+
+    history.push({
+      date: kamp.date ?? kamp.dato ?? null,
+      elo: change.after,
+    })
   }
 
   return history
@@ -156,4 +162,3 @@ export function findCurrentEloForSpiller(
   if (!hist.length) return null
   return hist[hist.length - 1].elo
 }
-

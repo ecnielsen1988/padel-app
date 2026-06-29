@@ -80,7 +80,7 @@ export default function RankOverview({ visningsnavn, kampe }: Props) {
           fetch("/api/monthly", { cache: "no-store" }),
           supabase
             .from("profiles")
-            .select("visningsnavn, koen, active, startElo"),
+            .select("visningsnavn, koen, status, startElo"),
         ])
 
         /* ---------- RANGLISTEN ---------- */
@@ -110,7 +110,7 @@ const profiles =
 // Set over aktive spillere (normaliseret navn)
 const activeNameSet = new Set(
   (profiles as any[])
-    .filter((p) => p.active === true)
+    .filter((p) => p.status === "active")
     .map((p) =>
       normalizeName((p?.visningsnavn ?? "").toString())
     )
@@ -226,7 +226,7 @@ if (idxMain !== -1) {
         }
 
         const womenProfiles = (profiles as any[]).filter(
-          (p) => p.active === true && p.koen === "kvinde"
+          (p) => p.status === "active" && p.koen === "kvinde"
         )
 
         /* ---------- MEST AKTIVE (som /active, uden API) ---------- */
@@ -810,7 +810,7 @@ if (idxMain !== -1) {
 
   if (loading) {
     return (
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/60 px-4 py-4 text-sm text-slate-300">
+      <section className="rounded-[20px] bg-white px-4 py-4 text-sm text-[#6d7280] shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
         Henter dine ranglister…
       </section>
     )
@@ -818,17 +818,17 @@ if (idxMain !== -1) {
 
   if (items.length === 0) {
     return (
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/60 px-4 py-4 text-xs text-slate-400">
+      <section className="rounded-[20px] bg-white px-4 py-4 text-xs text-[#6d7280] shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
         Du optræder endnu ikke på nogen ranglister – bliv ved med at spille 💪
       </section>
     )
   }
 
   return (
-    <section className="rounded-2xl border border-slate-800 bg-slate-900/70 px-4 py-4 shadow-sm">
-      <h2 className="text-sm font-semibold mb-3 flex items-center gap-2 text-slate-100">
-        ⚡ Hurtigt overblik
-        <span className="text-[11px] font-normal text-slate-400">
+    <section className="rounded-[20px] bg-white px-4 py-4 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
+      <h2 className="mb-3 flex items-center gap-2 text-[13px] font-bold uppercase tracking-[0.12em] text-[#2d3340]">
+        ⚡ Ranglister
+        <span className="text-[11px] font-normal normal-case tracking-normal text-[#6d7280]">
           dine placeringer på ranglister
         </span>
       </h2>
@@ -838,19 +838,19 @@ if (idxMain !== -1) {
           <Link
             key={item.key}
             href={item.href}
-            className="flex items-center justify-between rounded-xl px-3 py-2 hover:bg-slate-800 transition"
+            className="flex items-center justify-between rounded-[14px] px-3 py-3 transition hover:bg-[#f7f7fa]"
           >
             <div className="flex items-center gap-2">
               <span className="text-base">{item.emoji}</span>
-              <span className="font-medium text-slate-100">
+              <span className="font-semibold text-[#1f2430]">
                 {item.label}
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-300">
+              <span className="text-xs text-[#6d7280]">
                 {item.valueLabel}
               </span>
-              <span className="text-xs px-2 py-1 rounded-lg bg-slate-950 border border-slate-700 min-w-[3rem] text-center text-slate-100">
+              <span className="min-w-[3rem] rounded-[10px] bg-[#fff0f5] px-2 py-1 text-center text-xs font-bold text-[#f01f78]">
                 #{item.position}
               </span>
             </div>

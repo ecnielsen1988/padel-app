@@ -7,6 +7,8 @@ export interface MånedensSpiller {
   pluspoint: number
 }
 
+const DEFAULT_ELO = 0
+
 // ———————————————————————————————
 // Helpers til månedssnit i Europe/Copenhagen
 // ———————————————————————————————
@@ -88,7 +90,7 @@ export async function beregnEloÆndringerForIndeværendeMåned(
   }
   if (!saetMonth || saetMonth.length === 0) return []
 
-  // 2) Hent spillere med startElo -> initialEloMap (fallback 0)
+  // 2) Hent spillere med startElo -> initialEloMap (samme fallback som Elo-motoren)
   const { data: spillereData } = await supabase.from('profiles').select('visningsnavn, startElo')
   if (!spillereData) return []
 
@@ -97,7 +99,7 @@ export async function beregnEloÆndringerForIndeværendeMåned(
     spillereData.forEach((s: any) => {
       const navn = typeof s.visningsnavn === 'string' ? s.visningsnavn.trim() : null
       if (navn) {
-        initialEloMap[navn] = typeof s.startElo === 'number' ? s.startElo : 0
+        initialEloMap[navn] = typeof s.startElo === 'number' ? s.startElo : DEFAULT_ELO
       }
     })
   }
@@ -151,4 +153,3 @@ export async function beregnEloÆndringerForIndeværendeMåned(
 
 // (valgfrit) Alias, hvis du vil kalde den med semantisk navn andre steder:
 export { beregnEloÆndringerForIndeværendeMåned as beregnEloÆndringerForMåned }
-

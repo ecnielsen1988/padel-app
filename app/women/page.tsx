@@ -3,62 +3,62 @@ export const dynamic = 'force-dynamic';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { PageShell } from '../components/ui';
 import { supabase } from '@/lib/supabaseClient';
-import { notifyUser } from '@/lib/notify';
 
 type Spiller = { visningsnavn: string; elo: number; koen: string | null };
+
+function initials(name: string) {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('');
+}
 
 export default function GirlPowerRangliste() {
   const [rows, setRows] = useState<Spiller[]>([]);
   const [loading, setLoading] = useState(true);
-
-  // Min profil
   const [myName, setMyName] = useState<string | null>(null);
   const [myElo, setMyElo] = useState<number | null>(null);
 
-  // Hent data
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
       try {
-        // Hent Elo fra din /api/rangliste — samme som originalen
         const res = await fetch('/api/rangliste', { cache: 'no-store' });
         const data = (await res.json()) as any[];
-
         if (cancelled) return;
 
-        // Map til Spiller
         let list: Spiller[] = (data ?? [])
-          .map((r) => ({
-            visningsnavn: (r?.visningsnavn ?? '').toString().trim(),
-            elo: Number(r?.elo ?? 0),
-            koen: r?.koen ?? null,
+          .map((row) => ({
+            visningsnavn: (row?.visningsnavn ?? '').toString().trim(),
+            elo: Number(row?.elo ?? 0),
+            koen: row?.koen ?? null,
           }))
-          .filter((r) => !!r.visningsnavn && Number.isFinite(r.elo));
+          .filter((row) => !!row.visningsnavn && Number.isFinite(row.elo));
 
-        // Hent kun *aktive kvinder*
         const { data: womenProfiles, error: womenErr } = await supabase
-  .from('profiles')
-  .select('visningsnavn')
-  .eq('status', 'active')
-  .eq('koen', 'kvinde');
+          .from('profiles')
+          .select('visningsnavn')
+          .eq('status', 'active')
+          .eq('koen', 'kvinde');
 
-if (womenErr) {
-  console.error('Fejl ved hentning af kvindeprofiler:', womenErr);
-  setRows([]);
-  return;
-}
+        if (womenErr) {
+          console.error('Fejl ved hentning af kvindeprofiler:', womenErr);
+          setRows([]);
+          return;
+        }
 
-const womenSet = new Set(
-  (womenProfiles ?? [])
-    .map((p: any) => (p?.visningsnavn ?? '').toString().trim().toLowerCase())
-    .filter(Boolean)
-);
+        const womenSet = new Set(
+          (womenProfiles ?? [])
+            .map((profile: any) => (profile?.visningsnavn ?? '').toString().trim().toLowerCase())
+            .filter(Boolean)
+        );
 
-list = list.filter((r) => womenSet.has(r.visningsnavn.toLowerCase()));
-        
-
+        list = list.filter((row) => womenSet.has(row.visningsnavn.toLowerCase()));
         setRows(list);
       } finally {
         if (!cancelled) setLoading(false);
@@ -70,7 +70,6 @@ list = list.filter((r) => womenSet.has(r.visningsnavn.toLowerCase()));
     };
   }, []);
 
-  // Hent mit navn + Elo
   useEffect(() => {
     let mounted = true;
 
@@ -92,16 +91,12 @@ list = list.filter((r) => womenSet.has(r.visningsnavn.toLowerCase()));
         .maybeSingle();
 
       const visningsnavn =
-        (prof?.visningsnavn ??
-          (user.user_metadata as any)?.visningsnavn ??
-          '')?.toString().trim() || null;
+        (prof?.visningsnavn ?? (user.user_metadata as any)?.visningsnavn ?? '')?.toString().trim() || null;
 
       setMyName(visningsnavn);
 
       if (visningsnavn) {
-        const me = rows.find(
-          (r) => r.visningsnavn.toLowerCase() === visningsnavn.toLowerCase()
-        );
+        const me = rows.find((row) => row.visningsnavn.toLowerCase() === visningsnavn.toLowerCase());
         setMyElo(me ? me.elo : null);
       } else {
         setMyElo(null);
@@ -113,59 +108,113 @@ list = list.filter((r) => womenSet.has(r.visningsnavn.toLowerCase()));
     };
   }, [rows]);
 
-  if (loading) {
-    return (
-      <main className="min-h-screen py-10 px-4 sm:px-8 md:px-16 bg-white dark:bg-[#1e1e1e] text-gray-900 dark:text-white">
-        <h1 className="text-2xl sm:text-4xl font-bold text-center text-pink-600 mb-6">
-          🎀 GirlPower Ranglisten
-        </h1>
-        <p className="text-center opacity-70">Indlæser…</p>
-      </main>
-    );
-  }
+  const currentTime = new Intl.DateTimeFormat('da-DK', {
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date());
 
   return (
-    <main className="min-h-screen py-10 px-4 sm:px-8 md:px-16 bg-white dark:bg-[#1e1e1e] text-gray-900 dark:text-white font-sans">
-      <TopBar />
+    <PageShell className="bg-[#1a1a2e] px-0 py-0 md:px-6 md:py-6">
+      <div className="mx-auto flex min-h-screen w-full max-w-[820px] flex-col overflow-hidden bg-[#f4f5f7] md:min-h-[min(100vh,980px)] md:rounded-[34px] md:border md:border-white/10 md:shadow-[0_28px_80px_rgba(0,0,0,0.35)]">
+        <header className="bg-gradient-to-br from-[#f01f78] to-[#c0135a] px-4 pb-5 pt-4 text-white md:px-6">
+          <div className="mb-4 flex items-center justify-between text-[11px] font-semibold opacity-90">
+            <button
+              type="button"
+              onClick={() => {
+                if (typeof window !== 'undefined') window.history.back();
+              }}
+              className="inline-flex items-center rounded-full bg-white/15 px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-white/25"
+            >
+              ← Tilbage
+            </button>
+            <span>{currentTime}</span>
+          </div>
 
-      <h1 className="text-2xl sm:text-4xl font-bold text-center text-pink-600 mb-10">
-        🎀 GirlPower Ranglisten
-      </h1>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/75">
+                Ranglister
+              </p>
+              <h1 className="mt-1 text-2xl font-black tracking-tight">
+                GirlPower Listen
+              </h1>
+            </div>
 
-      {rows.length === 0 ? (
-        <p className="text-center text-gray-500 dark:text-gray-400">
-          Ingen kvindelige spillere i ranglisten endnu
-        </p>
-      ) : (
-        <RanglisteList rows={rows} myName={myName} myElo={myElo} />
-      )}
-    </main>
+            <Link
+              href={myName ? `/profil/${encodeURIComponent(myName)}` : '/startside'}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#ffd44d] text-xs font-black text-[#463018]"
+              aria-label="Min profil"
+            >
+              {initials(myName || 'Spiller')}
+            </Link>
+          </div>
+
+          <div className="mt-4 grid grid-cols-3 gap-3">
+            <div className="rounded-[18px] bg-white/14 px-3 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70">
+                Spillere
+              </p>
+              <p className="mt-1 text-xl font-black">{rows.length}</p>
+            </div>
+            <div className="rounded-[18px] bg-white/14 px-3 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70">
+                Fører
+              </p>
+              <p className="mt-1 truncate text-sm font-black">{rows[0]?.visningsnavn ?? '–'}</p>
+            </div>
+            <div className="rounded-[18px] bg-white/14 px-3 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70">
+                Din Elo
+              </p>
+              <p className="mt-1 text-xl font-black">{typeof myElo === 'number' ? Math.round(myElo) : '–'}</p>
+            </div>
+          </div>
+        </header>
+
+        <div className="flex-1 overflow-y-auto px-4 pb-28 pt-4 md:px-6">
+          <div className="space-y-4">
+            {loading ? (
+              <section className="rounded-[20px] bg-white p-4 text-sm text-[#6d7280] shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
+                Indlæser…
+              </section>
+            ) : rows.length === 0 ? (
+              <section className="rounded-[20px] bg-white p-4 text-sm text-[#6d7280] shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
+                Ingen kvindelige spillere i ranglisten endnu.
+              </section>
+            ) : (
+              <RanglisteList rows={rows} myName={myName} myElo={myElo} />
+            )}
+          </div>
+        </div>
+
+        <nav className="absolute inset-x-0 bottom-0 flex justify-around border-t border-black/5 bg-white px-2 pb-5 pt-3 md:static md:pb-4">
+          {[
+            { href: '/startside', icon: '🏠', label: 'Hjem' },
+            { href: '/ranglister', icon: '📊', label: 'Rangliste' },
+            { href: '/kommende', icon: '📅', label: 'Events' },
+            {
+              href: myName ? `/profil/${encodeURIComponent(myName)}` : '/startside',
+              icon: '🧑‍🎾',
+              label: 'Profil',
+            },
+          ].map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="flex min-w-16 flex-col items-center gap-1 text-[#7b8190]"
+            >
+              <span className="text-lg">{item.icon}</span>
+              <span className="text-[11px] font-semibold">{item.label}</span>
+            </Link>
+          ))}
+        </nav>
+      </div>
+    </PageShell>
   );
 }
-
-/* ───────── VENSTRE: tilbage ───────── */
-
-function TopBar() {
-  return (
-    <div className="fixed top-4 left-4 z-50 flex flex-col items-start gap-2">
-      <Link
-        href="/startside"
-        aria-label="Tilbage"
-        title="Tilbage"
-        className="px-3 py-1.5 rounded-full border-2 border-pink-500 text-pink-600 bg-white/90 dark:bg-[#2a2a2a]/90 shadow hover:bg-pink-50 dark:hover:bg-pink-900/20 transition"
-      >
-        ← Tilbage
-      </Link>
-    </div>
-  );
-}
-
-/* ───────── Liste ───────── */
 
 function RanglisteList({
   rows,
-  myName,
-  myElo,
 }: {
   rows: Spiller[];
   myName: string | null;
@@ -181,10 +230,8 @@ function RanglisteList({
   const matches = useMemo(() => {
     if (!q) return [];
     const nq = norm(q);
-    const starts = rows.filter((r) => norm(r.visningsnavn).startsWith(nq));
-    const inc = rows.filter(
-      (r) => !starts.includes(r) && norm(r.visningsnavn).includes(nq)
-    );
+    const starts = rows.filter((row) => norm(row.visningsnavn).startsWith(nq));
+    const inc = rows.filter((row) => !starts.includes(row) && norm(row.visningsnavn).includes(nq));
     return [...starts, ...inc].slice(0, 8);
   }, [q, rows]);
 
@@ -193,10 +240,7 @@ function RanglisteList({
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
       setHighlighted(name);
-      window.setTimeout(
-        () => setHighlighted((prev) => (prev === name ? null : prev)),
-        2500
-      );
+      window.setTimeout(() => setHighlighted((prev) => (prev === name ? null : prev)), 2500);
     }
   }
 
@@ -204,7 +248,7 @@ function RanglisteList({
     e.preventDefault();
     if (!q) return;
 
-    const exact = rows.find((r) => norm(r.visningsnavn) === norm(q));
+    const exact = rows.find((row) => norm(row.visningsnavn) === norm(q));
     const target = exact?.visningsnavn ?? matches[0]?.visningsnavn;
 
     if (target) {
@@ -214,77 +258,57 @@ function RanglisteList({
   }
 
   return (
-    <>
-      {/* HØJRE: søgning */}
-      <button
-        type="button"
-        onClick={() => setSearchOpen((v) => !v)}
-        className="fixed top-4 right-4 text-2xl leading-none hover:scale-110 transition z-50"
-        title={searchOpen ? 'Luk søgning' : 'Søg spiller'}
-        aria-label="Søg spiller"
-      >
-        🔎
-      </button>
+    <section className="rounded-[20px] bg-white p-4 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h2 className="text-[13px] font-bold uppercase tracking-[0.12em] text-[#2d3340]">
+          Hele listen
+        </h2>
+        <button
+          type="button"
+          onClick={() => setSearchOpen((value) => !value)}
+          className="rounded-full bg-[#fff0f5] px-3 py-1 text-[11px] font-bold text-[#f01f78]"
+        >
+          🔎 Søg
+        </button>
+      </div>
 
-      {/* Søg-boks */}
-      <div
-        className={`fixed top-[52px] right-4 z-50 origin-top-right transition-all duration-200 ${
-          searchOpen
-            ? 'opacity-100 scale-100'
-            : 'opacity-0 scale-95 pointer-events-none'
-        }`}
-      >
-        <div className="mt-2 w-[240px] rounded-xl border border-pink-200 dark:border-pink-900/50 bg-white/90 dark:bg-[#2a2a2a]/90 shadow-lg backdrop-blur p-2">
+      {searchOpen ? (
+        <div className="mb-3 rounded-[16px] border border-[#ececf1] bg-[#fbfbfc] p-3">
           <form onSubmit={handleSubmit}>
             <input
               autoFocus
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Søg visningsnavn…"
-              className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e1e1e] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-pink-500"
+              className="w-full rounded-xl border border-[#e6e7eb] bg-white px-3 py-2 text-sm text-[#1f2430] outline-none focus:ring-2 focus:ring-pink-500/30"
             />
           </form>
 
-          {!!matches.length && (
-            <ul className="mt-2 max-h-60 overflow-auto">
-              {matches.map((m) => (
-                <li key={m.visningsnavn}>
+          {matches.length ? (
+            <ul className="mt-2 space-y-1">
+              {matches.map((match) => (
+                <li key={match.visningsnavn}>
                   <button
                     type="button"
                     onClick={() => {
-                      jumpTo(m.visningsnavn);
+                      jumpTo(match.visningsnavn);
                       setSearchOpen(false);
                     }}
-                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-pink-50 dark:hover:bg-pink-900/20 text-sm"
+                    className="w-full rounded-[14px] px-3 py-2 text-left text-sm text-[#1f2430] hover:bg-white"
                   >
-                    {m.visningsnavn}
-                    <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">
-                      #
-                      {rows.findIndex((r) => r.visningsnavn === m.visningsnavn) +
-                        1}{' '}
-                      • {Math.round(m.elo)}
+                    {match.visningsnavn}
+                    <span className="ml-2 text-xs text-[#8a8f9c]">
+                      #{rows.findIndex((row) => row.visningsnavn === match.visningsnavn) + 1} • {Math.round(match.elo)}
                     </span>
                   </button>
                 </li>
               ))}
             </ul>
-          )}
-
-          <div className="mt-2 flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400">
-            <span>↵ for at gå til første match</span>
-            <button
-              type="button"
-              onClick={() => setSearchOpen(false)}
-              className="px-2 py-1 rounded border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-[#1e1e1e]"
-            >
-              Luk
-            </button>
-          </div>
+          ) : null}
         </div>
-      </div>
+      ) : null}
 
-      {/* Selve ranglisten */}
-      <ol className="space-y-4 max-w-2xl mx-auto">
+      <ol className="space-y-2.5">
         {rows.map((spiller, index) => {
           const isHighlighted = highlighted === spiller.visningsnavn;
 
@@ -295,37 +319,36 @@ function RanglisteList({
                 itemRefs.current[spiller.visningsnavn] = el;
               }}
               className={[
-                'flex items-center justify-between rounded-2xl px-6 py-4 shadow transition-all',
+                'rounded-[18px] border px-4 py-3',
                 index === 0
-                  ? 'bg-gradient-to-r from-pink-500 to-pink-400 text-white scale-[1.03]'
-                  : index === 1
-                  ? 'bg-pink-100 dark:bg-pink-900/30'
-                  : index === 2
-                  ? 'bg-pink-50 dark:bg-pink-800/20'
-                  : 'bg-white dark:bg-[#2a2a2a]',
-                isHighlighted ? 'ring-2 ring-pink-500 animate-pulse' : '',
+                  ? 'bg-gradient-to-r from-[#f01f78] to-[#ff5b9b] text-white border-transparent'
+                  : 'border-[#ececf1] bg-[#fbfbfc] text-[#1f2430]',
+                isHighlighted ? 'ring-2 ring-[#f01f78]' : '',
               ].join(' ')}
             >
-              {/* Placering + navn */}
-              <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-                <span className="text-base sm:text-xl font-bold text-pink-600 dark:text-pink-400">
-                  #{index + 1}
-                </span>
-                <span className="text-sm sm:text-lg font-medium truncate">
-                  {spiller.visningsnavn} 👸
-                </span>
-              </div>
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className={index === 0 ? 'text-sm font-black text-white' : 'text-sm font-black text-[#f01f78]'}>
+                      #{index + 1}
+                    </span>
+                    <Link
+                      href={`/profil/${encodeURIComponent(spiller.visningsnavn)}`}
+                      className="truncate text-sm font-bold"
+                    >
+                      {spiller.visningsnavn} 👸
+                    </Link>
+                  </div>
+                </div>
 
-              {/* Elo */}
-              <div className="flex items-center gap-2 sm:gap-3">
-                <span className="text-sm sm:text-base font-semibold whitespace-nowrap tabular-nums">
-                  🎾: {Math.round(spiller.elo)}
+                <span className={index === 0 ? 'text-sm font-bold text-white' : 'text-sm font-bold text-[#1f2430]'}>
+                  🎾 {Math.round(spiller.elo)}
                 </span>
               </div>
             </li>
           );
         })}
       </ol>
-    </>
+    </section>
   );
 }

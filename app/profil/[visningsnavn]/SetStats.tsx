@@ -31,7 +31,7 @@ export function SetStats({ visningsnavn, kampe }: SetStatsProps) {
   const {
     last30,
     last90,
-    thisYear,
+    lastYear,
     eggs30,
     eggs90,
     eggsYear,
@@ -127,7 +127,7 @@ export function SetStats({ visningsnavn, kampe }: SetStatsProps) {
 
       const inLast30 = dt >= thirtyDaysAgo && dt <= now
       const inLast90 = dt >= ninetyDaysAgo && dt <= now
-      const inThisYear = dt.getFullYear() === currentYear
+      const inThisYear = dt.getFullYear() >= currentYear - 1
 
       // Find spillerens hold
       const ha1: string | undefined = k.holda1 ?? k.holdA1
@@ -264,7 +264,7 @@ export function SetStats({ visningsnavn, kampe }: SetStatsProps) {
     return {
       last30: finalize(stats30),
       last90: finalize(stats90),
-      thisYear: finalize(statsYear),
+      lastYear: finalize(statsYear),
       eggs30,
       eggs90,
       eggsYear,
@@ -304,29 +304,29 @@ export function SetStats({ visningsnavn, kampe }: SetStatsProps) {
       </p>
       <div className="flex flex-col gap-1 text-sm">
         <div className="flex justify-between">
-          <span className="text-slate-300">Færdigspillede sæt</span>
+          <span className="text-[#6d7280]">Færdigspillede sæt</span>
           <span className="font-semibold">{stats.played}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-slate-300">Vundne sæt</span>
+          <span className="text-[#6d7280]">Vundne sæt</span>
           <span className="font-semibold">{stats.won}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-slate-300">Tabte sæt</span>
+          <span className="text-[#6d7280]">Tabte sæt</span>
           <span className="font-semibold">{stats.lost}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-slate-300">Vinder%</span>
+          <span className="text-[#6d7280]">Vinder%</span>
           <span className="font-semibold">
             {stats.played === 0 ? "–" : formatPct(stats.winPct)}
           </span>
         </div>
         <div className="flex justify-between">
-          <span className="text-slate-300">🥚 Vundet æg (6–0)</span>
+          <span className="text-[#6d7280]">🥚 Vundet æg (6–0)</span>
           <span className="font-semibold">{eggs.eggsFor}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-slate-300">🥚 Tabte æg (0–6)</span>
+          <span className="text-[#6d7280]">🥚 Tabte æg (0–6)</span>
           <span className="font-semibold">{eggs.eggsAgainst}</span>
         </div>
       </div>
@@ -364,12 +364,12 @@ export function SetStats({ visningsnavn, kampe }: SetStatsProps) {
     label: string
     stats: MatchupStats | null
   }) => (
-    <div className="rounded-lg bg-slate-950/40 border border-slate-700/60 p-2">
-      <p className="text-[11px] uppercase tracking-wide text-slate-400 mb-1">
+    <div className="rounded-[14px] border border-[#ececf1] bg-[#fbfbfc] p-2.5">
+      <p className="mb-1 text-[11px] uppercase tracking-wide text-[#8a8f9c]">
         {label}
       </p>
       {!stats || stats.sets === 0 ? (
-        <p className="text-[11px] text-slate-500">Ingen data.</p>
+        <p className="text-[11px] text-[#8a8f9c]">Ingen data.</p>
       ) : (
         <div className="space-y-0.5 text-[12px]">
           <div className="flex justify-between">
@@ -404,21 +404,21 @@ export function SetStats({ visningsnavn, kampe }: SetStatsProps) {
   )
 
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 mt-2">
-      <h2 className="text-lg font-semibold mb-3">
+    <div className="mt-2 rounded-[20px] border border-[#ececf1] bg-white p-4 shadow-[0_6px_20px_rgba(15,23,42,0.06)]">
+      <h2 className="mb-3 text-[13px] font-bold uppercase tracking-[0.12em] text-[#2d3340]">
         Sæt-statistik for {visningsnavn}
       </h2>
 
       {/* skrivbar dropdown til specifik spiller */}
       <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-xs uppercase tracking-wide text-slate-400">
+          <span className="text-xs uppercase tracking-wide text-[#8a8f9c]">
             Tjek sæt med / mod spiller
           </span>
           <div className="flex items-center gap-2">
             <input
               list="setstats-makker-modstander"
-              className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-pink-500/60 min-w-[200px]"
+              className="min-w-[200px] rounded-xl border border-[#e6e7eb] bg-[#fbfbfc] px-3 py-1.5 text-sm text-[#1f2430] focus:outline-none focus:ring-2 focus:ring-pink-500/30"
               placeholder="Skriv et navn…"
               value={matchupInput}
               onChange={(e) => handleMatchupChange(e.target.value)}
@@ -430,7 +430,7 @@ export function SetStats({ visningsnavn, kampe }: SetStatsProps) {
                   setMatchupInput("")
                   setSelectedName(null)
                 }}
-                className="text-xs text-slate-300 hover:text-pink-300"
+                className="text-xs text-[#6d7280] hover:text-[#f01f78]"
               >
                 Ryd
               </button>
@@ -450,32 +450,32 @@ export function SetStats({ visningsnavn, kampe }: SetStatsProps) {
           title="Seneste 30 dage"
           stats={last30}
           eggs={eggs30}
-          accentClass="border-pink-500/40 bg-pink-500/5 text-pink-100"
+          accentClass="border-[#f7a9c8] bg-[#fff0f5] text-[#8f174f]"
         />
         <SetBlock
           title="Seneste 90 dage"
           stats={last90}
           eggs={eggs90}
-          accentClass="border-indigo-500/40 bg-indigo-500/5 text-indigo-100"
+          accentClass="border-[#c8d7ff] bg-[#eef4ff] text-[#3754a5]"
         />
         <SetBlock
-          title="Dette år"
-          stats={thisYear}
+          title="Seneste år"
+          stats={lastYear}
           eggs={eggsYear}
-          accentClass="border-slate-600/60 bg-slate-800/60 text-slate-100"
+          accentClass="border-[#d8dce5] bg-[#f5f7fb] text-[#1f2430]"
         />
       </div>
 
       {/* Detaljer for valgt spiller – nu i 2 rækker:
           1) alt som makker, 2) alt som modstander */}
       {selectedName && (
-        <div className="mt-2 rounded-xl border border-slate-700 bg-slate-900/80 p-3 text-sm">
-          <p className="text-xs uppercase tracking-wide text-slate-300 mb-2">
+        <div className="mt-2 rounded-[16px] border border-[#ececf1] bg-[#fbfbfc] p-3 text-sm">
+          <p className="mb-2 text-xs uppercase tracking-wide text-[#6d7280]">
             Sæt med / mod {selectedName}
           </p>
 
           {!hasAnySelected ? (
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-[#8a8f9c]">
               Du har ikke spillet nogen registrerede færdigspillede sæt med eller
               mod <strong>{selectedName}</strong> i de valgte perioder.
             </p>
@@ -483,7 +483,7 @@ export function SetStats({ visningsnavn, kampe }: SetStatsProps) {
             <div className="space-y-4">
               {/* Række 1: alt som makker */}
               <div>
-                <p className="text-[11px] uppercase tracking-wide text-pink-300 mb-1">
+                <p className="mb-1 text-[11px] uppercase tracking-wide text-[#c0135a]">
                   Makkerstats
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -496,7 +496,7 @@ export function SetStats({ visningsnavn, kampe }: SetStatsProps) {
                     stats={selectedWith90}
                   />
                   <PeriodMatchupBlock
-                    label="Dette år"
+                    label="Seneste år"
                     stats={selectedWithYear}
                   />
                 </div>
@@ -504,7 +504,7 @@ export function SetStats({ visningsnavn, kampe }: SetStatsProps) {
 
               {/* Række 2: alt som modstander */}
               <div>
-                <p className="text-[11px] uppercase tracking-wide text-cyan-300 mb-1">
+                <p className="mb-1 text-[11px] uppercase tracking-wide text-[#1198b0]">
                   Modstander Stats
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -517,7 +517,7 @@ export function SetStats({ visningsnavn, kampe }: SetStatsProps) {
                     stats={selectedAgainst90}
                   />
                   <PeriodMatchupBlock
-                    label="Dette år"
+                    label="Seneste år"
                     stats={selectedAgainstYear}
                   />
                 </div>
@@ -527,12 +527,11 @@ export function SetStats({ visningsnavn, kampe }: SetStatsProps) {
         </div>
       )}
 
-      <p className="text-[11px] text-slate-400 mt-2">
+      <p className="mt-2 text-[11px] text-[#8a8f9c]">
         Kun færdigspillede sæt tælles (finish = true). “Æg” er sæt der ender 6–0
         eller 0–6. Matchup-statistikken er opdelt i seneste 30 dage, 90 dage og
-        indeværende år – først som makker, derefter som modstander.
+        seneste år – først som makker, derefter som modstander.
       </p>
     </div>
   )
 }
-

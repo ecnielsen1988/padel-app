@@ -31,6 +31,17 @@ type Spiller = {
 }
 
 type EloMap = Record<string, number>
+const RESULT_COLUMNS =
+  'id,date,holdA1,holdA2,holdB1,holdB2,scoreA,scoreB,finish,event,tiebreak'
+const PROFILE_COLUMNS = 'visningsnavn, startElo, koen, torsdagspadel'
+const CACHE_TTL_MS = 30_000
+
+let cachedRangliste:
+  | {
+      expiresAt: number
+      data: Spiller[]
+    }
+  | null = null
 
 async function hentAlleResultater(batchSize = 1000): Promise<Resultat[]> {
   let samletData: Resultat[] = []
@@ -40,7 +51,7 @@ async function hentAlleResultater(batchSize = 1000): Promise<Resultat[]> {
   do {
     const { data, error } = await supabase
       .from('newresults')
-      .select('*')
+      .select(RESULT_COLUMNS)
       .order('date', { ascending: true })
       .order('id', { ascending: true })
       .range(offset, offset + batchSize - 1)
@@ -56,9 +67,14 @@ async function hentAlleResultater(batchSize = 1000): Promise<Resultat[]> {
 }
 
 export async function beregnNyRangliste(): Promise<Spiller[]> {
+  const now = Date.now()
+  if (cachedRangliste && cachedRangliste.expiresAt > now) {
+    return cachedRangliste.data
+  }
+
   const { data, error } = await supabase
     .from('profiles')
-    .select('visningsnavn, startElo, koen, torsdagspadel')
+    .select(PROFILE_COLUMNS)
 
   if (error) {
     console.error('❌ Fejl ved hentning af spillere:', error)
@@ -160,9 +176,13 @@ export async function beregnNyRangliste(): Promise<Spiller[]> {
     eloMap[holdB2] = rB2 + deltaB
   }
 
-  return Object.entries(eloMap)
+  const profileMap = new Map(
+    profilesData.map((profil) => [profil.visningsnavn, profil] as const)
+  )
+
+  const ranked = Object.entries(eloMap)
     .map(([visningsnavn, elo]) => {
-      const profil = profilesData.find((p) => p.visningsnavn === visningsnavn)
+      const profil = profileMap.get(visningsnavn)
       return {
         visningsnavn,
         elo,
@@ -171,5 +191,11 @@ export async function beregnNyRangliste(): Promise<Spiller[]> {
       }
     })
     .sort((a, b) => b.elo - a.elo)
-}
 
+  cachedRangliste = {
+    expiresAt: now + CACHE_TTL_MS,
+    data: ranked,
+  }
+
+  return ranked
+}

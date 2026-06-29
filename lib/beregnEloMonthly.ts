@@ -4,7 +4,7 @@ import { beregnEloForKampe, type Kamp, type EloMap } from "@/lib/beregnElo";
 
 export type MånedensSpiller = { visningsnavn: string; pluspoint: number };
 
-// Match din Elo-motor default (du bruger 1500 som fallback i beregnEloForKampe)
+// Bevidst 0 som fallback, så manglende startElo bliver synligt som dataproblem.
 const DEFAULT_ELO = 0;
 
 // -------------------------
@@ -139,8 +139,7 @@ async function fetchInitialEloMap(): Promise<EloMap> {
   try {
     const { data, error } = await supabase
       .from("profiles")
-      .select("visningsnavn, startElo")
-      .eq("status", "active");
+      .select("visningsnavn, startElo");
 
     if (error) return {};
     const map: EloMap = {};

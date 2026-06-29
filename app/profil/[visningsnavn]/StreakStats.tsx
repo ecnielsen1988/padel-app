@@ -317,28 +317,28 @@ export function StreakStats({ visningsnavn, kampe }: StreakStatsProps) {
   }
 
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 mt-2">
-      <h2 className="text-lg font-semibold mb-3">
+    <div className="mt-2 rounded-[20px] border border-[#ececf1] bg-white p-4 shadow-[0_6px_20px_rgba(15,23,42,0.06)]">
+      <h2 className="mb-3 text-[13px] font-bold uppercase tracking-[0.12em] text-[#2d3340]">
         Streaks for {visningsnavn}
       </h2>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
         {/* Sejr-streak */}
-        <div className="rounded-xl border border-pink-500/40 bg-pink-500/5 p-3 space-y-2">
-          <p className="text-xs uppercase tracking-wide text-pink-300">
+        <div className="space-y-2 rounded-[16px] border border-[#f7a9c8] bg-[#fff0f5] p-3">
+          <p className="text-xs uppercase tracking-wide text-[#c0135a]">
             Sejr-streak (færdigspillede sæt)
           </p>
           <div className="flex flex-col gap-1">
             <div className="flex justify-between">
-              <span className="text-slate-200">
+              <span className="text-[#6d7280]">
                 Aktuel sejrstreak
               </span>
-              <span className="font-semibold text-pink-200">
+              <span className="font-semibold text-[#8f174f]">
                 {winStreak.current} sæt
               </span>
             </div>
             {winStreak.current > 0 && (
-              <div className="flex justify-between text-xs text-slate-300">
+              <div className="flex justify-between text-xs text-[#8a8f9c]">
                 <span>Periode</span>
                 <span>
                   {formatRange(
@@ -349,15 +349,15 @@ export function StreakStats({ visningsnavn, kampe }: StreakStatsProps) {
               </div>
             )}
             <div className="flex justify-between mt-2">
-              <span className="text-slate-200">
+              <span className="text-[#6d7280]">
                 Længste sejrstreak
               </span>
-              <span className="font-semibold text-pink-200">
+              <span className="font-semibold text-[#8f174f]">
                 {winStreak.best} sæt
               </span>
             </div>
             {winStreak.best > 0 && (
-              <div className="flex justify-between text-xs text-slate-300">
+              <div className="flex justify-between text-xs text-[#8a8f9c]">
                 <span>Periode</span>
                 <span>
                   {formatRange(
@@ -371,21 +371,21 @@ export function StreakStats({ visningsnavn, kampe }: StreakStatsProps) {
         </div>
 
         {/* Spil-streak */}
-        <div className="rounded-xl border border-indigo-500/40 bg-indigo-500/5 p-3 space-y-2">
-          <p className="text-xs uppercase tracking-wide text-indigo-300">
+        <div className="space-y-2 rounded-[16px] border border-[#c8d7ff] bg-[#eef4ff] p-3">
+          <p className="text-xs uppercase tracking-wide text-[#3754a5]">
             Spil-streak (uger med ≥ {MIN_SETS_PER_WEEK} sæt)
           </p>
           <div className="flex flex-col gap-1">
             <div className="flex justify-between">
-              <span className="text-slate-200">
+              <span className="text-[#6d7280]">
                 Aktuel spil-streak
               </span>
-              <span className="font-semibold text-indigo-200">
+              <span className="font-semibold text-[#3754a5]">
                 {weekStreak.current} uger
               </span>
             </div>
             {weekStreak.current > 0 && (
-              <div className="flex justify-between text-xs text-slate-300">
+              <div className="flex justify-between text-xs text-[#8a8f9c]">
                 <span>Periode</span>
                 <span>
                   {formatRange(
@@ -396,15 +396,15 @@ export function StreakStats({ visningsnavn, kampe }: StreakStatsProps) {
               </div>
             )}
             <div className="flex justify-between mt-2">
-              <span className="text-slate-200">
+              <span className="text-[#6d7280]">
                 Længste spil-streak
               </span>
-              <span className="font-semibold text-indigo-200">
+              <span className="font-semibold text-[#3754a5]">
                 {weekStreak.best} uger
               </span>
             </div>
             {weekStreak.best > 0 && (
-              <div className="flex justify-between text-xs text-slate-300">
+              <div className="flex justify-between text-xs text-[#8a8f9c]">
                 <span>Periode</span>
                 <span>
                   {formatRange(
@@ -418,7 +418,7 @@ export function StreakStats({ visningsnavn, kampe }: StreakStatsProps) {
         </div>
       </div>
 
-      <p className="text-[11px] text-slate-400 mt-2">
+      <p className="mt-2 text-[11px] text-[#8a8f9c]">
         Sejr-streak er baseret på færdigspillede sæt, hvor du har vundet.
         Spil-streak tæller uger (mandag–søndag), hvor du har spillet mindst {MIN_SETS_PER_WEEK} 
         {" "}færdigspillede sæt. En spil-streak er kun aktuel, hvis den slutter i denne uge

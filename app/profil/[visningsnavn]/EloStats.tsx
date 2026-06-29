@@ -17,7 +17,7 @@ type StatTriple = {
 }
 
 export function EloStats({ visningsnavn, eloHistory }: EloStatsProps) {
-  const { last30, last90, thisYear } = useMemo(() => {
+  const { last30, last90, lastYear } = useMemo(() => {
     // Samme "sidste Elo pr. dag"-logik som grafen:
     const byDate = new Map<string, { date: string; elo: number }>()
     for (const p of eloHistory) {
@@ -40,7 +40,7 @@ export function EloStats({ visningsnavn, eloHistory }: EloStatsProps) {
 
     const last30Entries: { date: string; elo: number }[] = []
     const last90Entries: { date: string; elo: number }[] = []
-    const thisYearEntries: { date: string; elo: number }[] = []
+    const lastYearEntries: { date: string; elo: number }[] = []
 
     for (const d of daily) {
       const dt = new Date(d.date)
@@ -52,8 +52,8 @@ export function EloStats({ visningsnavn, eloHistory }: EloStatsProps) {
       if (dt >= ninetyDaysAgo && dt <= now) {
         last90Entries.push(d)
       }
-      if (dt.getFullYear() === currentYear) {
-        thisYearEntries.push(d)
+      if (dt.getFullYear() >= currentYear - 1) {
+        lastYearEntries.push(d)
       }
     }
 
@@ -101,7 +101,7 @@ export function EloStats({ visningsnavn, eloHistory }: EloStatsProps) {
     return {
       last30: makeStats(last30Entries),
       last90: makeStats(last90Entries),
-      thisYear: makeStats(thisYearEntries),
+      lastYear: makeStats(lastYearEntries),
     }
   }, [eloHistory])
 
@@ -127,99 +127,99 @@ export function EloStats({ visningsnavn, eloHistory }: EloStatsProps) {
     value === null ? "–" : Math.round(value)
 
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-      <h2 className="text-lg font-semibold mb-3">
+    <div className="rounded-[20px] border border-[#ececf1] bg-white p-4 shadow-[0_6px_20px_rgba(15,23,42,0.06)]">
+      <h2 className="mb-3 text-[13px] font-bold uppercase tracking-[0.12em] text-[#2d3340]">
         Elo-statistik for {visningsnavn}
       </h2>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
         {/* Seneste 30 dage */}
-        <div className="rounded-xl border border-pink-500/40 bg-pink-500/5 p-3 space-y-2">
-          <p className="text-xs uppercase tracking-wide text-pink-300">
+        <div className="space-y-2 rounded-[16px] border border-[#f7a9c8] bg-[#fff0f5] p-3">
+          <p className="text-xs uppercase tracking-wide text-[#c0135a]">
             Seneste 30 dage
           </p>
           <div className="flex flex-col gap-1">
             <div className="flex justify-between">
-              <span className="text-slate-300">Højeste Elo</span>
-              <span className="font-semibold text-pink-300 text-right">
+              <span className="text-[#6d7280]">Højeste Elo</span>
+              <span className="text-right font-semibold text-[#8f174f]">
                 {formatValWithDate(last30.max, last30.maxDate)}
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-300">Laveste Elo</span>
-              <span className="font-semibold text-pink-300 text-right">
+              <span className="text-[#6d7280]">Laveste Elo</span>
+              <span className="text-right font-semibold text-[#8f174f]">
                 {formatValWithDate(last30.min, last30.minDate)}
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-300">Gns. Elo</span>
-              <span className="font-semibold text-pink-300">
+              <span className="text-[#6d7280]">Gns. Elo</span>
+              <span className="font-semibold text-[#8f174f]">
                 {formatAvg(last30.avg)}
               </span>
             </div>
           </div>
-          <p className="text-[11px] text-pink-200/70 mt-1">
+          <p className="mt-1 text-[11px] text-[#ad5d7d]">
             Baseret på din sidste Elo-værdi for hver dag med aktivitet.
           </p>
         </div>
 
         {/* Seneste 90 dage */}
-        <div className="rounded-xl border border-indigo-500/40 bg-indigo-500/5 p-3 space-y-2">
-          <p className="text-xs uppercase tracking-wide text-indigo-300">
+        <div className="space-y-2 rounded-[16px] border border-[#c8d7ff] bg-[#eef4ff] p-3">
+          <p className="text-xs uppercase tracking-wide text-[#3754a5]">
             Seneste 90 dage
           </p>
           <div className="flex flex-col gap-1">
             <div className="flex justify-between">
-              <span className="text-slate-300">Højeste Elo</span>
-              <span className="font-semibold text-indigo-300 text-right">
+              <span className="text-[#6d7280]">Højeste Elo</span>
+              <span className="text-right font-semibold text-[#3754a5]">
                 {formatValWithDate(last90.max, last90.maxDate)}
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-300">Laveste Elo</span>
-              <span className="font-semibold text-indigo-300 text-right">
+              <span className="text-[#6d7280]">Laveste Elo</span>
+              <span className="text-right font-semibold text-[#3754a5]">
                 {formatValWithDate(last90.min, last90.minDate)}
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-300">Gns. Elo</span>
-              <span className="font-semibold text-indigo-300">
+              <span className="text-[#6d7280]">Gns. Elo</span>
+              <span className="font-semibold text-[#3754a5]">
                 {formatAvg(last90.avg)}
               </span>
             </div>
           </div>
-          <p className="text-[11px] text-indigo-200/70 mt-1">
+          <p className="mt-1 text-[11px] text-[#6781c4]">
             God til at se din “formkurve” over en lidt længere periode.
           </p>
         </div>
 
-        {/* Dette år */}
-        <div className="rounded-xl border border-slate-600/60 bg-slate-800/60 p-3 space-y-2">
-          <p className="text-xs uppercase tracking-wide text-slate-200">
-            Dette år
+        {/* Seneste år */}
+        <div className="space-y-2 rounded-[16px] border border-[#d8dce5] bg-[#f5f7fb] p-3">
+          <p className="text-xs uppercase tracking-wide text-[#495063]">
+            Seneste år
           </p>
           <div className="flex flex-col gap-1">
             <div className="flex justify-between">
-              <span className="text-slate-300">Højeste Elo</span>
-              <span className="font-semibold text-slate-50 text-right">
-                {formatValWithDate(thisYear.max, thisYear.maxDate)}
+              <span className="text-[#6d7280]">Højeste Elo</span>
+              <span className="text-right font-semibold text-[#1f2430]">
+                {formatValWithDate(lastYear.max, lastYear.maxDate)}
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-300">Laveste Elo</span>
-              <span className="font-semibold text-slate-50 text-right">
-                {formatValWithDate(thisYear.min, thisYear.minDate)}
+              <span className="text-[#6d7280]">Laveste Elo</span>
+              <span className="text-right font-semibold text-[#1f2430]">
+                {formatValWithDate(lastYear.min, lastYear.minDate)}
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-300">Gns. Elo</span>
-              <span className="font-semibold text-slate-50">
-                {formatAvg(thisYear.avg)}
+              <span className="text-[#6d7280]">Gns. Elo</span>
+              <span className="font-semibold text-[#1f2430]">
+                {formatAvg(lastYear.avg)}
               </span>
             </div>
           </div>
-          <p className="text-[11px] text-slate-400 mt-1">
-            Overblik over hele kalenderåret – alle dage med aktivitet er med.
+          <p className="mt-1 text-[11px] text-[#8a8f9c]">
+            Overblik over de seneste 12 måneder med alle dage, hvor du har spillet.
           </p>
         </div>
       </div>

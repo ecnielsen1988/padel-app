@@ -192,28 +192,28 @@ export function MakkerStats({
 
     return (
       <div className="space-y-1">
-        <p className="text-xs uppercase tracking-wide text-slate-400">
+        <p className="text-xs uppercase tracking-wide text-[#8a8f9c]">
           {title}
         </p>
         {relevant.length === 0 ? (
-          <p className="text-xs text-slate-500">{emptyLabel}</p>
+          <p className="text-xs text-[#8a8f9c]">{emptyLabel}</p>
         ) : (
           <ul className="space-y-1 text-sm">
             {relevant.map((p) => (
               <li
                 key={p.name}
-                className="flex justify-between items-baseline rounded-lg bg-slate-900/80 border border-slate-700/70 px-2 py-1.5"
+                className="flex justify-between items-baseline rounded-[14px] border border-[#ececf1] bg-[#fbfbfc] px-2.5 py-2"
               >
                 <div className="flex flex-col">
-                  <span className="font-medium text-slate-100">
+                  <span className="font-medium text-[#1f2430]">
                     {p.name}
                   </span>
-                  <span className="text-[11px] text-slate-400">
+                  <span className="text-[11px] text-[#8a8f9c]">
                     {p.sets} sæt · samlet {formatElo(p.totalElo)} Elo ·{" "}
                     gns. {formatAvg(p.totalElo, p.sets)} / sæt
                   </span>
                 </div>
-                <span className="text-xs font-semibold text-slate-200">
+                <span className="text-xs font-semibold text-[#2d3340]">
                   {formatElo(p.totalElo)}
                 </span>
               </li>
@@ -240,21 +240,21 @@ export function MakkerStats({
     !!selectedPartnerStats || !!selectedOpponentStats
 
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 mt-2">
-      <h2 className="text-lg font-semibold mb-3">
+    <div className="mt-2 rounded-[20px] border border-[#ececf1] bg-white p-4 shadow-[0_6px_20px_rgba(15,23,42,0.06)]">
+      <h2 className="mb-3 text-[13px] font-bold uppercase tracking-[0.12em] text-[#2d3340]">
         Bedste- og Nemesis-makkere / modstandere (Elo)
       </h2>
 
       {/* Skrivbar dropdown til specifik spiller */}
       <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-xs uppercase tracking-wide text-slate-400">
+          <span className="text-xs uppercase tracking-wide text-[#8a8f9c]">
             Tjek Elo med / mod spiller
           </span>
           <div className="flex items-center gap-2">
             <input
               list="makker-modstander-liste"
-              className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-pink-500/60 min-w-[200px]"
+              className="min-w-[200px] rounded-xl border border-[#e6e7eb] bg-[#fbfbfc] px-3 py-1.5 text-sm text-[#1f2430] focus:outline-none focus:ring-2 focus:ring-pink-500/30"
               placeholder="Skriv et navn…"
               value={matchupInput}
               onChange={(e) => handleMatchupChange(e.target.value)}
@@ -266,7 +266,7 @@ export function MakkerStats({
                   setMatchupInput("")
                   setSelectedName(null)
                 }}
-                className="text-xs text-slate-300 hover:text-pink-300"
+                className="text-xs text-[#6d7280] hover:text-[#f01f78]"
               >
                 Ryd
               </button>
@@ -284,7 +284,7 @@ export function MakkerStats({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
         {/* Makkere */}
         <div>
-          <p className="text-xs uppercase tracking-wide text-pink-300 mb-1">
+          <p className="mb-1 text-xs uppercase tracking-wide text-[#c0135a]">
             Makkere
           </p>
           <div className="space-y-3">
@@ -305,7 +305,7 @@ export function MakkerStats({
 
         {/* Modstandere */}
         <div>
-          <p className="text-xs uppercase tracking-wide text-cyan-300 mb-1">
+          <p className="mb-1 text-xs uppercase tracking-wide text-[#1198b0]">
             Modstandere
           </p>
           <div className="space-y-3">
@@ -327,21 +327,21 @@ export function MakkerStats({
 
       {/* Detaljevisning for valgt spiller */}
       {selectedName && (
-        <div className="mt-4 rounded-xl border border-slate-700 bg-slate-900/80 p-3 text-sm">
-          <p className="text-xs uppercase tracking-wide text-slate-300 mb-2">
+        <div className="mt-4 rounded-[16px] border border-[#ececf1] bg-[#fbfbfc] p-3 text-sm">
+          <p className="mb-2 text-xs uppercase tracking-wide text-[#6d7280]">
             Detaljer for {selectedName}
           </p>
 
           {!hasAnySelectedStats ? (
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-[#8a8f9c]">
               Du har ikke spillet nogen registrerede sæt med eller mod{" "}
               <strong>{selectedName}</strong> endnu.
             </p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {/* Som makker */}
-              <div className="rounded-lg bg-slate-950/60 border border-pink-500/30 p-2.5">
-                <p className="text-xs uppercase tracking-wide text-pink-300 mb-1">
+              <div className="rounded-[14px] border border-[#f7a9c8] bg-[#fff0f5] p-2.5">
+                <p className="mb-1 text-xs uppercase tracking-wide text-[#c0135a]">
                   Sammen som makker
                 </p>
                 {selectedPartnerStats ? (
@@ -369,15 +369,15 @@ export function MakkerStats({
                     </div>
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-[#8a8f9c]">
                     Ingen registrerede sæt hvor I har været makkere.
                   </p>
                 )}
               </div>
 
               {/* Som modstander */}
-              <div className="rounded-lg bg-slate-950/60 border border-cyan-500/30 p-2.5">
-                <p className="text-xs uppercase tracking-wide text-cyan-300 mb-1">
+              <div className="rounded-[14px] border border-[#bfeaf1] bg-[#ebfbff] p-2.5">
+                <p className="mb-1 text-xs uppercase tracking-wide text-[#1198b0]">
                   Mod hinanden
                 </p>
                 {selectedOpponentStats ? (
@@ -405,7 +405,7 @@ export function MakkerStats({
                     </div>
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-[#8a8f9c]">
                     Ingen registrerede sæt hvor I har stået på hver sin side.
                   </p>
                 )}
@@ -415,7 +415,7 @@ export function MakkerStats({
         </div>
       )}
 
-      <p className="text-[11px] text-slate-400 mt-3">
+      <p className="mt-3 text-[11px] text-[#8a8f9c]">
         Baseret på Elo-ændring pr. sæt for {visningsnavn}. Alle sæt tælles med
         (både færdige og ufærdige). Makkere/modstandere får “kredit” for hele
         din Elo-ændring i de sæt, hvor I spiller sammen/imod hinanden.
@@ -423,4 +423,3 @@ export function MakkerStats({
     </div>
   )
 }
-

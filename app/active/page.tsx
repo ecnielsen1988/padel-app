@@ -2,9 +2,11 @@
 
 export const dynamic = 'force-dynamic'
 
+import Link from 'next/link'
 import { useEffect, useState } from 'react'
+import { PageShell } from '../components/ui'
 import { supabase } from '@/lib/supabaseClient'
-import { beregnEloÆndringerForIndeværendeMåned } from '@/lib/beregnEloChange'
+import { beregnEloÆndringerForIndeværendeMåned } from '@/lib/beregnEloMonthly'
 
 type AktivSpiller = {
   visningsnavn: string
@@ -12,7 +14,6 @@ type AktivSpiller = {
   pluspoint: number
 }
 
-// Række-type for newresults (kun felter vi bruger her)
 type KampRow = {
   holdA1?: string | null
   holdA2?: string | null
@@ -20,18 +21,24 @@ type KampRow = {
   holdB2?: string | null
 }
 
+function emojiForPlacering(index: number) {
+  if (index === 0) return '🏆'
+  if (index === 1) return '🥈'
+  if (index === 2) return '🥉'
+  return '🏃‍♂️'
+}
+
 export default function MestAktiveSide() {
   const [mestAktive, setMestAktive] = useState<AktivSpiller[]>([])
   const [loading, setLoading] = useState(true)
+  const [isAdmin, setIsAdmin] = useState(false)
 
   useEffect(() => {
     const hentData = async () => {
       setLoading(true)
       try {
-        // 1) Elo-data for måneden (bruger din eksisterende funktion)
         const eloData = await beregnEloÆndringerForIndeværendeMåned()
 
-        // 2) Dato-interval for indeværende måned
         const now = new Date()
         const year = now.getFullYear()
         const month = now.getMonth() + 1
@@ -40,7 +47,6 @@ export default function MestAktiveSide() {
         const slutYear = month === 12 ? year + 1 : year
         const slutDato = `${slutYear}-${String(slutMonth).padStart(2, '0')}-01`
 
-        // 3) Hent færdigspillede sæt i måneden
         const { data: kampeData, error } = await supabase
           .from('newresults')
           .select('holdA1, holdA2, holdB1, holdB2')
@@ -54,21 +60,19 @@ export default function MestAktiveSide() {
           return
         }
 
-        // 4) Sikker optælling af deltagelser pr. spiller
         const tæller: Record<string, number> = Object.create(null)
 
         for (const kamp of (kampeData as KampRow[] | null) ?? []) {
           const navne = [kamp.holdA1, kamp.holdA2, kamp.holdB1, kamp.holdB2]
-          for (const n of navne) {
-            const key = typeof n === 'string' ? n.trim() : ''
+          for (const navn of navne) {
+            const key = typeof navn === 'string' ? navn.trim() : ''
             if (key) tæller[key] = (tæller[key] ?? 0) + 1
           }
         }
 
-        // 5) Flet med Elo (pluspoint) og sorter
         const samlet: AktivSpiller[] = Object.entries(tæller).map(([visningsnavn, sæt]) => {
-          const elo = eloData.find((e) => e.visningsnavn === visningsnavn)?.pluspoint ?? 0
-          return { visningsnavn, sæt, pluspoint: elo }
+          const plus = eloData.find((entry) => entry.visningsnavn === visningsnavn)?.pluspoint ?? 0
+          return { visningsnavn, sæt, pluspoint: plus }
         })
 
         samlet.sort((a, b) => {
@@ -85,78 +89,203 @@ export default function MestAktiveSide() {
     hentData()
   }, [])
 
-  const emojiForPlacering = (index: number) => {
-    if (index === 0) return '🏆'
-    if (index === 1) return '🥈'
-    if (index === 2) return '🥉'
-    return '🏃‍♂️'
-  }
+  useEffect(() => {
+    let mounted = true
 
-  function goBack() {
-    if (typeof window !== 'undefined') {
-      if (window.history.length > 1) window.history.back()
-      else window.location.href = '/'
+    ;(async () => {
+      const { data: auth } = await supabase.auth.getUser()
+      const user = auth?.user
+      if (!mounted || !user) return
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('rolle')
+        .eq('id', user.id)
+        .maybeSingle()
+
+      if (!mounted) return
+      setIsAdmin((profile?.rolle ?? '') === 'admin')
+    })()
+
+    return () => {
+      mounted = false
     }
-  }
+  }, [])
+
+  const currentTime = new Intl.DateTimeFormat('da-DK', {
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date())
+
+  const topPlayer = mestAktive[0] ?? null
 
   return (
-    <main className="min-h-screen py-10 px-4 sm:px-8 md:px-16 bg-white dark:bg-[#1e1e1e] text-gray-900 dark:text-white font-sans relative">
-      {/* ← Tilbage-knap øverst til venstre */}
-      <div className="fixed top-4 left-4 z-50">
-        <button
-          type="button"
-          onClick={goBack}
-          aria-label="Tilbage"
-          title="Tilbage"
-          className="px-3 py-1.5 rounded-full border-2 border-pink-500 text-pink-600 bg-white/90 dark:bg-[#2a2a2a]/90 shadow hover:bg-pink-50 dark:hover:bg-pink-900/20 transition"
-        >
-          ← Tilbage
-        </button>
-      </div>
+    <PageShell className="bg-[#1a1a2e] px-0 py-0 md:px-6 md:py-6">
+      <div className="mx-auto flex min-h-screen w-full max-w-[820px] flex-col overflow-hidden bg-[#f4f5f7] md:min-h-[min(100vh,980px)] md:rounded-[34px] md:border md:border-white/10 md:shadow-[0_28px_80px_rgba(0,0,0,0.35)]">
+        <header className="bg-gradient-to-br from-[#f01f78] to-[#c0135a] px-4 pb-5 pt-4 text-white md:px-6">
+          <div className="mb-4 flex items-center justify-between text-[11px] font-semibold opacity-90">
+            <button
+              type="button"
+              onClick={() => {
+                if (typeof window !== 'undefined') {
+                  if (window.history.length > 1) window.history.back()
+                  else window.location.href = '/'
+                }
+              }}
+              className="inline-flex items-center rounded-full bg-white/15 px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-white/25"
+            >
+              ← Tilbage
+            </button>
+            <span>{currentTime}</span>
+          </div>
 
-      <h1 className="text-2xl sm:text-4xl font-bold text-center text-pink-600 mb-10">
-        🏃‍♂️ Mest aktive spillere i måneden
-      </h1>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/75">
+                Ranglister
+              </p>
+              <h1 className="mt-1 text-2xl font-black tracking-tight">
+                Mest aktive
+              </h1>
+            </div>
 
-      {loading ? (
-        <p className="text-center text-gray-500 dark:text-gray-400">Indlæser…</p>
-      ) : mestAktive.length === 0 ? (
-        <p className="text-center text-gray-500 dark:text-gray-400">
-          Ingen aktive spillere registreret endnu.
-        </p>
-      ) : (
-        <ol className="space-y-4 max-w-2xl mx-auto">
-          {mestAktive.map((spiller, index) => {
-            const emoji = emojiForPlacering(index)
-            return (
-              <li
-                key={spiller.visningsnavn}
-                className={`flex items-center justify-between rounded-2xl px-6 py-4 shadow transition-all ${
-                  index === 0
-                    ? 'bg-gradient-to-r from-pink-500 to-pink-400 text-white scale-[1.03]'
-                    : index === 1
-                    ? 'bg-pink-100 dark:bg-pink-900/30'
-                    : index === 2
-                    ? 'bg-pink-50 dark:bg-pink-800/20'
-                    : 'bg-white dark:bg-[#2a2a2a]'
-                }`}
-              >
-                <div className="flex items-center gap-2 sm:gap-3">
-                  <span className="text-base sm:text-xl font-bold text-pink-600 dark:text-pink-400">
-                    #{index + 1}
-                  </span>
-                  <span className="text-sm sm:text-lg font-medium truncate">
-                    {spiller.visningsnavn}
-                  </span>
-                </div>
-                <span className="text-sm sm:text-base font-semibold whitespace-nowrap">
-                  {spiller.sæt} sæt {emoji}
+            <Link
+              href="/active/arkiv"
+              className="inline-flex rounded-full bg-[#ffd44d] px-3 py-2 text-[11px] font-black text-[#463018]"
+            >
+              Arkiv
+            </Link>
+          </div>
+
+          <div className="mt-4 grid grid-cols-3 gap-3">
+            <div className="rounded-[18px] bg-white/14 px-3 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70">
+                Spillere
+              </p>
+              <p className="mt-1 text-xl font-black">{mestAktive.length}</p>
+            </div>
+            <div className="rounded-[18px] bg-white/14 px-3 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70">
+                Først
+              </p>
+              <p className="mt-1 truncate text-sm font-black">
+                {topPlayer?.visningsnavn ?? '–'}
+              </p>
+            </div>
+            <div className="rounded-[18px] bg-white/14 px-3 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70">
+                Flest sæt
+              </p>
+              <p className="mt-1 text-xl font-black">
+                {topPlayer ? topPlayer.sæt : '–'}
+              </p>
+            </div>
+          </div>
+        </header>
+
+        <div className="flex-1 overflow-y-auto px-4 pb-28 pt-4 md:px-6">
+          <div className="space-y-4">
+            <section className="rounded-[20px] bg-white p-4 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h2 className="text-[13px] font-bold uppercase tracking-[0.12em] text-[#2d3340]">
+                  Månedens aktivitet
+                </h2>
+                <span className="rounded-full bg-[#fff0f5] px-3 py-1 text-[11px] font-bold text-[#f01f78]">
+                  Tie-break: point
                 </span>
-              </li>
-            )
-          })}
-        </ol>
-      )}
-    </main>
+              </div>
+
+              {loading ? (
+                <p className="text-sm text-[#6d7280]">Indlæser…</p>
+              ) : mestAktive.length === 0 ? (
+                <p className="text-sm text-[#6d7280]">
+                  Ingen aktive spillere registreret endnu.
+                </p>
+              ) : (
+                <ol className="space-y-2.5">
+                  {mestAktive.map((spiller, index) => (
+                    <li
+                      key={spiller.visningsnavn}
+                      className={[
+                        'rounded-[18px] px-4 py-3',
+                        index === 0
+                          ? 'bg-gradient-to-r from-[#f01f78] to-[#ff5b9b] text-white'
+                          : 'border border-[#ececf1] bg-[#fbfbfc] text-[#1f2430]',
+                      ].join(' ')}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className={index === 0 ? 'text-sm font-black text-white' : 'text-sm font-black text-[#f01f78]'}>
+                              #{index + 1}
+                            </span>
+                            <span className="truncate text-sm font-bold">
+                              {spiller.visningsnavn}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="text-right">
+                          <div className={index === 0 ? 'text-sm font-bold text-white' : 'text-sm font-bold text-[#1f2430]'}>
+                            {spiller.sæt} sæt {emojiForPlacering(index)}
+                          </div>
+                          <div className={index === 0 ? 'text-xs text-white/75' : 'text-xs text-[#8a8f9c]'}>
+                            {spiller.pluspoint > 0 ? '+' : ''}
+                            {spiller.pluspoint.toFixed(1)} point
+                          </div>
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </section>
+
+            {isAdmin ? (
+              <section className="rounded-[20px] bg-white p-4 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-[13px] font-bold uppercase tracking-[0.12em] text-[#2d3340]">
+                      Tidligere måneder
+                    </h2>
+                    <p className="mt-1 text-sm text-[#6d7280]">
+                      Se hvem der har været mest aktive måned for måned.
+                    </p>
+                  </div>
+
+                  <Link
+                    href="/active/arkiv"
+                    className="rounded-full bg-[#fff0f5] px-3 py-1.5 text-[11px] font-bold text-[#f01f78]"
+                  >
+                    Åbn arkiv
+                  </Link>
+                </div>
+              </section>
+            ) : null}
+          </div>
+        </div>
+
+        <nav className="absolute inset-x-0 bottom-0 flex justify-around border-t border-black/5 bg-white px-2 pb-5 pt-3 md:static md:pb-4">
+          {[
+            { href: '/startside', icon: '🏠', label: 'Hjem' },
+            { href: '/ranglister', icon: '📊', label: 'Rangliste' },
+            { href: '/kommende', icon: '📅', label: 'Events' },
+            ...(isAdmin ? [{ href: '/active/arkiv', icon: '🗂️', label: 'Arkiv' }] : []),
+          ].map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={[
+                'flex min-w-16 flex-col items-center gap-1',
+                item.href === '/ranglister' ? 'text-[#f01f78]' : 'text-[#7b8190]',
+              ].join(' ')}
+            >
+              <span className="text-lg">{item.icon}</span>
+              <span className="text-[11px] font-semibold">{item.label}</span>
+            </Link>
+          ))}
+        </nav>
+      </div>
+    </PageShell>
   )
 }

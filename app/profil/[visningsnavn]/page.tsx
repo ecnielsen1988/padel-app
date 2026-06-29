@@ -1,19 +1,20 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import Link from "next/link"
 import { useParams } from "next/navigation"
-import { supabase } from "@/lib/supabaseClient"
+import { useEffect, useState } from "react"
+import { PageShell } from "@/app/components/ui"
 import {
   EloPoint,
-  hentEloHistorikForSpiller,
   findCurrentEloForSpiller,
+  hentEloHistorikForSpiller,
 } from "@/lib/beregnEloHistorik"
 import { EloChart } from "./EloChart"
 import { EloStats } from "./EloStats"
-import { SetStats } from "./SetStats"
 import { MakkerStats } from "./MakkerStats"
+import RankOverview from "./RankOverview"
+import { SetStats } from "./SetStats"
 import { StreakStats } from "./StreakStats"
-import RankOverview from "./RankOverview" // 👈 rettet import
 
 type ProfilState = {
   loading: boolean
@@ -29,44 +30,13 @@ type ProfilState = {
   compareCurrentElo: number | null
 }
 
-/**
- * Henter ALLE rækker fra newresults via pagination,
- * da Supabase/PostgREST typisk har max 1000 rækker per request.
- */
-async function fetchAllNewresults(): Promise<any[]> {
-  const PAGE_SIZE = 1000
-  let all: any[] = []
-  let page = 0
-
-  while (true) {
-    const from = page * PAGE_SIZE
-    const to = from + PAGE_SIZE - 1
-
-    const { data, error } = await supabase
-      .from("newresults")
-      .select("*")
-      .order("date", { ascending: true })
-      .order("id", { ascending: true })
-      .range(from, to)
-
-    if (error) {
-      console.error("Fejl ved pagineret hentning af newresults:", error)
-      if (page === 0) throw error
-      break
-    }
-
-    const batch = data ?? []
-    all = all.concat(batch)
-
-    if (batch.length < PAGE_SIZE) {
-      // Sidste side
-      break
-    }
-
-    page++
-  }
-
-  return all
+function initials(name: string) {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("")
 }
 
 export default function ProfilSide() {
@@ -88,11 +58,8 @@ export default function ProfilSide() {
     compareHistory: [],
     compareCurrentElo: null,
   })
-
-  // Lokalt input-field til søgning/valg af spiller til sammenligning
   const [compareInput, setCompareInput] = useState("")
 
-  // Første load: kampe + profiler + din Elo
   useEffect(() => {
     if (!visningsnavn) return
 
@@ -102,66 +69,30 @@ export default function ProfilSide() {
       setState((s) => ({ ...s, loading: true, error: null }))
 
       try {
-        // 1) Hent ALLE kampe (newresults) via pagination
-        const kampe = await fetchAllNewresults()
-        if (cancelled) return
-
-        // 2) Hent alle profiler for at få startElo (første Elo)
-        const { data: profilesData, error: profilesError } = await supabase
-          .from("profiles")
-          .select("visningsnavn, startElo")
-
-        if (cancelled) return
-
-        if (profilesError) {
-          console.error("Fejl ved hentning af profiles til profil:", profilesError)
-          setState((s) => ({
-            ...s,
-            loading: false,
-            error: profilesError.message ?? "Kunne ikke hente profiler",
-            kampCount: kampe.length,
-          }))
-          return
-        }
-
-        const profiles = (profilesData ?? []).filter(
-          (p: any) => !!p.visningsnavn
-        ) as { visningsnavn: string; startElo?: number }[]
-
-        // 3) Byg initialEloMap ud fra startElo
-        const initialEloMap: Record<string, number> = {}
-        const DEFAULT_START_ELO = 1000 // fallback hvis nogen ikke har startElo
-
-        for (const p of profiles) {
-          const navn = p.visningsnavn
-          const startElo =
-            typeof p.startElo === "number" ? p.startElo : DEFAULT_START_ELO
-          initialEloMap[navn] = startElo
-        }
-
-        // 4) Elo-historik for denne spiller
-        const eloHistory = hentEloHistorikForSpiller(
-          visningsnavn,
-          kampe,
-          initialEloMap
+        const res = await fetch(
+          `/api/profile?visningsnavn=${encodeURIComponent(visningsnavn)}`,
+          { cache: "no-store" }
         )
+        if (cancelled) return
+        const data = await res.json()
 
-        const currentElo = findCurrentEloForSpiller(
-          visningsnavn,
-          kampe,
-          initialEloMap
-        )
+        if (!res.ok) {
+          throw new Error(data?.error ?? "Kunne ikke hente profil-data")
+        }
 
         setState((s) => ({
           ...s,
           loading: false,
           error: null,
-          eloHistory,
-          currentElo,
-          kampCount: kampe.length,
-          profiles: profiles.map((p) => ({ visningsnavn: p.visningsnavn })),
-          kampe,
-          initialEloMap,
+          eloHistory: Array.isArray(data?.eloHistory) ? data.eloHistory : [],
+          currentElo: typeof data?.currentElo === "number" ? data.currentElo : null,
+          kampCount: typeof data?.kampCount === "number" ? data.kampCount : 0,
+          profiles: Array.isArray(data?.profiles) ? data.profiles : [],
+          kampe: Array.isArray(data?.kampe) ? data.kampe : [],
+          initialEloMap:
+            data?.initialEloMap && typeof data.initialEloMap === "object"
+              ? data.initialEloMap
+              : {},
         }))
       } catch (e: any) {
         if (cancelled) return
@@ -195,7 +126,6 @@ export default function ProfilSide() {
     compareCurrentElo,
   } = state
 
-  // Når man vælger en spiller i input -> beregn sammenlignings-historik
   useEffect(() => {
     if (!compareName) {
       setState((s) => ({
@@ -208,10 +138,12 @@ export default function ProfilSide() {
 
     if (!kampe.length) return
 
-    const name = compareName
     let cancelled = false
 
     async function calcCompare() {
+      const name = compareName
+      if (!name) return
+
       const hist = hentEloHistorikForSpiller(name, kampe, initialEloMap)
       const cur = findCurrentEloForSpiller(name, kampe, initialEloMap)
 
@@ -232,16 +164,13 @@ export default function ProfilSide() {
   }, [compareName, kampe, initialEloMap])
 
   const availableCompareOptions = profiles
-    .map((p) => p.visningsnavn)
+    .map((profile) => profile.visningsnavn)
     .filter((name) => name !== visningsnavn)
     .sort((a, b) => a.localeCompare(b, "da"))
 
-  // Håndter input-ændring til sammenligningsspiller
-  function handleCompareInputChange(v: string) {
-    setCompareInput(v)
-
-    // Se om det præcist matcher et visningsnavn
-    const match = availableCompareOptions.find((name) => name === v)
+  function handleCompareInputChange(value: string) {
+    setCompareInput(value)
+    const match = availableCompareOptions.find((name) => name === value)
     setState((s) => ({
       ...s,
       compareName: match || null,
@@ -258,132 +187,183 @@ export default function ProfilSide() {
     }))
   }
 
-  return (
-    <div className="min-h-screen bg-slate-950 text-slate-50 flex justify-center px-4 py-8">
-      <div className="w-full max-w-3xl space-y-6">
-        {/* Top: Navn + nuværende Elo */}
-        <header className="flex flex-col gap-3 border-b border-pink-500/40 pb-4">
-          <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-2">
-            <div>
-              <h1 className="text-3xl font-semibold tracking-tight">
-                {visningsnavn || "Profil"}
-              </h1>
-              <p className="text-sm text-slate-400">
-                Personlig Elo-profil (beta) – bygger på alle registrerede sæt
-              </p>
-              <p className="text-xs text-slate-500 mt-1">
-                Indlæste kampe i alt: {kampCount}
-              </p>
-            </div>
+  const profileLink = `/profil/${encodeURIComponent(visningsnavn)}`
+  const currentTime = new Intl.DateTimeFormat("da-DK", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date())
 
-            <div className="inline-flex items-center gap-2 rounded-2xl border border-pink-500/60 bg-slate-900/70 px-4 py-2">
-              <span className="text-xs uppercase tracking-wide text-slate-400">
-                Nuværende Elo
-              </span>
-              <span className="text-2xl font-bold text-pink-400">
-                {currentElo !== null ? Math.round(currentElo) : "–"}
-              </span>
-            </div>
+  return (
+    <PageShell className="bg-[#1a1a2e] px-0 py-0 md:px-6 md:py-6">
+      <div className="mx-auto flex min-h-screen w-full max-w-[820px] flex-col overflow-hidden bg-[#f7f7fa] md:min-h-[min(100vh,980px)] md:rounded-[34px] md:border md:border-white/10 md:shadow-[0_24px_60px_rgba(0,0,0,0.28)]">
+        <header className="bg-gradient-to-br from-[#f01f78] to-[#c0135a] px-4 pb-5 pt-4 text-white md:px-6">
+          <div className="mb-4 flex items-center justify-between text-[11px] font-semibold opacity-90">
+            <button
+              type="button"
+              onClick={() => {
+                if (typeof window !== "undefined") window.history.back()
+              }}
+              className="inline-flex items-center rounded-full bg-white/18 px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-white/28"
+            >
+              ← Tilbage
+            </button>
+            <span>{currentTime}</span>
           </div>
 
-          {/* Sammenlign spiller-sektion */}
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-xs uppercase tracking-wide text-slate-400">
-                Sammenlign med spiller
-              </span>
-              <div className="flex items-center gap-2">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/75">
+                Spillerprofil
+              </p>
+              <h1 className="mt-1 text-2xl font-black tracking-tight">
+                {visningsnavn || "Profil"}
+              </h1>
+              <p className="mt-2 text-sm text-white/80">
+                Elo-udvikling, ranglisteplaceringer og statistik samlet ét sted.
+              </p>
+            </div>
+
+            <Link
+              href={profileLink}
+              className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-[#ffd44d] text-xs font-black text-[#463018]"
+              aria-label="Profil"
+            >
+              {initials(visningsnavn || "P")}
+            </Link>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <div className="rounded-[18px] border border-white/20 bg-white/16 px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70">
+                Nuværende Elo
+              </p>
+              <p className="mt-1 text-2xl font-black">
+                {currentElo !== null ? Math.round(currentElo) : "–"}
+              </p>
+            </div>
+            <div className="rounded-[18px] border border-white/20 bg-white/16 px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70">
+                Registrerede sæt
+              </p>
+              <p className="mt-1 text-2xl font-black">{kampCount}</p>
+            </div>
+          </div>
+        </header>
+
+        <div className="flex-1 overflow-y-auto px-4 pb-28 pt-4 md:px-6">
+          <div className="space-y-4">
+            <section className="rounded-[20px] border border-[#ececf1] bg-white p-4 shadow-[0_6px_20px_rgba(15,23,42,0.06)]">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-[13px] font-bold uppercase tracking-[0.12em] text-[#2d3340]">
+                    Sammenlign spiller
+                  </h2>
+                  <p className="mt-1 text-sm text-[#6d7280]">
+                    Se udviklingen op mod en anden spiller.
+                  </p>
+                </div>
+                {compareName ? (
+                  <button
+                    type="button"
+                    onClick={clearCompare}
+                    className="rounded-full bg-[#fff0f5] px-3 py-1.5 text-[11px] font-bold text-[#f01f78]"
+                  >
+                    Ryd
+                  </button>
+                ) : null}
+              </div>
+
+              <div className="space-y-3">
                 <input
                   list="spillerliste"
-                  className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-pink-500/60 min-w-[200px]"
+                  className="w-full rounded-[14px] border border-[#e6e7eb] bg-[#fbfbfc] px-3 py-3 text-sm text-[#1f2430] outline-none transition focus:border-[#f01f78] focus:ring-2 focus:ring-[#f7a9c8]"
                   placeholder="Søg efter navn…"
                   value={compareInput}
                   onChange={(e) => handleCompareInputChange(e.target.value)}
                 />
-                {compareName && (
-                  <button
-                    type="button"
-                    onClick={clearCompare}
-                    className="text-xs text-slate-300 hover:text-pink-300"
-                  >
-                    Ryd
-                  </button>
-                )}
                 <datalist id="spillerliste">
                   {availableCompareOptions.map((name) => (
                     <option key={name} value={name} />
                   ))}
                 </datalist>
-              </div>
-            </div>
 
-            {compareName && (
-              <div className="flex items-center gap-2 text-xs text-slate-300">
-                <span className="inline-flex items-center gap-1 rounded-full bg-pink-500/10 border border-pink-500/40 px-2 py-1">
-                  <span
-                    className="inline-block w-2 h-2 rounded-full"
-                    style={{ backgroundColor: "#f472b6" }}
-                  />
-                  {visningsnavn}
-                </span>
-                <span className="inline-flex items-center gap-1 rounded-full bg-cyan-500/10 border border-cyan-500/40 px-2 py-1">
-                  <span
-                    className="inline-block w-2 h-2 rounded-full"
-                    style={{ backgroundColor: "#22d3ee" }}
-                  />
-                  {compareName}
-                  {typeof compareCurrentElo === "number" && (
-                    <span className="ml-1 text-[10px] text-cyan-300">
-                      ({Math.round(compareCurrentElo)})
+                {compareName ? (
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-[#4c5566]">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-[#fff0f5] px-3 py-1.5 font-semibold text-[#f01f78]">
+                      <span className="inline-block h-2 w-2 rounded-full bg-[#f01f78]" />
+                      {visningsnavn}
                     </span>
-                  )}
-                </span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-[#ebfbff] px-3 py-1.5 font-semibold text-[#1198b0]">
+                      <span className="inline-block h-2 w-2 rounded-full bg-[#22d3ee]" />
+                      {compareName}
+                      {typeof compareCurrentElo === "number" ? (
+                        <span className="text-[10px] font-bold">
+                          ({Math.round(compareCurrentElo)})
+                        </span>
+                      ) : null}
+                    </span>
+                  </div>
+                ) : null}
               </div>
-            )}
+            </section>
+
+            <RankOverview visningsnavn={visningsnavn} kampe={kampe} />
+
+            {loading ? (
+              <section className="rounded-[20px] border border-[#ececf1] bg-white p-4 text-sm text-[#6d7280] shadow-[0_6px_20px_rgba(15,23,42,0.06)]">
+                Indlæser Elo-historik for <strong>{visningsnavn}</strong>…
+              </section>
+            ) : null}
+
+            {error && !loading ? (
+              <section className="rounded-[20px] border border-red-200 bg-red-50 p-4 text-sm text-red-700 shadow-[0_6px_20px_rgba(15,23,42,0.05)]">
+                Der opstod en fejl: {error}
+              </section>
+            ) : null}
+
+            {!loading && !error ? (
+              <section className="space-y-4">
+                <EloChart
+                  visningsnavn={visningsnavn}
+                  eloHistory={eloHistory}
+                  compareHistory={compareHistory}
+                  compareName={compareName}
+                />
+
+                <EloStats visningsnavn={visningsnavn} eloHistory={eloHistory} />
+                <SetStats visningsnavn={visningsnavn} kampe={kampe} />
+                <MakkerStats
+                  visningsnavn={visningsnavn}
+                  kampe={kampe}
+                  initialEloMap={initialEloMap}
+                />
+                <StreakStats visningsnavn={visningsnavn} kampe={kampe} />
+              </section>
+            ) : null}
           </div>
-        </header>
+        </div>
 
-        {/* 🔝 Hurtigt overblik over ranglister */}
-        <RankOverview visningsnavn={visningsnavn} kampe={kampe} />
-
-        {/* Indhold */}
-        {loading && (
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 px-4 py-6 text-sm text-slate-300">
-            Indlæser Elo-historik for <strong>{visningsnavn}</strong>…
-          </div>
-        )}
-
-        {error && !loading && (
-          <div className="rounded-2xl border border-red-500/60 bg-red-950/40 px-4 py-6 text-sm text-red-100">
-            Der opstod en fejl: {error}
-          </div>
-        )}
-
-        {!loading && !error && (
-          <section className="space-y-4">
-            {/* Graf-komponent */}
-            <EloChart
-              visningsnavn={visningsnavn}
-              eloHistory={eloHistory}
-              compareHistory={compareHistory}
-              compareName={compareName}
-            />
-
-            {/* Stats-komponent: højeste/laveste/gns Elo sidste måned & i år */}
-            <EloStats visningsnavn={visningsnavn} eloHistory={eloHistory} />
-
-            <SetStats visningsnavn={visningsnavn} kampe={kampe} />
-
-            <MakkerStats
-              visningsnavn={visningsnavn}
-              kampe={kampe}
-              initialEloMap={initialEloMap}
-            />
-
-            <StreakStats visningsnavn={visningsnavn} kampe={kampe} />
-          </section>
-        )}
+        <nav className="absolute inset-x-0 bottom-0 flex justify-around border-t border-black/5 bg-white px-2 pb-5 pt-3 md:static md:pb-4">
+          {[
+            { href: "/startside", icon: "🏠", label: "Hjem" },
+            { href: "/ranglister", icon: "📊", label: "Rangliste" },
+            { href: "/kommende", icon: "📅", label: "Events" },
+            { href: profileLink, icon: "🧑‍🎾", label: "Profil" },
+          ].map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={[
+                "flex min-w-16 flex-col items-center gap-1",
+                item.href === profileLink ? "text-[#f01f78]" : "text-[#7b8190]",
+              ].join(" ")}
+            >
+              <span className="text-lg">{item.icon}</span>
+              <span className="text-[11px] font-semibold">{item.label}</span>
+            </Link>
+          ))}
+        </nav>
       </div>
-    </div>
+    </PageShell>
   )
 }

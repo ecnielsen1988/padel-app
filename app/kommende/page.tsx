@@ -2,7 +2,9 @@
 export const dynamic = 'force-dynamic'
 
 import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
+import { LoadingState, PageShell } from '../components/ui'
 
 /** Matchi-links */
 const MATCHI_HELSINGE = 'https://www.matchi.se/facilities/PadelhusetHelsinge'
@@ -54,6 +56,36 @@ type EventSet = {
   holda2: string
   holdb1: string
   holdb2: string
+  scoreA: number
+  scoreB: number
+}
+
+function initials(name: string) {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('')
+}
+
+function mapEventRowsToSets(rows: EventResultRow[], eventDate: string): EventSet[] {
+  return rows.map((r) => ({
+    id: `${r.event_id}-${r.group_index}-${r.set_index}`,
+    event_id: r.event_id,
+    event_dato: eventDate,
+    kamp_nr: (r.group_index ?? 0) + 1,
+    saet_nr: (r.set_index ?? 0) + 1,
+    bane: (r.court_label ?? '') as string,
+    starttid: (r.start_time ?? '').slice(0, 5),
+    sluttid: (r.end_time ?? '').slice(0, 5),
+    holda1: r.holdA1 ?? '',
+    holda2: r.holdA2 ?? '',
+    holdb1: r.holdB1 ?? '',
+    holdb2: r.holdB2 ?? '',
+    scoreA: Number(r.scoreA ?? 0),
+    scoreB: Number(r.scoreB ?? 0),
+  }))
 }
 
 export default function KommendeKampePage() {
@@ -71,6 +103,10 @@ export default function KommendeKampePage() {
   const [programDato, setProgramDato] = useState<string | null>(null)
   const [programRows, setProgramRows] = useState<EventSet[]>([])
   const [programLoading, setProgramLoading] = useState(false)
+  const [scoreOpen, setScoreOpen] = useState(false)
+  const [scoreRows, setScoreRows] = useState<EventSet[]>([])
+  const [scoreBusy, setScoreBusy] = useState(false)
+  const [scoreError, setScoreError] = useState<string | null>(null)
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -168,19 +204,9 @@ export default function KommendeKampePage() {
 
           if (erErr) throw erErr
 
-          allSets = (erows as EventResultRow[]).map(r => ({
-            id: `${r.event_id}-${r.group_index}-${r.set_index}`,
-            event_id: r.event_id,
-            event_dato: dateByEvent[String(r.event_id)] ?? todayISO,
-            kamp_nr: (r.group_index ?? 0) + 1,
-            saet_nr: (r.set_index ?? 0) + 1,
-            bane: (r.court_label ?? '') as string,
-            starttid: (r.start_time ?? '').slice(0, 5),
-            sluttid: (r.end_time ?? '').slice(0, 5),
-            holda1: r.holdA1 ?? '',
-            holda2: r.holdA2 ?? '',
-            holdb1: r.holdB1 ?? '',
-            holdb2: r.holdB2 ?? '',
+          allSets = mapEventRowsToSets(erows as EventResultRow[], todayISO).map((row) => ({
+            ...row,
+            event_dato: dateByEvent[String(row.event_id)] ?? todayISO,
           }))
         }
         setAlleUpcoming(allSets)
@@ -237,20 +263,7 @@ export default function KommendeKampePage() {
 
       const dato = (evMeta?.date as string) ?? todayISO
 
-      const rows: EventSet[] = (evRows as EventResultRow[]).map(r => ({
-        id: `${r.event_id}-${r.group_index}-${r.set_index}`,
-        event_id: r.event_id,
-        event_dato: dato,
-        kamp_nr: (r.group_index ?? 0) + 1,
-        saet_nr: (r.set_index ?? 0) + 1,
-        bane: (r.court_label ?? '') as string,
-        starttid: (r.start_time ?? '').slice(0, 5),
-        sluttid: (r.end_time ?? '').slice(0, 5),
-        holda1: r.holdA1 ?? '',
-        holda2: r.holdA2 ?? '',
-        holdb1: r.holdB1 ?? '',
-        holdb2: r.holdB2 ?? '',
-      }))
+      const rows: EventSet[] = mapEventRowsToSets(evRows as EventResultRow[], dato)
 
       setProgramRows(rows)
       setProgramDato(dato)
@@ -262,7 +275,123 @@ export default function KommendeKampePage() {
     }
   }
 
+  async function reloadEventSets(eventId: string | number, eventDate?: string | null) {
+    const { data: evRows, error } = await (supabase.from('event_result') as any)
+      .select('*')
+      .eq('event_id', eventId)
+      .order('group_index', { ascending: true })
+      .order('set_index', { ascending: true })
+
+    if (error) throw error
+
+    let dato = eventDate ?? null
+    if (!dato) {
+      const { data: evMeta } = await (supabase.from('events') as any)
+        .select('date')
+        .eq('id', eventId)
+        .maybeSingle()
+      dato = (evMeta?.date as string | null) ?? todayISO
+    }
+
+    const rows = mapEventRowsToSets(evRows as EventResultRow[], dato ?? todayISO)
+    setAlleUpcoming((prev) => [
+      ...prev.filter((row) => String(row.event_id) !== String(eventId)),
+      ...rows,
+    ])
+
+    if (visningsnavn) {
+      const lower = visningsnavn.toLowerCase()
+      setMineSets((prev) => {
+        const rest = prev.filter((row) => String(row.event_id) !== String(eventId))
+        const mine = rows.filter((row) =>
+          [row.holda1, row.holda2, row.holdb1, row.holdb2]
+            .map((name) => (name || '').trim().toLowerCase())
+            .includes(lower)
+        )
+        return [...rest, ...mine]
+      })
+    }
+
+    if (programOpen && programRows[0] && String(programRows[0].event_id) === String(eventId)) {
+      setProgramRows(rows)
+      setProgramDato(dato ?? todayISO)
+    }
+
+    if (scoreOpen && scoreRows[0] && String(scoreRows[0].event_id) === String(eventId)) {
+      const currentKampNr = scoreRows[0].kamp_nr
+      setScoreRows(
+        rows
+          .filter((row) => row.kamp_nr === currentKampNr)
+          .sort((a, b) => a.saet_nr - b.saet_nr)
+      )
+    }
+  }
+
+  async function saveSetScore(setRow: EventSet, scoreA: number, scoreB: number) {
+    setScoreBusy(true)
+    setScoreError(null)
+    try {
+      const res = await fetch('/api/event-score', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'updateScore',
+          eventId: setRow.event_id,
+          groupIndex: setRow.kamp_nr - 1,
+          setIndex: setRow.saet_nr - 1,
+          scoreA,
+          scoreB,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data?.error ?? 'Kunne ikke gemme sættet.')
+      }
+
+      await reloadEventSets(setRow.event_id, setRow.event_dato)
+    } catch (e: any) {
+      setScoreError(e?.message ?? 'Kunne ikke gemme sættet.')
+    } finally {
+      setScoreBusy(false)
+    }
+  }
+
+  async function addExtraSet() {
+    const first = scoreRows[0]
+    if (!first) return
+    setScoreBusy(true)
+    setScoreError(null)
+    try {
+      const res = await fetch('/api/event-score', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'addSet',
+          eventId: first.event_id,
+          groupIndex: first.kamp_nr - 1,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data?.error ?? 'Kunne ikke tilføje et nyt sæt.')
+      }
+
+      await reloadEventSets(first.event_id, first.event_dato)
+    } catch (e: any) {
+      setScoreError(e?.message ?? 'Kunne ikke tilføje et nyt sæt.')
+    } finally {
+      setScoreBusy(false)
+    }
+  }
+
+  function åbnScorekort(sets: EventSet[]) {
+    setScoreError(null)
+    setScoreRows([...sets].sort((a, b) => a.saet_nr - b.saet_nr))
+    setScoreOpen(true)
+  }
+
   function lukProgram() { setProgramOpen(false); setProgramDato(null); setProgramRows([]) }
+  function lukScore() { setScoreOpen(false); setScoreRows([]); setScoreError(null) }
   function goBack() {
     if (typeof window !== 'undefined') {
       if (window.history.length > 1) window.history.back()
@@ -276,201 +405,266 @@ export default function KommendeKampePage() {
   const programGroups = useMemo(() => groupByMatch(programRows), [programRows])
 
   // =============== RENDER =============== //
-  if (loading) {
-    return (
-      <main className="max-w-xl mx-auto p-6 sm:p-8 text-gray-900 dark:text-white relative">
-        <div className="fixed top-4 left-4 z-50">
-          <button type="button" onClick={goBack}
-            className="px-3 py-1.5 rounded-full border-2 border-pink-500 text-pink-600 bg-white/90 dark:bg-[#2a2a2a]/90 shadow hover:bg-pink-50 dark:hover:bg-pink-900/20 transition">
-            ← Tilbage
-          </button>
-        </div>
-        <p className="text-center text-zinc-600 dark:text-zinc-300">Indlæser kommende kampe...</p>
-      </main>
-    )
-  }
+  if (loading) return <LoadingState text="Indlæser kommende..." />
 
   return (
-    <main className="max-w-xl mx-auto p-6 sm:p-8 text-gray-900 dark:text-white relative">
-      {/* ← Tilbage */}
-      <div className="fixed top-4 left-4 z-50">
-        <button type="button" onClick={goBack}
-          className="px-3 py-1.5 rounded-full border-2 border-pink-500 text-pink-600 bg-white/90 dark:bg-[#2a2a2a]/90 shadow hover:bg-pink-50 dark:hover:bg-pink-900/20 transition">
-          ← Tilbage
-        </button>
-      </div>
+    <PageShell className="bg-[#1a1a2e] px-0 py-0 md:px-6 md:py-6">
+      <div className="mx-auto flex min-h-screen w-full max-w-[820px] flex-col overflow-hidden bg-[#f4f5f7] md:min-h-[min(100vh,980px)] md:rounded-[34px] md:border md:border-white/10 md:shadow-[0_28px_80px_rgba(0,0,0,0.35)]">
+        <header className="bg-gradient-to-br from-[#f01f78] to-[#c0135a] px-4 pb-5 pt-4 text-white md:px-6">
+          <div className="mb-4 flex items-center justify-between text-[11px] font-semibold opacity-90">
+            <span>Padelhuset</span>
+            <span>
+              {new Intl.DateTimeFormat('da-DK', {
+                hour: '2-digit',
+                minute: '2-digit',
+              }).format(new Date())}
+            </span>
+          </div>
 
-      <h1 className="text-3xl font-bold mb-2 text-center">📅 Kommende</h1>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/75">
+                Kalender
+              </p>
+              <h1 className="mt-1 text-2xl font-black tracking-tight">
+                Kommende Events
+              </h1>
+            </div>
 
-      {visningsnavn && (
-        <p className="text-center text-xs opacity-70 mb-4">
-          {`Bruger: ${visningsnavn} · Køn: ${isFemale ? 'kvinde' : 'mand'} · Elo: ${elo ?? 'ikke fundet'}`}
-        </p>
-      )}
+            <Link
+              href={visningsnavn ? `/profil/${encodeURIComponent(visningsnavn)}` : '/startside'}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#ffd44d] text-xs font-black text-[#463018]"
+              aria-label="Min profil"
+            >
+              {initials(visningsnavn || 'Spiller')}
+            </Link>
+          </div>
+        </header>
 
-      {error && <p className="text-center text-red-600 mb-4">{error}</p>}
+        <div className="flex-1 overflow-y-auto px-4 pb-28 pt-4 md:px-6">
+          <div className="space-y-4">
+            {error ? (
+              <section className="rounded-[20px] bg-white p-4 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
+                <p className="text-sm font-semibold text-red-600">{error}</p>
+              </section>
+            ) : null}
 
-      {/* ===== Mine kampe (fra event_result for publicerede events) ===== */}
-      <section className="mb-10">
-        <h2 className="text-2xl font-semibold mb-4">Mine kampe</h2>
+            <section className="rounded-[20px] bg-white p-4 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h2 className="text-[13px] font-bold uppercase tracking-[0.12em] text-[#2d3340]">
+                  Mine kampe
+                </h2>
+                <span className="rounded-full bg-[#fff0f5] px-3 py-1 text-[11px] font-bold text-[#f01f78]">
+                  {mineSets.length} sæt
+                </span>
+              </div>
 
-        {visningsnavn && mineDatoer.length > 0 ? (
-          mineDatoer.map((dato) => {
-            const kampe = groupedMine.get(dato)!
-            return (
-              <div key={`mine-${dato}`} className="mb-6">
-                <h3 className="text-xl font-semibold mb-3">
-                  {formatDanishDate(dato)}
-                </h3>
+              {visningsnavn && mineDatoer.length > 0 ? (
                 <div className="space-y-4">
-                  {Array.from(kampe.keys()).map((kampKey) => {
-                    const sets = kampe.get(kampKey)!
-                    const meta = sets[0]
+                  {mineDatoer.map((dato) => {
+                    const kampe = groupedMine.get(dato)!
                     return (
-                      <div key={kampKey}
-                        className="rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 p-4 shadow-sm">
-                        <div className="flex items-center justify-between mb-2">
-                          <h4 className="font-semibold">Kamp #{meta.kamp_nr}</h4>
-                          <div className="text-sm">🏟 {meta.bane} · ⏱ {fmt(meta.starttid)}–{fmt(meta.sluttid)}</div>
-                        </div>
-                        <div className="space-y-1 text-sm">
-                          {sets.map((r) => (
-                            <div key={r.saet_nr} className="flex items-start gap-3">
-                              <span className="font-medium shrink-0">Sæt {r.saet_nr}:</span>
-                              <span className="leading-tight break-words text-left">
-                                {r.holda1} & {r.holda2} <span className="opacity-60">vs</span><br />
-                                {r.holdb1} & {r.holdb2}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                        <div className="mt-3">
-                          <button
-                            type="button"
-                            onClick={() => visFuldtProgramForEvent(meta.event_id)}
-                            className="inline-block px-3 py-1.5 rounded-full border-2 border-pink-500 text-pink-600 bg-white/90 dark:bg-[#2a2a2a]/90 shadow hover:bg-pink-50 dark:hover:bg-pink-900/20 transition"
-                            title="Se fuldt program"
-                          >
-                            📋 Fuldt program
-                          </button>
+                      <div key={`mine-${dato}`} className="space-y-3">
+                        <h3 className="text-sm font-extrabold text-[#1f2430]">
+                          {formatDanishDate(dato)}
+                        </h3>
+                        <div className="space-y-3">
+                          {Array.from(kampe.keys()).map((kampKey) => {
+                            const sets = kampe.get(kampKey)!
+                            const meta = sets[0]
+                            return (
+                              <div
+                                key={kampKey}
+                                className="rounded-[18px] bg-[#fbfbfc] p-4 shadow-[0_1px_8px_rgba(0,0,0,0.04)]"
+                              >
+                                <div className="mb-2 flex items-center justify-between gap-3">
+                                  <h4 className="text-sm font-extrabold text-[#1f2430]">
+                                    Kamp #{meta.kamp_nr}
+                                  </h4>
+                                  <div className="text-xs text-[#838999]">
+                                    🏟 {meta.bane} · ⏱ {fmt(meta.starttid)}–{fmt(meta.sluttid)}
+                                  </div>
+                                </div>
+                                <div className="space-y-2 text-sm text-[#414754]">
+                                  {sets.map((r) => (
+                                    <div key={r.saet_nr} className="rounded-[12px] bg-white px-3 py-2">
+                                      <div className="flex items-center justify-between gap-3">
+                                        <div className="font-semibold">Sæt {r.saet_nr}</div>
+                                        <div className="text-sm font-black text-[#1f2430]">
+                                          {r.scoreA === 0 && r.scoreB === 0 ? '–' : `${r.scoreA}-${r.scoreB}`}
+                                        </div>
+                                      </div>
+                                      <div className="mt-1 leading-tight">
+                                        {r.holda1} & {r.holda2} <span className="opacity-60">vs</span><br />
+                                        {r.holdb1} & {r.holdb2}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => åbnScorekort(sets)}
+                                    className="inline-flex items-center justify-center rounded-full border-2 border-emerald-500 bg-white px-3 py-1.5 text-sm font-semibold text-emerald-700 shadow transition hover:bg-emerald-50"
+                                    title="Indtast resultater"
+                                  >
+                                    ✍️ Indtast resultater
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => visFuldtProgramForEvent(meta.event_id)}
+                                    className="inline-flex items-center justify-center rounded-full border-2 border-pink-500 bg-white px-3 py-1.5 text-sm font-semibold text-pink-600 shadow transition hover:bg-pink-50"
+                                    title="Se fuldt program"
+                                  >
+                                    📋 Fuldt program
+                                  </button>
+                                </div>
+                              </div>
+                            )
+                          })}
                         </div>
                       </div>
                     )
                   })}
                 </div>
-              </div>
-            )
-          })
-        ) : (
-          <div className="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4">
-            <p className="text-zinc-700 dark:text-zinc-300">Ingen kommende kampe.</p>
-            <p className="text-sm mt-1 text-zinc-600 dark:text-zinc-400">
-              Tjek events nedenfor – “📋 Program” vises på publicerede events.
-            </p>
-          </div>
-        )}
-      </section>
-
-      {/* ===== Kommende events ===== */}
-      <section>
-        <h2 className="text-2xl font-semibold mb-4">Kommende events</h2>
-
-        {kommendeEvents.length === 0 ? (
-          <p className="text-zinc-600 dark:text-zinc-400">Ingen datoer at vise endnu.</p>
-        ) : (
-          <div className="space-y-3">
-            {kommendeEvents.map((ev) => {
-              if (!ev.date) return null
-              const navn = (ev.name ?? '').toString().trim() || 'Event'
-
-              const womenOnly = !!ev.only_women || /torsdagstøserne/i.test(navn)
-              const closedGroup = !!ev.closed_group
-              const status = (ev.status ?? '').toLowerCase()
-
-              const minElo = numOrNull(ev.min_elo)
-              const maxElo = numOrNull(ev.max_elo)
-              const hasEloReq = minElo != null || maxElo != null
-
-              const eloOk = hasEloReq
-                ? (elo != null)
-                  && (minElo == null || (elo as number) >= minElo)
-                  && (maxElo == null || (elo as number) <= maxElo)
-                : true
-
-              const membersOk = closedGroup ? isTorsdagspadel : true
-              const womenOk = womenOnly ? isFemale : true
-              const eligible = eloOk && membersOk && womenOk
-
-              const signupUrl =
-                (ev as any).signup_url
-                || (ev.location ? getSignupUrlByLocation(ev.location) : getSignupUrlByISODate(ev.date))
-
-              const timeStr = [fmt(ev.start_time), fmt(ev.end_time)].filter(Boolean).join('–')
-              const locationStr = ev.location ? ` · ${ev.location}` : ''
-
-              const emoji = getEmojiForEvent({ requireMembers: closedGroup, womenOnly })
-
-              const showProgram = status === 'published'
-
-              return (
-                <div
-                  key={`ev-${ev.id}`}
-                  className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-3"
-                >
-                  {/* 1: Dato – tid – location */}
-                  <div className="text-sm opacity-80">
-                    {formatDanishDate(ev.date)}
-                    {timeStr ? ` · ${timeStr}` : ''}
-                    {locationStr}
-                  </div>
-
-                  {/* 2: Emoji · Navn · Emoji */}
-                  <div className="text-base font-semibold my-1">
-                    <span className="mr-1">{emoji}</span>
-                    {navn}
-                    <span className="ml-1">{emoji}</span>
-                  </div>
-
-                  {/* 3: Krav + CTA */}
-                  <div className="mt-1 flex items-center justify-between gap-2">
-                    <div className="text-sm opacity-80">
-                      {buildRequirementsText(minElo, maxElo, closedGroup, womenOnly)}
-                    </div>
-
-                    {showProgram ? (
-                      <button
-                        type="button"
-                        onClick={() => visFuldtProgramForEvent(ev.id)}
-                        className="inline-flex items-center justify-center px-3 py-1.5 rounded-full border-2 border-pink-500 text-pink-600 bg-white/90 dark:bg-[#2a2a2a]/90 shadow hover:bg-pink-50 dark:hover:bg-pink-900/20 transition"
-                        title="Se fuldt program"
-                      >
-                        📋 Program
-                      </button>
-                    ) : eligible ? (
-                      <a
-                        href={signupUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center justify-center px-3 py-1.5 rounded-full border-2 border-pink-500 text-pink-600 bg-white/90 dark:bg-[#2a2a2a]/90 shadow hover:bg-pink-50 dark:hover:bg-pink-900/20 transition"
-                        title="Åbner i nyt vindue"
-                      >
-                        Tilmelding ↗
-                      </a>
-                    ) : (
-                      <span className="text-xs px-2 py-1 rounded-full border border-zinc-300 dark:border-zinc-700 opacity-70">
-                        Ikke kvalificeret
-                      </span>
-                    )}
-                  </div>
+              ) : (
+                <div className="rounded-[18px] bg-[#fbfbfc] p-4 text-sm text-[#6d7280]">
+                  Ingen kommende kampe endnu. Tjek events nedenfor, hvor programmet vises så snart et event er publiceret.
                 </div>
-              )
-            })}
-          </div>
-        )}
-      </section>
+              )}
+            </section>
 
-      {/* ===== Modal (📋 Program) ===== */}
-      {programOpen && (
+            <section className="rounded-[20px] bg-white p-4 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h2 className="text-[13px] font-bold uppercase tracking-[0.12em] text-[#2d3340]">
+                  Kommende events
+                </h2>
+                <span className="rounded-full bg-[#eefaf4] px-3 py-1 text-[11px] font-bold text-[#1f7a5a]">
+                  14 dage
+                </span>
+              </div>
+
+              {kommendeEvents.length === 0 ? (
+                <div className="rounded-[18px] bg-[#fbfbfc] p-4 text-sm text-[#6d7280]">
+                  Ingen datoer at vise endnu.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {kommendeEvents.map((ev) => {
+                    if (!ev.date) return null
+                    const navn = (ev.name ?? '').toString().trim() || 'Event'
+                    const womenOnly = !!ev.only_women || /torsdagstøserne/i.test(navn)
+                    const closedGroup = !!ev.closed_group
+                    const status = (ev.status ?? '').toLowerCase()
+                    const minElo = numOrNull(ev.min_elo)
+                    const maxElo = numOrNull(ev.max_elo)
+                    const hasEloReq = minElo != null || maxElo != null
+                    const eloOk = hasEloReq
+                      ? (elo != null)
+                        && (minElo == null || (elo as number) >= minElo)
+                        && (maxElo == null || (elo as number) <= maxElo)
+                      : true
+                    const membersOk = closedGroup ? isTorsdagspadel : true
+                    const womenOk = womenOnly ? isFemale : true
+                    const eligible = eloOk && membersOk && womenOk
+                    const signupUrl =
+                      (ev as any).signup_url
+                      || (ev.location ? getSignupUrlByLocation(ev.location) : getSignupUrlByISODate(ev.date))
+                    const timeStr = [fmt(ev.start_time), fmt(ev.end_time)].filter(Boolean).join('–')
+                    const emoji = getEmojiForEvent({ requireMembers: closedGroup, womenOnly })
+                    const showProgram = status === 'published'
+
+                    return (
+                      <div
+                        key={`ev-${ev.id}`}
+                        className="rounded-[18px] bg-[#fbfbfc] p-4 shadow-[0_1px_8px_rgba(0,0,0,0.04)]"
+                      >
+                        <div className="mb-3 flex items-start gap-3">
+                          <div className="flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-[14px] bg-[#f01f78] text-white">
+                            <span className="text-base font-black leading-none">
+                              {new Date(`${ev.date}T12:00:00`).getDate()}
+                            </span>
+                            <span className="text-[9px] uppercase tracking-[0.08em] text-white/75">
+                              {new Intl.DateTimeFormat('da-DK', { month: 'short' }).format(new Date(`${ev.date}T12:00:00`))}
+                            </span>
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-extrabold text-[#1f2430]">
+                              {emoji} {navn}
+                            </p>
+                            <p className="mt-1 text-xs text-[#838999]">
+                              {formatDanishDate(ev.date)}
+                              {timeStr ? ` · ${timeStr}` : ''}
+                              {ev.location ? ` · ${ev.location}` : ''}
+                            </p>
+                          </div>
+                        </div>
+
+                        <p className="text-sm text-[#5f6673]">
+                          {buildRequirementsText(minElo, maxElo, closedGroup, womenOnly) || 'Åbent event'}
+                        </p>
+
+                        <div className="mt-3 flex items-center justify-between gap-3">
+                          <span className="text-xs font-semibold text-[#838999]">
+                            {showProgram ? 'Program publiceret' : eligible ? 'Du kan tilmelde dig' : 'Du opfylder ikke kravene'}
+                          </span>
+
+                          {showProgram ? (
+                            <button
+                              type="button"
+                              onClick={() => visFuldtProgramForEvent(ev.id)}
+                              className="inline-flex items-center justify-center rounded-full border-2 border-pink-500 bg-white px-3 py-1.5 text-sm font-semibold text-pink-600 shadow transition hover:bg-pink-50"
+                              title="Se fuldt program"
+                            >
+                              📋 Program
+                            </button>
+                          ) : eligible ? (
+                            <a
+                              href={signupUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center justify-center rounded-full border-2 border-pink-500 bg-white px-3 py-1.5 text-sm font-semibold text-pink-600 shadow transition hover:bg-pink-50"
+                              title="Åbner i nyt vindue"
+                            >
+                              Tilmelding ↗
+                            </a>
+                          ) : (
+                            <span className="rounded-full border border-zinc-300 px-3 py-1 text-xs font-semibold text-[#7a808c]">
+                              Ikke kvalificeret
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </section>
+          </div>
+        </div>
+
+        <nav className="absolute inset-x-0 bottom-0 flex justify-around border-t border-black/5 bg-white px-2 pb-5 pt-3 md:static md:pb-4">
+          {[
+            { href: '/startside', icon: '🏠', label: 'Hjem' },
+            { href: '/ranglister', icon: '📊', label: 'Rangliste' },
+            { href: '/kommende', icon: '📅', label: 'Events' },
+            { href: visningsnavn ? `/profil/${encodeURIComponent(visningsnavn)}` : '/startside', icon: '🧑‍🎾', label: 'Profil' },
+          ].map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={[
+                'flex min-w-16 flex-col items-center gap-1',
+                item.href === '/kommende' ? 'text-[#f01f78]' : 'text-[#7b8190]',
+              ].join(' ')}
+            >
+              <span className="text-lg">{item.icon}</span>
+              <span className="text-[11px] font-semibold">{item.label}</span>
+            </Link>
+          ))}
+        </nav>
+
+        {programOpen && (
         <div className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm flex items-stretch sm:items-center justify-center p-4 sm:p-6"
           onClick={(e) => { if (e.target === e.currentTarget) lukProgram() }}>
           <div
@@ -529,7 +723,148 @@ export default function KommendeKampePage() {
           </div>
         </div>
       )}
-    </main>
+
+      {scoreOpen && (
+        <div
+          className="fixed inset-0 z-[70] bg-black/45 backdrop-blur-sm flex items-stretch sm:items-center justify-center p-4 sm:p-6"
+          onClick={(e) => { if (e.target === e.currentTarget) lukScore() }}
+        >
+          <div
+            className="w-full sm:max-w-xl bg-white shadow-xl border border-emerald-200 rounded-none sm:rounded-2xl flex flex-col min-h-0 h-full sm:h-auto max-h-[90vh]"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Indtast resultat"
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-200">
+              <div>
+                <h3 className="text-lg font-semibold text-[#1f2430]">✍️ Indtast resultat</h3>
+                {scoreRows[0] ? (
+                  <p className="mt-1 text-sm text-[#6d7280]">
+                    Kamp #{scoreRows[0].kamp_nr} · {formatDanishDate(scoreRows[0].event_dato)}
+                  </p>
+                ) : null}
+              </div>
+              <button
+                onClick={lukScore}
+                className="px-2 py-1 rounded-lg border border-zinc-200 hover:bg-zinc-50"
+                aria-label="Luk"
+                title="Luk"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-3">
+              {scoreRows.map((row) => (
+                <ScoreEntryCard
+                  key={row.id}
+                  row={row}
+                  saving={scoreBusy}
+                  onSave={saveSetScore}
+                />
+              ))}
+
+              {scoreError ? (
+                <div className="rounded-[14px] bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
+                  {scoreError}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="px-4 py-3 border-t border-zinc-200 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={addExtraSet}
+                disabled={
+                  scoreBusy ||
+                  scoreRows.length === 0 ||
+                  (scoreRows[scoreRows.length - 1]?.scoreA === 0 &&
+                    scoreRows[scoreRows.length - 1]?.scoreB === 0)
+                }
+                className="rounded-full border-2 border-emerald-500 bg-white px-3 py-1.5 text-sm font-semibold text-emerald-700 shadow transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                + Tilføj sæt
+              </button>
+              <button
+                onClick={lukScore}
+                className="rounded-full border-2 border-pink-500 bg-white px-3 py-1.5 text-sm font-semibold text-pink-600 shadow transition hover:bg-pink-50"
+              >
+                Luk
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      </div>
+    </PageShell>
+  )
+}
+
+function ScoreEntryCard({
+  row,
+  saving,
+  onSave,
+}: {
+  row: EventSet
+  saving: boolean
+  onSave: (row: EventSet, scoreA: number, scoreB: number) => Promise<void>
+}) {
+  const [scoreA, setScoreA] = useState(String(row.scoreA))
+  const [scoreB, setScoreB] = useState(String(row.scoreB))
+
+  useEffect(() => {
+    setScoreA(String(row.scoreA))
+    setScoreB(String(row.scoreB))
+  }, [row.id, row.scoreA, row.scoreB])
+
+  function sanitize(value: string) {
+    const trimmed = value.replace(/\D/g, '').slice(0, 1)
+    return trimmed === '' ? '0' : trimmed
+  }
+
+  return (
+    <div className="rounded-[18px] bg-[#fbfbfc] p-4 shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-extrabold text-[#1f2430]">Sæt {row.saet_nr}</p>
+          <p className="mt-1 text-xs text-[#838999]">
+            🏟 {row.bane} · ⏱ {fmt(row.starttid)}–{fmt(row.sluttid)}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            value={scoreA}
+            onChange={(e) => setScoreA(sanitize(e.target.value))}
+            inputMode="numeric"
+            className="w-10 rounded-[10px] border border-zinc-200 bg-white px-2 py-1.5 text-center text-sm font-black text-[#1f2430] outline-none"
+          />
+          <span className="text-sm font-bold text-[#838999]">-</span>
+          <input
+            value={scoreB}
+            onChange={(e) => setScoreB(sanitize(e.target.value))}
+            inputMode="numeric"
+            className="w-10 rounded-[10px] border border-zinc-200 bg-white px-2 py-1.5 text-center text-sm font-black text-[#1f2430] outline-none"
+          />
+        </div>
+      </div>
+
+      <div className="mt-3 text-sm leading-tight text-[#414754]">
+        {row.holda1} & {row.holda2} <span className="opacity-60">vs</span><br />
+        {row.holdb1} & {row.holdb2}
+      </div>
+
+      <div className="mt-3 flex justify-end">
+        <button
+          type="button"
+          disabled={saving}
+          onClick={() => void onSave(row, Number(scoreA), Number(scoreB))}
+          className="rounded-full border-2 border-emerald-500 bg-white px-3 py-1.5 text-sm font-semibold text-emerald-700 shadow transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Gem sæt
+        </button>
+      </div>
+    </div>
   )
 }
 
@@ -656,4 +991,3 @@ function groupByMatch(rows: EventSet[]) {
   }
   return map
 }
-

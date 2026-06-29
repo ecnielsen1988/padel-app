@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
+import { getEventAdminHref } from '@/lib/eventConfig';
 
 type EventRow = {
   id: string | number;
@@ -13,6 +14,7 @@ type EventRow = {
   end_time: string | null;    // forventes 'HH:MM' eller lign.
   closed_group: boolean | null;
   only_women: boolean | null;
+  rules_text: string | null;
 };
 
 export default function AdminEventPage() {
@@ -28,7 +30,7 @@ export default function AdminEventPage() {
 
         const { data, error } = await supabase
           .from('events')
-          .select('id, date, name, location, start_time, end_time, closed_group, only_women')
+          .select('id, date, name, location, start_time, end_time, closed_group, only_women, rules_text')
           .order('date', { ascending: true }); // grovsortér stigende på dato
 
         if (error) throw error;
@@ -121,6 +123,7 @@ export default function AdminEventPage() {
         end,
         timeLabel,
         sortVal: sortKey(d, r.start_time),
+        rules_text: r.rules_text,
       };
     });
 
@@ -139,7 +142,7 @@ export default function AdminEventPage() {
 
   const EventCard = (ev: (typeof sections)['upcoming'][number]) => (
     <Link
-      href={`/event/${ev.id}`}
+      href={getEventAdminHref(ev.id, ev.rules_text)}
       className="block rounded-xl border border-pink-200/40 bg-pink-50/40 hover:bg-pink-100/50 dark:bg-pink-950/20 dark:hover:bg-pink-950/30 transition-colors shadow-sm"
     >
       <div className="p-4 sm:p-5">
@@ -163,7 +166,7 @@ export default function AdminEventPage() {
 
   const PastCard = (ev: (typeof sections)['past'][number]) => (
     <Link
-      href={`/event/${ev.id}`}
+      href={getEventAdminHref(ev.id, ev.rules_text)}
       className="block rounded-xl border border-zinc-300/40 bg-white/60 hover:bg-zinc-50/80 dark:bg-zinc-900/40 dark:hover:bg-zinc-900/60 transition-colors shadow-sm"
     >
       <div className="p-4 sm:p-5">
@@ -190,12 +193,20 @@ export default function AdminEventPage() {
       <header className="flex items-center justify-between mb-6">
         <h1 className="text-3xl font-bold">📅 Admin · Event</h1>
 
-        <Link
-          href="/lavevent"
-          className="inline-flex items-center gap-2 bg-pink-600 hover:bg-pink-700 text-white font-semibold py-2.5 px-4 rounded-xl shadow"
-        >
-          ➕ Lav event
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/lavevent"
+            className="inline-flex items-center gap-2 rounded-xl bg-pink-600 px-4 py-2.5 font-semibold text-white shadow hover:bg-pink-700"
+          >
+            ➕ Lav event
+          </Link>
+          <Link
+            href="/lavmakkerevent"
+            className="inline-flex items-center gap-2 rounded-xl border border-pink-300 px-4 py-2.5 font-semibold text-pink-700 hover:bg-pink-50"
+          >
+            🤝 Lav makkerevent
+          </Link>
+        </div>
       </header>
 
       {loading && (
@@ -275,4 +286,3 @@ export default function AdminEventPage() {
     </main>
   );
 }
-
