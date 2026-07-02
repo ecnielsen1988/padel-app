@@ -4,9 +4,10 @@ import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { beregnEloForKampe } from "@/lib/beregnElo";
+import { buildEventRulesText, parseEventRulesText } from "@/lib/eventConfig";
 import {
-  getEventKampidForGroup,
   getEventKampidRange,
+  getNextKampId,
   getEventSubmissionState,
 } from "@/lib/eventSubmission";
 
@@ -1259,9 +1260,24 @@ useEffect(() => {
         "EventAdmin";
 
       const rows: NewResultInsert[] = [];
-      basePlan.forEach((g, gi) => {
-        const kampid = getEventKampidForGroup(event, gi);
-        if (kampid == null) return;
+      const groupsWithData = basePlan
+        .map((g, gi) => ({ g, gi }))
+        .filter(({ gi }) => {
+          const r = roundsPerCourt[gi] ?? 3;
+          for (let si = 0; si < r; si += 1) {
+            const sc = scores[`${gi}-${si}`] ?? { a: 0, b: 0 };
+            if (sc.a !== 0 || sc.b !== 0) return true;
+          }
+          return false;
+        });
+
+      let nextKampId = await getNextKampId(supabase);
+      let firstKampId: number | null = null;
+      let lastKampId: number | null = null;
+      groupsWithData.forEach(({ g, gi }) => {
+        const kampid = nextKampId++;
+        if (firstKampId == null) firstKampId = kampid;
+        lastKampId = kampid;
 
         const r = roundsPerCourt[gi] ?? 3;
         for (let si = 0; si < r; si++) {
@@ -1301,6 +1317,25 @@ useEffect(() => {
       if (error) {
         alert("Kunne ikke indsende: " + error.message);
         return;
+      }
+
+      if (firstKampId != null && lastKampId != null) {
+        const parsed = parseEventRulesText(event.rules_text);
+        const nextRulesText = buildEventRulesText(parsed.visibleRulesText, {
+          ...parsed.meta,
+          submissionRange: { from: firstKampId, to: lastKampId },
+        });
+
+        const { data: updatedEvent, error: updateEventError } = await supabase
+          .from("events")
+          .update({ rules_text: nextRulesText })
+          .eq("id", event.id)
+          .select("*")
+          .single();
+
+        if (!updateEventError && updatedEvent) {
+          setEvent(updatedEvent as EventRow);
+        }
       }
 
       const spillereISubmit = Array.from(
@@ -1357,6 +1392,22 @@ useEffect(() => {
       if (error) {
         alert("Kunne ikke fortryde indberetning: " + error.message);
         return;
+      }
+
+      const parsed = parseEventRulesText(event.rules_text);
+      const nextRulesText = buildEventRulesText(parsed.visibleRulesText, {
+        ...parsed.meta,
+        submissionRange: null,
+      });
+      const { data: updatedEvent } = await supabase
+        .from("events")
+        .update({ rules_text: nextRulesText })
+        .eq("id", event.id)
+        .select("*")
+        .single();
+
+      if (updatedEvent) {
+        setEvent(updatedEvent as EventRow);
       }
 
       setResultsSubmitted(false);

@@ -41,6 +41,12 @@ function getEmojiForEloDiff(diff: number): string {
   return '💩💩'
 }
 
+function issueText(count: number | undefined) {
+  return count && count > 1
+    ? `Indrapporteret for fejl (${count})`
+    : 'Indrapporteret for fejl'
+}
+
 export default function ResultaterPage() {
   const [loading, setLoading] = useState(true)
   const [loggedIn, setLoggedIn] = useState(false)
@@ -153,6 +159,11 @@ export default function ResultaterPage() {
                 </div>
                 {myLatest ? (
                   <div className="rounded-[10px] bg-[#fbfbfc] px-3 py-2 text-[13px] text-[#414754]">
+                    {myLatest.adminIssueOpen ? (
+                      <div className="mb-2 rounded-[10px] border border-[#f8bfd0] bg-[#fff3f8] px-2.5 py-2 text-[12px] font-bold text-[#c0135a]">
+                        {issueText(myLatest.adminIssueCount)}
+                      </div>
+                    ) : null}
                     <div className="space-y-1">
                       {myLatest.eloSummary.map((player) => (
                         <div key={player.navn} className="flex items-center justify-between gap-2">
@@ -210,6 +221,11 @@ export default function ResultaterPage() {
                 </div>
                 {latestOverall ? (
                   <div className="rounded-[10px] bg-[#fbfbfc] px-3 py-2 text-[13px] text-[#414754]">
+                    {latestOverall.adminIssueOpen ? (
+                      <div className="mb-2 rounded-[10px] border border-[#f8bfd0] bg-[#fff3f8] px-2.5 py-2 text-[12px] font-bold text-[#c0135a]">
+                        {issueText(latestOverall.adminIssueCount)}
+                      </div>
+                    ) : null}
                     <div className="space-y-1">
                       {latestOverall.eloSummary.map((player) => (
                         <div key={player.navn} className="flex items-center justify-between gap-2">

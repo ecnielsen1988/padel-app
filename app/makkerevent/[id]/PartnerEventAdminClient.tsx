@@ -12,8 +12,8 @@ import {
   type PartnerTeamMeta,
 } from "@/lib/eventConfig";
 import {
-  getEventKampidForGroup,
   getEventKampidRange,
+  getNextKampId,
   getEventSubmissionState,
 } from "@/lib/eventSubmission";
 
@@ -824,10 +824,24 @@ export default function PartnerEventAdminClient({
       }
 
       const inserts: NewResultInsert[] = [];
-      for (const match of matches) {
+      const matchesWithData = matches.filter((match) => {
         const rounds = roundsPerCourt[match.gi] ?? 3;
-        const kampid = getEventKampidForGroup(event, match.gi);
-        if (kampid == null) continue;
+        for (let setIndex = 0; setIndex < rounds; setIndex += 1) {
+          const sc = scores[scoreKey(match.gi, setIndex)] ?? { a: 0, b: 0 };
+          if (sc.a !== 0 || sc.b !== 0) return true;
+        }
+        return false;
+      });
+
+      let nextKampId = await getNextKampId(supabase);
+      let firstKampId: number | null = null;
+      let lastKampId: number | null = null;
+
+      for (const match of matchesWithData) {
+        const rounds = roundsPerCourt[match.gi] ?? 3;
+        const kampid = nextKampId++;
+        if (firstKampId == null) firstKampId = kampid;
+        lastKampId = kampid;
 
         for (let setIndex = 0; setIndex < rounds; setIndex += 1) {
           const sc = scores[scoreKey(match.gi, setIndex)] ?? { a: 0, b: 0 };
@@ -859,7 +873,28 @@ export default function PartnerEventAdminClient({
         throw error;
       }
 
-      await refreshSubmissionState();
+      if (firstKampId != null && lastKampId != null) {
+        const nextRulesText = buildEventRulesText(parsed.visibleRulesText, {
+          ...parsed.meta,
+          submissionRange: { from: firstKampId, to: lastKampId },
+        });
+        const { data: updatedEvent, error: updateEventError } = await (
+          supabase.from("events") as any
+        )
+          .update({ rules_text: nextRulesText })
+          .eq("id", event.id)
+          .select("*")
+          .single();
+
+        if (!updateEventError && updatedEvent) {
+          setEvent(updatedEvent as EventRow);
+        }
+      }
+
+      setSubmissionState({
+        submitted: true,
+        rowsCount: inserts.length,
+      });
       alert("Hele makkereventet er indberettet.");
     } catch (error: any) {
       alert(error?.message ?? "Kunne ikke indberette eventet.");
@@ -897,7 +932,26 @@ export default function PartnerEventAdminClient({
         throw error;
       }
 
-      await refreshSubmissionState();
+      const nextRulesText = buildEventRulesText(parsed.visibleRulesText, {
+        ...parsed.meta,
+        submissionRange: null,
+      });
+      const { data: updatedEvent, error: updateEventError } = await (
+        supabase.from("events") as any
+      )
+        .update({ rules_text: nextRulesText })
+        .eq("id", event.id)
+        .select("*")
+        .single();
+
+      if (!updateEventError && updatedEvent) {
+        setEvent(updatedEvent as EventRow);
+      }
+
+      setSubmissionState({
+        submitted: false,
+        rowsCount: 0,
+      });
       alert("Indberetningen er fortrudt.");
     } catch (error: any) {
       alert(error?.message ?? "Kunne ikke fortryde indberetningen.");

@@ -7,9 +7,15 @@ export type PartnerTeamMeta = {
   playerNames: [string, string];
 };
 
+export type EventSubmissionRange = {
+  from: number;
+  to: number;
+};
+
 export type EventMeta = {
   format?: "standard" | "partner";
   partnerTeams?: PartnerTeamMeta[];
+  submissionRange?: EventSubmissionRange | null;
 };
 
 export function parseEventRulesText(raw: string | null | undefined) {
@@ -57,7 +63,10 @@ export function buildEventRulesText(
   const visible = (visibleRulesText ?? "").trim();
   const hasMeta =
     (meta.format && meta.format !== "standard") ||
-    (meta.partnerTeams && meta.partnerTeams.length > 0);
+    (meta.partnerTeams && meta.partnerTeams.length > 0) ||
+    (meta.submissionRange &&
+      Number.isFinite(meta.submissionRange.from) &&
+      Number.isFinite(meta.submissionRange.to));
 
   if (!hasMeta) {
     return visible || null;

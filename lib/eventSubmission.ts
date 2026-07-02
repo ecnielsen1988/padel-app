@@ -1,6 +1,9 @@
+import { parseEventRulesText } from "@/lib/eventConfig";
+
 type EventSubmissionMeta = {
   id: string | number;
   date: string | null;
+  rules_text?: string | null;
 };
 
 const KAMPID_EPOCH = "2024-01-01T00:00:00Z";
@@ -40,12 +43,40 @@ export function getEventKampidForGroup(
 }
 
 export function getEventKampidRange(event: EventSubmissionMeta) {
+  const storedRange = parseEventRulesText(event.rules_text).meta.submissionRange;
+  if (
+    storedRange &&
+    Number.isFinite(storedRange.from) &&
+    Number.isFinite(storedRange.to)
+  ) {
+    return {
+      from: Number(storedRange.from),
+      to: Number(storedRange.to),
+    };
+  }
+
   const base = getEventKampidBase(event);
   if (base == null) return null;
   return {
     from: base,
     to: base + 99,
   };
+}
+
+export async function getNextKampId(supabase: any) {
+  const { data, error } = await supabase
+    .from("newresults")
+    .select("kampid")
+    .order("kampid", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  const current = Number(data?.kampid ?? 0);
+  return Number.isFinite(current) && current > 0 ? current + 1 : 1;
 }
 
 export async function getEventSubmissionState(

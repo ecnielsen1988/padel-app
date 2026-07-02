@@ -3,8 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { supabase } from "@/lib/supabaseClient";
 import { LoadingState, PageShell } from "../components/ui";
+import {
+  formatResultChangeSetSummary,
+  parseResultChangeRequest,
+} from "@/lib/resultChangeRequests";
 
 type Bruger = {
   visningsnavn: string;
@@ -68,6 +72,16 @@ type MessagePreview = {
   body: string;
   created_at: string;
   read_at: string | null;
+};
+
+type AdminMessagePreview = {
+  id: string | number;
+  kampid: number | null;
+  besked: string;
+  tidspunkt: string;
+  visningsnavn: string;
+  læst?: boolean | null;
+  read?: boolean | null;
 };
 
 function extractArray(raw: unknown) {
@@ -162,9 +176,48 @@ function groupByMatch(rows: EventSet[]) {
   return map;
 }
 
+async function fetchUnreadAdminCount(supabase: any) {
+  const primary = await supabase
+    .from("admin_messages")
+    .select("*", { count: "exact", head: true })
+    .eq("læst", false);
+
+  if (!primary?.error) {
+    return primary.count ?? 0;
+  }
+
+  const fallback = await supabase
+    .from("admin_messages")
+    .select("*", { count: "exact", head: true })
+    .eq("read", false);
+
+  return fallback.count ?? 0;
+}
+
+async function fetchLatestAdminMessages(supabase: any) {
+  const primary = await supabase
+    .from("admin_messages")
+    .select("id, kampid, besked, tidspunkt, visningsnavn, læst")
+    .eq("læst", false)
+    .order("tidspunkt", { ascending: false })
+    .limit(5);
+
+  if (!primary?.error) {
+    return (primary.data as AdminMessagePreview[] | null) ?? [];
+  }
+
+  const fallback = await supabase
+    .from("admin_messages")
+    .select("id, kampid, besked, tidspunkt, visningsnavn, read")
+    .eq("read", false)
+    .order("tidspunkt", { ascending: false })
+    .limit(5);
+
+  return (fallback.data as AdminMessagePreview[] | null) ?? [];
+}
+
 export default function StartSide() {
   const router = useRouter();
-  const supabase = createClientComponentClient();
 
   const [bruger, setBruger] = useState<Bruger | null>(null);
   const [loading, setLoading] = useState(true);
@@ -175,9 +228,31 @@ export default function StartSide() {
   const [topPlayers, setTopPlayers] = useState<RankingRow[]>([]);
   const [upcomingEvents, setUpcomingEvents] = useState<EventPreview[]>([]);
   const [latestMessages, setLatestMessages] = useState<MessagePreview[]>([]);
+  const [latestAdminMessages, setLatestAdminMessages] = useState<AdminMessagePreview[]>([]);
+  const [adminBusyId, setAdminBusyId] = useState<string | number | null>(null);
   const [mineEventSets, setMineEventSets] = useState<EventSet[]>([]);
   const [scoreBusy, setScoreBusy] = useState(false);
   const [scoreError, setScoreError] = useState<string | null>(null);
+
+  async function håndterAdminBesked(id: string | number, action: "approve" | "dismiss") {
+    setAdminBusyId(id);
+    const res = await fetch("/api/result-change-request", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messageId: id, action }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      setAdminBusyId(null);
+      alert(data?.error || "Kunne ikke håndtere ændringen lige nu.");
+      return;
+    }
+
+    setLatestAdminMessages((prev) => prev.filter((message) => String(message.id) !== String(id)));
+    setUlæsteAdmin((prev) => Math.max(0, prev - 1));
+    setAdminBusyId(null);
+  }
 
   useEffect(() => {
     let mounted = true;
@@ -189,9 +264,9 @@ export default function StartSide() {
       } = await supabase.auth.getSession();
       const user = session?.user;
 
-      // Ikke logget ind → /registrer
+      // Ikke logget ind → /login
       if (!user) {
-        router.replace("/registrer");
+        router.replace("/login");
         return;
       }
 
@@ -240,6 +315,7 @@ export default function StartSide() {
         activeProfilesResponse,
         upcomingResponse,
         latestMessagesResponse,
+        latestAdminMessagesResponse,
         mineEventsResponse,
       ] = await Promise.all([
         supabase
@@ -248,11 +324,8 @@ export default function StartSide() {
           .eq("recipient_id", user.id)
           .is("read_at", null),
         rolle === "admin"
-          ? supabase
-              .from("admin_messages")
-              .select("*", { count: "exact", head: true })
-              .eq("læst", false)
-          : Promise.resolve({ count: 0 }),
+          ? fetchUnreadAdminCount(supabase)
+          : Promise.resolve(0),
         fetch("/api/rangliste", { cache: "no-store" })
           .then((res) => res.json())
           .catch(() => []),
@@ -274,6 +347,9 @@ export default function StartSide() {
           .or(`recipient_id.eq.${user.id},sender_id.eq.${user.id}`)
           .order("created_at", { ascending: false })
           .limit(3),
+        rolle === "admin"
+          ? fetchLatestAdminMessages(supabase)
+          : Promise.resolve([]),
         supabase
           .from("events")
           .select("id, date, status")
@@ -289,7 +365,7 @@ export default function StartSide() {
       if (!mounted) return;
 
       setUlæsteDM(dmResponse.count ?? 0);
-      setUlæsteAdmin(adminResponse.count ?? 0);
+      setUlæsteAdmin(typeof adminResponse === "number" ? adminResponse : 0);
 
       const rankingList = extractArray(rankingResponse)
         .map((row) => ({
@@ -331,6 +407,9 @@ export default function StartSide() {
       setUpcomingEvents((upcomingResponse.data as EventPreview[] | null) ?? []);
       setLatestMessages(
         (latestMessagesResponse.data as MessagePreview[] | null) ?? []
+      );
+      setLatestAdminMessages(
+        Array.isArray(latestAdminMessagesResponse) ? latestAdminMessagesResponse : []
       );
 
       const publishedEvents = (((mineEventsResponse.data as Array<{ id: string | number; date: string | null; status?: string | null }> | null) ?? [])
@@ -397,6 +476,99 @@ export default function StartSide() {
   const brugerNavn = bruger?.visningsnavn ?? "";
   const harTorsdagspadel = !!bruger?.torsdagspadel;
   const erAdmin = bruger?.rolle === "admin";
+  const adminIssuesSection = erAdmin ? (
+    <section className="rounded-[20px] border border-[#ffd58d] bg-gradient-to-br from-[#fff6dc] via-[#fff2c8] to-[#ffe7a8] p-4 shadow-[0_10px_28px_rgba(219,157,18,0.16)]">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#9a5d00]">
+            Admin
+          </p>
+          <h2 className="text-[13px] font-bold uppercase tracking-[0.12em] text-[#2d3340]">
+            Fejlmeldte resultater
+          </h2>
+        </div>
+        <Link href="/admin/beskeder" className="text-xs font-bold text-[#f01f78]">
+          Se alle
+        </Link>
+      </div>
+      <div className="space-y-2">
+        {latestAdminMessages.length > 0 ? (
+          latestAdminMessages.map((message) => (
+            <div
+              key={String(message.id)}
+              className="rounded-[14px] border border-[#ffe0a3] bg-white/85 p-3"
+            >
+              {(() => {
+                const parsed = parseResultChangeRequest(message.besked);
+                return (
+                  <>
+                    <div className="mb-1 flex items-center justify-between gap-3">
+                      <p className="text-sm font-bold text-[#232833]">
+                        {message.visningsnavn || "Ukendt spiller"}
+                      </p>
+                      <span className="text-[11px] font-semibold text-[#8b92a0]">
+                        {formatTimeAgo(message.tidspunkt)}
+                      </span>
+                    </div>
+                    <p className="text-xs font-semibold text-[#f01f78]">
+                      Kamp #{message.kampid ?? "?"}
+                    </p>
+                    {parsed ? (
+                      <>
+                        <p className="mt-1 text-sm font-semibold text-[#232833]">
+                          Foreslaet resultat: {formatResultChangeSetSummary(parsed.sets)}
+                        </p>
+                        {parsed.comment ? (
+                          <p className="mt-1 text-sm text-[#5f6673]">{parsed.comment}</p>
+                        ) : null}
+                      </>
+                    ) : (
+                      <p className="mt-1 text-sm text-[#5f6673]">{message.besked}</p>
+                    )}
+                    <div className="mt-3 flex items-center justify-between gap-3">
+                      <span className="rounded-full bg-[#fff3f8] px-2.5 py-1 text-[10px] font-bold text-[#c0135a]">
+                        Anfægtet
+                      </span>
+                      <div className="flex items-center gap-2">
+                        {!parsed ? (
+                          <button
+                            type="button"
+                            onClick={() => håndterAdminBesked(message.id, "dismiss")}
+                            disabled={adminBusyId === message.id}
+                            className="inline-flex items-center justify-center rounded-full bg-[#a1a7b1] px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-[#8d94a0] disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {adminBusyId === message.id ? "Gemmer..." : "Marker håndteret"}
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            håndterAdminBesked(message.id, parsed ? "approve" : "dismiss")
+                          }
+                          disabled={adminBusyId === message.id}
+                          className="inline-flex items-center justify-center rounded-full bg-[#f01f78] px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-[#d21869] disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {adminBusyId === message.id
+                            ? "Gemmer..."
+                            : parsed
+                              ? "Godkend ændring"
+                              : "Luk"}
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          ))
+        ) : (
+          <p className="text-sm text-[#8b92a0]">
+            Ingen fejlmeldinger lige nu.
+          </p>
+        )}
+      </div>
+    </section>
+  ) : null;
   const soverPaaRanglisten = bruger?.status === "sleep";
   const erInaktiv = bruger?.status === "inactive";
 
@@ -660,6 +832,8 @@ export default function StartSide() {
                 </Link>
               ))}
             </section>
+
+            {adminIssuesSection}
 
             <section className="rounded-[20px] bg-white p-4 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
               <div className="mb-3 flex items-center justify-between gap-3">

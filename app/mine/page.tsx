@@ -24,10 +24,20 @@ function formatShortDate(value: string) {
   });
 }
 
+function issueText(count: number | undefined) {
+  return count && count > 1
+    ? `Resultatet er indrapporteret for fejl (${count} kommentarer).`
+    : 'Resultatet er indrapporteret for fejl.';
+}
+
 export default function MineKampeSide() {
   const [kampGrupper, setKampGrupper] = useState<ResultMatchCard[]>([]);
-  const [kommentarer, setKommentarer] = useState<Record<number, string>>({});
   const [fejlIndrapporteret, setFejlIndrapporteret] = useState<Record<number, boolean>>({});
+  const [forslag, setForslag] = useState<
+    Record<number, { comment: string; sets: Record<number, { scoreA: string; scoreB: string }> }>
+  >({});
+  const [sendingKampid, setSendingKampid] = useState<number | null>(null);
+  const [editingKampid, setEditingKampid] = useState<number | null>(null);
   const [mitNavn, setMitNavn] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -61,36 +71,72 @@ export default function MineKampeSide() {
     return '💩💩';
   }
 
-  async function sendBeskedTilAdmin(kampid: number) {
-    const raw = kommentarer[kampid];
-    const besked = (raw ?? '').toString().trim();
-    if (!besked) {
-      alert('Skriv hvad der er forkert, før du sender.');
-      return;
-    }
+  function updateDraftScore(kampid: number, setId: number, field: 'scoreA' | 'scoreB', value: string) {
+    setForslag((prev) => ({
+      ...prev,
+      [kampid]: {
+        comment: prev[kampid]?.comment ?? '',
+        sets: {
+          ...(prev[kampid]?.sets ?? {}),
+          [setId]: {
+            scoreA: field === 'scoreA' ? value : prev[kampid]?.sets?.[setId]?.scoreA ?? '',
+            scoreB: field === 'scoreB' ? value : prev[kampid]?.sets?.[setId]?.scoreB ?? '',
+          },
+        },
+      },
+    }));
+  }
 
+  function updateDraftComment(kampid: number, value: string) {
+    setForslag((prev) => ({
+      ...prev,
+      [kampid]: {
+        comment: value,
+        sets: prev[kampid]?.sets ?? {},
+      },
+    }));
+  }
+
+  async function submitChangeRequest(kampid: number, sets: ResultMatchCard['sets']) {
     if (!mitNavn) {
       alert('Du skal være logget ind for at sende besked.');
       return;
     }
 
-    const insertRes = await (supabase.from('admin_messages') as any).insert([
-      {
-        kampid,
-        besked,
-        tidspunkt: new Date().toISOString(),
-        visningsnavn: mitNavn,
-      },
-    ]);
-    const error = insertRes?.error as any;
+    const draft = forslag[kampid];
+    const payloadSets = sets.map((set) => ({
+      id: set.id,
+      scoreA: Number(draft?.sets?.[set.id]?.scoreA ?? set.scoreA),
+      scoreB: Number(draft?.sets?.[set.id]?.scoreB ?? set.scoreB),
+    }));
 
-    if (error) {
-      alert('Kunne ikke sende besked: ' + error.message);
-    } else {
-      alert('Besked sendt til admin.');
-      setKommentarer((prev) => ({ ...prev, [kampid]: '' }));
-      setFejlIndrapporteret((prev) => ({ ...prev, [kampid]: true }));
+    if (payloadSets.some((set) => !Number.isFinite(set.scoreA) || !Number.isFinite(set.scoreB))) {
+      alert('Udfyld gyldige cifre for alle sæt.');
+      return;
     }
+
+    setSendingKampid(kampid);
+    const res = await fetch('/api/result-change-request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kampid,
+        comment: draft?.comment ?? '',
+        sets: payloadSets,
+      }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      alert(data?.error || 'Kunne ikke sende ændringsforslag.');
+      setSendingKampid(null);
+      return;
+    }
+
+    alert('Ændringsforslag sendt til admin.');
+    setFejlIndrapporteret((prev) => ({ ...prev, [kampid]: true }));
+    setSendingKampid(null);
+    setEditingKampid(null);
   }
 
   if (loading && !mitNavn) {
@@ -172,7 +218,8 @@ export default function MineKampeSide() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {kampGrupper.map(({ kampid, sets, indberettetAf, eloSummary, date }) => {
+                  {kampGrupper.map(
+                    ({ kampid, sets, indberettetAf, eloSummary, date, adminIssueOpen, adminIssueCount }) => {
                     return (
                       <article
                         key={kampid}
@@ -193,6 +240,12 @@ export default function MineKampeSide() {
                             </span>
                           ) : null}
                         </div>
+
+                        {adminIssueOpen ? (
+                          <div className="mb-3 rounded-[12px] border border-[#f8bfd0] bg-[#fff3f8] px-3 py-2 text-sm font-semibold text-[#c0135a]">
+                            {issueText(adminIssueCount)} Afventer admin.
+                          </div>
+                        ) : null}
 
                         <div className="space-y-1">
                           {sets.map((kamp) => {
@@ -266,34 +319,107 @@ export default function MineKampeSide() {
                           <label
                             className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.12em] text-[#838999]"
                           >
-                            Indberet fejl i kampen
+                            Foreslå nyt resultat
                           </label>
-                          {fejlIndrapporteret[kampid] ? (
+                          {fejlIndrapporteret[kampid] || adminIssueOpen ? (
                             <div className="rounded-[10px] bg-[#fff3f8] px-3 py-2 text-sm font-semibold text-[#c0135a]">
-                              Resultatet er indrapporteret for fejl.
+                              {issueText(adminIssueCount)}
                             </div>
                           ) : (
                             <>
-                              <textarea
-                                placeholder="Skriv hvad der er forkert..."
-                                value={kommentarer[kampid] || ''}
-                                onChange={(e) =>
-                                  setKommentarer((prev) => ({
-                                    ...prev,
-                                    [kampid]: e.target.value,
-                                  }))
-                                }
-                                className="mb-2.5 min-h-[68px] w-full rounded-[10px] border border-zinc-200 bg-[#fbfbfc] px-3 py-2 text-sm outline-none"
-                              />
                               <button
-                                onClick={() => sendBeskedTilAdmin(kampid)}
+                                onClick={() => setEditingKampid(kampid)}
                                 className="inline-flex items-center justify-center rounded-full border-2 border-pink-500 bg-white px-3 py-1 text-xs font-semibold text-pink-600 shadow transition hover:bg-pink-50"
                               >
-                                📩 Send besked
+                                Ret resultat
                               </button>
                             </>
                           )}
                         </div>
+
+                        {editingKampid === kampid ? (
+                          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 p-3 md:items-center">
+                            <div className="w-full max-w-[520px] rounded-[24px] bg-white p-4 shadow-[0_28px_80px_rgba(0,0,0,0.35)]">
+                              <div className="mb-3 flex items-center justify-between gap-3">
+                                <div>
+                                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#838999]">
+                                    Kamp #{kampid}
+                                  </p>
+                                  <h3 className="text-lg font-black text-[#1f2430]">
+                                    Foreslå nyt resultat
+                                  </h3>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingKampid(null)}
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[#f4f5f7] text-[#5f6673]"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+
+                              <div className="space-y-2">
+                                {sets.map((set, index) => (
+                                  <div
+                                    key={set.id}
+                                    className="flex items-center justify-between gap-3 rounded-[12px] bg-[#fbfbfc] px-3 py-2"
+                                  >
+                                    <span className="text-xs font-bold uppercase tracking-[0.12em] text-[#838999]">
+                                      Sæt {index + 1}
+                                    </span>
+                                    <div className="flex items-center gap-2">
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        inputMode="numeric"
+                                        value={forslag[kampid]?.sets?.[set.id]?.scoreA ?? String(set.scoreA)}
+                                        onChange={(e) =>
+                                          updateDraftScore(kampid, set.id, 'scoreA', e.target.value)
+                                        }
+                                        className="h-10 w-16 rounded-[10px] border border-zinc-200 bg-white px-2 text-center text-sm font-bold text-[#1f2430] outline-none"
+                                      />
+                                      <span className="text-sm font-bold text-[#838999]">-</span>
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        inputMode="numeric"
+                                        value={forslag[kampid]?.sets?.[set.id]?.scoreB ?? String(set.scoreB)}
+                                        onChange={(e) =>
+                                          updateDraftScore(kampid, set.id, 'scoreB', e.target.value)
+                                        }
+                                        className="h-10 w-16 rounded-[10px] border border-zinc-200 bg-white px-2 text-center text-sm font-bold text-[#1f2430] outline-none"
+                                      />
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+
+                              <textarea
+                                placeholder="Kort note til admin (valgfrit)..."
+                                value={forslag[kampid]?.comment ?? ''}
+                                onChange={(e) => updateDraftComment(kampid, e.target.value)}
+                                className="mb-3 mt-3 min-h-[90px] w-full rounded-[12px] border border-zinc-200 bg-[#fbfbfc] px-3 py-2 text-sm outline-none"
+                              />
+
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingKampid(null)}
+                                  className="inline-flex items-center justify-center rounded-full bg-[#f4f5f7] px-4 py-2 text-sm font-semibold text-[#5f6673]"
+                                >
+                                  Annuller
+                                </button>
+                                <button
+                                  onClick={() => submitChangeRequest(kampid, sets)}
+                                  disabled={sendingKampid === kampid}
+                                  className="inline-flex items-center justify-center rounded-full bg-[#f01f78] px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-[#d21869] disabled:opacity-60"
+                                >
+                                  {sendingKampid === kampid ? 'Sender...' : 'Send til admin'}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ) : null}
                       </article>
                     );
                   })}

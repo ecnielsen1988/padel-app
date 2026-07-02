@@ -24,6 +24,8 @@ export type ResultMatchCard = {
   indberettetAf?: string;
   sets: ResultMatchSet[];
   eloSummary: ResultMatchSummary[];
+  adminIssueOpen?: boolean;
+  adminIssueCount?: number;
 };
 
 const RESULTS_COLUMNS =
@@ -37,6 +39,10 @@ let cachedCards:
       cards: ResultMatchCard[];
     }
   | null = null;
+
+export function clearRecentResultCardsCache() {
+  cachedCards = null;
+}
 
 async function fetchAllResults(supabase: any): Promise<Kamp[]> {
   const batchSize = 1000;
@@ -90,9 +96,43 @@ async function fetchInitialEloMap(supabase: any): Promise<EloMap> {
   return initialEloMap;
 }
 
+async function fetchOpenAdminIssues(supabase: any): Promise<Map<number, number>> {
+  let issueRows: Array<{ kampid?: number | null }> = [];
+
+  const primaryRes = await supabase
+    .from("admin_messages")
+    .select("kampid")
+    .eq("læst", false);
+
+  if (primaryRes?.error) {
+    const fallbackRes = await supabase
+      .from("admin_messages")
+      .select("kampid")
+      .eq("read", false);
+
+    if (fallbackRes?.error) {
+      throw fallbackRes.error;
+    }
+
+    issueRows = (fallbackRes?.data ?? []) as Array<{ kampid?: number | null }>;
+  } else {
+    issueRows = (primaryRes?.data ?? []) as Array<{ kampid?: number | null }>;
+  }
+
+  const counts = new Map<number, number>();
+  issueRows.forEach((row) => {
+    const kampid = Number(row?.kampid ?? 0);
+    if (!kampid) return;
+    counts.set(kampid, (counts.get(kampid) ?? 0) + 1);
+  });
+
+  return counts;
+}
+
 function buildCards(
   resultaterData: Kamp[],
-  eloChanges: Record<number, { [key: string]: EloChange }>
+  eloChanges: Record<number, { [key: string]: EloChange }>,
+  openAdminIssues: Map<number, number>
 ): ResultMatchCard[] {
   const grupper: Record<number, Kamp[]> = {};
 
@@ -152,6 +192,8 @@ function buildCards(
         indberettetAf: (førsteSæt.indberettet_af ?? "").toString().trim() || undefined,
         sets,
         eloSummary,
+        adminIssueOpen: openAdminIssues.has(Number(kampid)),
+        adminIssueCount: openAdminIssues.get(Number(kampid)) ?? 0,
       };
     })
     .sort((a, b) => b.kampid - a.kampid);
@@ -179,13 +221,14 @@ export async function getRecentResultCards(
     return cachedCards.cards;
   }
 
-  const [initialEloMap, resultaterData] = await Promise.all([
+  const [initialEloMap, resultaterData, openAdminIssues] = await Promise.all([
     fetchInitialEloMap(supabase),
     fetchAllResults(supabase),
+    fetchOpenAdminIssues(supabase),
   ]);
 
   const { eloChanges } = beregnEloForKampe(resultaterData, initialEloMap);
-  const cards = buildCards(resultaterData, eloChanges);
+  const cards = buildCards(resultaterData, eloChanges, openAdminIssues);
 
   cachedCards = {
     expiresAt: now + CACHE_TTL_MS,

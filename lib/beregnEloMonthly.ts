@@ -1,5 +1,5 @@
 // lib/beregnEloMonthly.ts
-import { supabase } from "@/lib/supabaseClient";
+import { createSupabaseServerReadClient } from "@/lib/supabaseServerRead";
 import { beregnEloForKampe, type Kamp, type EloMap } from "@/lib/beregnElo";
 
 export type MånedensSpiller = { visningsnavn: string; pluspoint: number };
@@ -41,6 +41,7 @@ function round1(n: number) {
 // Pagination helper (så vi ikke mister rows > 1000)
 // -------------------------
 async function fetchAllNewresults(opts: { lt?: string; gte?: string }): Promise<any[]> {
+  const supabase = createSupabaseServerReadClient();
   const PAGE_SIZE = 1000;
   let from = 0;
   const out: any[] = [];
@@ -136,6 +137,7 @@ function rowToKamp(r: any): Kamp | null {
 // (valgfrit) seed Elo fra profiles.startElo hvis du bruger det.
 // Hvis du ikke har startElo, så return {}.
 async function fetchInitialEloMap(): Promise<EloMap> {
+  const supabase = createSupabaseServerReadClient();
   try {
     const { data, error } = await supabase
       .from("profiles")

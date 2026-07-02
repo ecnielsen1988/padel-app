@@ -4,8 +4,7 @@ export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { supabaseRoute } from "@/lib/supabaseClient";
 
 // Lille hjælpe-type
 type EPMin = { event_id: string; status: string };
@@ -15,7 +14,7 @@ type EPMin = { event_id: string; status: string };
  * GET /api/events        (kun kommende events)
  */
 export async function GET(req: Request) {
-  const supabase = createRouteHandlerClient({ cookies });
+  const supabase = supabaseRoute();
   try {
     const url = new URL(req.url);
     const all = url.searchParams.get("all") === "1";
@@ -64,7 +63,7 @@ export async function GET(req: Request) {
  * POST /api/events – kræver login (session via cookies)
  */
 export async function POST(req: Request) {
-  const supabase = createRouteHandlerClient({ cookies });
+  const supabase = supabaseRoute();
   try {
     const { data: auth } = await supabase.auth.getUser();
     const user = auth?.user;
@@ -100,4 +99,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: err?.message || "Kunne ikke oprette event" }, { status: 400 });
   }
 }
-

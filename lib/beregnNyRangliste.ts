@@ -1,5 +1,5 @@
 // lib/beregnNyRangliste.ts
-import { supabase } from '../lib/supabaseClient'
+import { createSupabaseServerReadClient } from './supabaseServerRead'
 
 type Resultat = {
   id: number
@@ -13,7 +13,6 @@ type Resultat = {
   finish: boolean
   event: boolean
   tiebreak: 'ingen' | 'tiebreak' | 'matchtiebreak'
-  torsdagspadel: boolean
 }
 
 type Profil = {
@@ -44,6 +43,7 @@ let cachedRangliste:
   | null = null
 
 async function hentAlleResultater(batchSize = 1000): Promise<Resultat[]> {
+  const supabase = createSupabaseServerReadClient()
   let samletData: Resultat[] = []
   let offset = 0
   let batch: Resultat[] = []
@@ -67,6 +67,7 @@ async function hentAlleResultater(batchSize = 1000): Promise<Resultat[]> {
 }
 
 export async function beregnNyRangliste(): Promise<Spiller[]> {
+  const supabase = createSupabaseServerReadClient()
   const now = Date.now()
   if (cachedRangliste && cachedRangliste.expiresAt > now) {
     return cachedRangliste.data

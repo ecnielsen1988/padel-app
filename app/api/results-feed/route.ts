@@ -75,6 +75,7 @@ export async function GET(req: Request) {
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (error) {
+    console.error("GET /api/results-feed error", error);
     return NextResponse.json(
       {
         loggedIn: false,
