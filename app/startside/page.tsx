@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { LoadingState, PageShell } from "../components/ui";
 import {
   formatResultChangeSetSummary,
+  getResultChangeReviewStatus,
   parseResultChangeRequest,
 } from "@/lib/resultChangeRequests";
 
@@ -234,7 +235,10 @@ export default function StartSide() {
   const [scoreBusy, setScoreBusy] = useState(false);
   const [scoreError, setScoreError] = useState<string | null>(null);
 
-  async function håndterAdminBesked(id: string | number, action: "approve" | "dismiss") {
+  async function håndterAdminBesked(
+    id: string | number,
+    action: "approve" | "reject" | "dismiss"
+  ) {
     setAdminBusyId(id);
     const res = await fetch("/api/result-change-request", {
       method: "PATCH",
@@ -500,6 +504,7 @@ export default function StartSide() {
             >
               {(() => {
                 const parsed = parseResultChangeRequest(message.besked);
+                const status = getResultChangeReviewStatus(parsed);
                 return (
                   <>
                     <div className="mb-1 flex items-center justify-between gap-3">
@@ -527,7 +532,7 @@ export default function StartSide() {
                     )}
                     <div className="mt-3 flex items-center justify-between gap-3">
                       <span className="rounded-full bg-[#fff3f8] px-2.5 py-1 text-[10px] font-bold text-[#c0135a]">
-                        Anfægtet
+                        {status === "pending" ? "Anfægtet" : status}
                       </span>
                       <div className="flex items-center gap-2">
                         {!parsed ? (
@@ -538,6 +543,16 @@ export default function StartSide() {
                             className="inline-flex items-center justify-center rounded-full bg-[#a1a7b1] px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-[#8d94a0] disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             {adminBusyId === message.id ? "Gemmer..." : "Marker håndteret"}
+                          </button>
+                        ) : null}
+                        {parsed ? (
+                          <button
+                            type="button"
+                            onClick={() => håndterAdminBesked(message.id, "reject")}
+                            disabled={adminBusyId === message.id}
+                            className="inline-flex items-center justify-center rounded-full bg-[#8f96a3] px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-[#7c8492] disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {adminBusyId === message.id ? "Gemmer..." : "Afvis ændring"}
                           </button>
                         ) : null}
                         <button

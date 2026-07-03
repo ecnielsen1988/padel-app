@@ -11,6 +11,7 @@ import {
 } from "@/lib/resultsFeed";
 import {
   encodeResultChangeRequest,
+  getResultChangeReviewStatus,
   parseResultChangeRequest,
   type ResultChangeRequestPayload,
   type ResultChangeSet,
@@ -123,18 +124,22 @@ async function fetchAdminMessage(supabase: any, messageId: number) {
   };
 }
 
-async function markAdminMessagesHandled(supabase: any, kampid: number | null) {
+async function markAdminMessageHandled(
+  supabase: any,
+  messageId: number,
+  besked?: string
+) {
+  const values = besked === undefined ? { læst: true } : { læst: true, besked };
   const primaryRes = await (supabase.from("admin_messages") as any)
-    .update({ læst: true })
-    .eq("kampid", kampid)
-    .eq("læst", false);
+    .update(values)
+    .eq("id", messageId);
 
   if (!primaryRes?.error) return primaryRes;
 
+  const fallbackValues = besked === undefined ? { read: true } : { read: true, besked };
   return (supabase.from("admin_messages") as any)
-    .update({ read: true })
-    .eq("kampid", kampid)
-    .eq("read", false);
+    .update(fallbackValues)
+    .eq("id", messageId);
 }
 
 function isFinishedSet(scoreA: number, scoreB: number) {
@@ -283,10 +288,20 @@ export async function PATCH(req: Request) {
       }
     }
 
-    const clearRes = await markAdminMessagesHandled(
-      adminDb,
-      kampid || message.kampid
-    );
+    let nextMessageText: string | undefined;
+    if (parsed && (action === "approve" || action === "reject")) {
+      const nextPayload: ResultChangeRequestPayload = {
+        ...parsed,
+        reviewStatus: action === "approve" ? "approved" : "rejected",
+        reviewedAt: new Date().toISOString(),
+        reviewedBy: viewer.visningsnavn || viewer.user.email || "Admin",
+      };
+      nextMessageText = encodeResultChangeRequest(nextPayload);
+    } else if (parsed && getResultChangeReviewStatus(parsed) !== "pending") {
+      nextMessageText = message.besked;
+    }
+
+    const clearRes = await markAdminMessageHandled(adminDb, messageId, nextMessageText);
 
     if (clearRes?.error) {
       return NextResponse.json({ error: clearRes.error.message }, { status: 500 });

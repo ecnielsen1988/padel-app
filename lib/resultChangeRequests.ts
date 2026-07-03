@@ -13,6 +13,9 @@ export type ResultChangeRequestPayload = {
   requestedAt: string;
   comment?: string;
   sets: ResultChangeSet[];
+  reviewStatus?: "pending" | "approved" | "rejected";
+  reviewedAt?: string;
+  reviewedBy?: string;
 };
 
 export function encodeResultChangeRequest(payload: ResultChangeRequestPayload) {
@@ -37,4 +40,11 @@ export function parseResultChangeRequest(raw: string | null | undefined) {
 
 export function formatResultChangeSetSummary(sets: ResultChangeSet[]) {
   return sets.map((set) => `${set.scoreA}-${set.scoreB}`).join(" ");
+}
+
+export function getResultChangeReviewStatus(
+  payload: ResultChangeRequestPayload | null | undefined
+) {
+  if (!payload) return "pending" as const;
+  return payload.reviewStatus ?? "pending";
 }

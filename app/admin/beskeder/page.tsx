@@ -4,7 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import {
+  encodeResultChangeRequest,
   formatResultChangeSetSummary,
+  getResultChangeReviewStatus,
   parseResultChangeRequest,
 } from "@/lib/resultChangeRequests";
 
@@ -124,7 +126,10 @@ export default function AdminBeskeder() {
     [beskeder]
   );
 
-  async function handleMessage(id: number, action: "approve" | "dismiss") {
+  async function handleMessage(
+    id: number,
+    action: "approve" | "reject" | "dismiss"
+  ) {
     setBusyId(id);
     try {
       const res = await fetch("/api/result-change-request", {
@@ -141,7 +146,25 @@ export default function AdminBeskeder() {
 
       setBeskeder((prev) =>
         prev.map((message) =>
-          message.id === id ? { ...message, handled: true } : message
+          message.id === id
+            ? {
+                ...message,
+                handled: true,
+                besked:
+                  (() => {
+                    const parsed = parseResultChangeRequest(message.besked);
+                    if (!parsed || (action !== "approve" && action !== "reject")) {
+                      return message.besked;
+                    }
+                    return encodeResultChangeRequest({
+                      ...parsed,
+                      reviewStatus: action === "approve" ? "approved" : "rejected",
+                      reviewedAt: new Date().toISOString(),
+                      reviewedBy: "Admin",
+                    });
+                  })(),
+              }
+            : message
         )
       );
     } catch (error) {
@@ -153,6 +176,23 @@ export default function AdminBeskeder() {
 
   function renderMessageCard(message: AdminMessage) {
     const parsed = parseResultChangeRequest(message.besked);
+    const reviewStatus = getResultChangeReviewStatus(parsed);
+    const statusLabel = message.handled
+      ? parsed
+        ? reviewStatus === "approved"
+          ? "Godkendt"
+          : reviewStatus === "rejected"
+            ? "Afvist"
+            : "Håndteret"
+        : "Håndteret"
+      : "Åben";
+    const statusClasses = message.handled
+      ? parsed && reviewStatus === "rejected"
+        ? "bg-[#fde7ea] text-[#b42318]"
+        : parsed && reviewStatus === "approved"
+          ? "bg-[#e7f6ec] text-[#117a37]"
+          : "bg-[#e6ebf3] text-[#586171]"
+      : "bg-white/70 text-[#9a5d00]";
 
     return (
       <div
@@ -192,13 +232,9 @@ export default function AdminBeskeder() {
 
         <div className="mt-3 flex items-center justify-between gap-3">
           <span
-            className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
-              message.handled
-                ? "bg-[#e6ebf3] text-[#586171]"
-                : "bg-white/70 text-[#9a5d00]"
-            }`}
+            className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${statusClasses}`}
           >
-            {message.handled ? "Håndteret" : "Åben"}
+            {statusLabel}
           </span>
 
           {!message.handled ? (
@@ -211,6 +247,16 @@ export default function AdminBeskeder() {
                   className="inline-flex items-center justify-center rounded-full bg-[#8f96a3] px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-[#7c8492] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {busyId === message.id ? "Gemmer..." : "Marker håndteret"}
+                </button>
+              ) : null}
+              {parsed ? (
+                <button
+                  type="button"
+                  onClick={() => handleMessage(message.id, "reject")}
+                  disabled={busyId === message.id}
+                  className="inline-flex items-center justify-center rounded-full bg-[#8f96a3] px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-[#7c8492] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {busyId === message.id ? "Gemmer..." : "Afvis ændring"}
                 </button>
               ) : null}
               <button
