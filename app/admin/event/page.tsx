@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
 import { getEventAdminHref } from '@/lib/eventConfig';
 
 type EventRow = {
@@ -28,13 +27,14 @@ export default function AdminEventPage() {
         setLoading(true);
         setErrorMsg(null);
 
-        const { data, error } = await supabase
-          .from('events')
-          .select('id, date, name, location, start_time, end_time, closed_group, only_women, rules_text')
-          .order('date', { ascending: true }); // grovsortér stigende på dato
+        const res = await fetch('/api/events?all=1', { cache: 'no-store' });
+        const json = await res.json();
 
-        if (error) throw error;
-        setRows(data ?? []);
+        if (!res.ok) {
+          throw new Error(json?.error ?? 'Uventet fejl ved hentning af events.');
+        }
+
+        setRows((json?.data ?? []) as EventRow[]);
       } catch (err: any) {
         setErrorMsg(err?.message ?? 'Uventet fejl ved hentning af events.');
       } finally {

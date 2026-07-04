@@ -5,6 +5,7 @@ export const fetchCache = "force-no-store";
 
 import { NextResponse } from "next/server";
 import { supabaseRoute } from "@/lib/supabaseClient";
+import { supabaseServiceRole } from "@/lib/supabaseServiceRole";
 
 // Lille hjælpe-type
 type EPMin = { event_id: string; status: string };
@@ -18,10 +19,25 @@ export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
     const all = url.searchParams.get("all") === "1";
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    let isAdmin = false;
+    if (user?.id) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("rolle")
+        .eq("id", user.id)
+        .maybeSingle();
+      isAdmin = profile?.rolle === "admin";
+    }
+
+    const db = isAdmin ? (supabaseServiceRole as any) : supabase;
 
     const today = new Date().toISOString().slice(0, 10);
 
-    const query = supabase
+    const query = db
       .from("events")
       .select("*")
       .order("date", { ascending: true })
@@ -38,7 +54,7 @@ export async function GET(req: Request) {
     const counts: Record<string, number> = {};
 
     if (ids.length) {
-      const { data: eps, error: epErr } = await supabase
+      const { data: eps, error: epErr } = await db
         .from("event_players")
         .select("event_id, status")
         .in("event_id", ids);
