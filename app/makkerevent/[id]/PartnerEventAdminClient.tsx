@@ -413,55 +413,30 @@ export default function PartnerEventAdminClient({
     [courtOverrides]
   );
 
-  const syncEventPlayers = useCallback(
-    async (nextTeams: PartnerTeamMeta[]) => {
-      if (!eventId) return;
-      const rows = nextTeams.flatMap((team) =>
-        team.playerIds.map((userId, index) => ({
-          event_id: eventId,
-          user_id: userId,
-          visningsnavn: team.playerNames[index],
-          status: "registered",
-        }))
-      );
-
-      await supabase.from("event_players").delete().eq("event_id", eventId);
-      if (rows.length > 0) {
-        const { error } = await (supabase.from("event_players") as any).upsert(
-          rows,
-          { onConflict: "event_id,user_id" }
-        );
-        if (error) {
-          console.warn("event_players sync error:", error.message);
-        }
-      }
-    },
-    [eventId]
-  );
-
   const persistTeams = useCallback(
     async (nextTeams: PartnerTeamMeta[]) => {
       if (!event) return;
-      const nextRulesText = buildEventRulesText(parsed.visibleRulesText, {
-        format: "partner",
-        partnerTeams: nextTeams,
+      const res = await fetch("/api/partner-event-admin", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          eventId: event.id,
+          visibleRulesText: parsed.visibleRulesText,
+          partnerTeams: nextTeams,
+        }),
       });
+      const json = await res.json();
 
-      const { data, error } = await (supabase.from("events") as any)
-        .update({ rules_text: nextRulesText })
-        .eq("id", event.id)
-        .select("*")
-        .single();
-
-      if (error) {
-        alert(`Kunne ikke gemme makkerpar: ${error.message}`);
+      if (!res.ok) {
+        alert(`Kunne ikke gemme makkerpar: ${json?.error ?? "Ukendt fejl"}`);
         return;
       }
 
-      setEvent(data as EventRow);
-      await syncEventPlayers(nextTeams);
+      if (json?.data) {
+        setEvent(json.data as EventRow);
+      }
     },
-    [event, parsed.visibleRulesText, syncEventPlayers]
+    [event, parsed.visibleRulesText]
   );
 
   const refreshSubmissionState = useCallback(async () => {
@@ -779,18 +754,24 @@ export default function PartnerEventAdminClient({
       }
     }
 
-    const { data, error } = await (supabase.from("events") as any)
-      .update({ status: nextPublished ? "published" : "planned" })
-      .eq("id", event.id)
-      .select("*")
-      .single();
+    const res = await fetch("/api/partner-event-admin", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        eventId: event.id,
+        status: nextPublished ? "published" : "planned",
+      }),
+    });
+    const json = await res.json();
 
-    if (error) {
-      alert(`Kunne ikke ændre event-status: ${error.message}`);
+    if (!res.ok) {
+      alert(`Kunne ikke ændre event-status: ${json?.error ?? "Ukendt fejl"}`);
       return;
     }
 
-    setEvent(data as EventRow);
+    if (json?.data) {
+      setEvent(json.data as EventRow);
+    }
     alert(
       nextPublished
         ? "Program publiceret og klar til spiller-input."
@@ -878,16 +859,18 @@ export default function PartnerEventAdminClient({
           ...parsed.meta,
           submissionRange: { from: firstKampId, to: lastKampId },
         });
-        const { data: updatedEvent, error: updateEventError } = await (
-          supabase.from("events") as any
-        )
-          .update({ rules_text: nextRulesText })
-          .eq("id", event.id)
-          .select("*")
-          .single();
+        const res = await fetch("/api/partner-event-admin", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            eventId: event.id,
+            rulesText: nextRulesText,
+          }),
+        });
+        const json = await res.json();
 
-        if (!updateEventError && updatedEvent) {
-          setEvent(updatedEvent as EventRow);
+        if (res.ok && json?.data) {
+          setEvent(json.data as EventRow);
         }
       }
 
@@ -936,16 +919,18 @@ export default function PartnerEventAdminClient({
         ...parsed.meta,
         submissionRange: null,
       });
-      const { data: updatedEvent, error: updateEventError } = await (
-        supabase.from("events") as any
-      )
-        .update({ rules_text: nextRulesText })
-        .eq("id", event.id)
-        .select("*")
-        .single();
+      const res = await fetch("/api/partner-event-admin", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          eventId: event.id,
+          rulesText: nextRulesText,
+        }),
+      });
+      const json = await res.json();
 
-      if (!updateEventError && updatedEvent) {
-        setEvent(updatedEvent as EventRow);
+      if (res.ok && json?.data) {
+        setEvent(json.data as EventRow);
       }
 
       setSubmissionState({
