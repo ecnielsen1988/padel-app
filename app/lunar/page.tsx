@@ -243,6 +243,8 @@ function computeFixedMonths(
     }))
     .filter((p) => !Number.isNaN(p.date.getTime()))
     .sort((a, b) => a.date.getTime() - b.date.getTime())
+  const currentElo =
+    snapshots.length > 0 ? snapshots[snapshots.length - 1].elo : startElo
 
   const monthCells: MonthCell[] = FIXED_MONTHS_2026.map((month) => {
     const start = new Date(month.start!)
@@ -275,7 +277,7 @@ function computeFixedMonths(
 
   return {
     months: monthCells,
-    weightedElo: sumWeights > 0 ? sum / sumWeights : startElo,
+    weightedElo: sumWeights > 0 ? sum / sumWeights : currentElo,
   }
 }
 
