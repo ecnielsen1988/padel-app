@@ -125,11 +125,11 @@ const FIXED_MONTHS_2026 = [
     end: "2026-06-30T23:59:59",
   },
   {
-    key: "now",
-    label: "Nu",
+    key: "2026-07",
+    label: "Juli",
     weight: 6,
-    start: null,
-    end: null,
+    start: "2026-07-01T00:00:00",
+    end: "2026-07-31T23:59:59",
   },
 ] as const
 
@@ -244,18 +244,7 @@ function computeFixedMonths(
     .filter((p) => !Number.isNaN(p.date.getTime()))
     .sort((a, b) => a.date.getTime() - b.date.getTime())
 
-  const currentElo =
-    snapshots.length > 0 ? snapshots[snapshots.length - 1].elo : startElo
-
   const monthCells: MonthCell[] = FIXED_MONTHS_2026.map((month) => {
-    if (month.key === "now") {
-      return {
-        label: month.label,
-        weight: month.weight,
-        avgElo: currentElo,
-      }
-    }
-
     const start = new Date(month.start!)
     const end = new Date(month.end!)
 
@@ -688,8 +677,8 @@ export default function LunarSide() {
       <h1 className="mb-4 text-3xl font-bold">🌙 Lunar – kommende hold</h1>
 
       <p className="mb-4 text-sm text-zinc-600 dark:text-zinc-300">
-        Vægt 6 tæller altid som nuværende Elo. Vægte 1-5 tæller kun med, hvis
-        der er spillet i den måned.
+        Elo vægtes fra februar til juli, og hver måned tæller kun med, hvis der
+        er spillet i den måned.
       </p>
 
       <div className="mb-6 flex flex-col items-start gap-3 sm:flex-row sm:items-center">
