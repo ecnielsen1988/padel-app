@@ -90,46 +90,46 @@ const TEAM_COLOR_BY_NAME = Object.fromEntries(
 
 const FIXED_MONTHS_2026 = [
   {
-    key: "2026-02",
-    label: "Feb",
-    weight: 1,
-    start: "2026-02-01T00:00:00",
-    end: "2026-02-28T23:59:59",
-  },
-  {
     key: "2026-03",
     label: "Marts",
-    weight: 2,
+    weight: 1,
     start: "2026-03-01T00:00:00",
     end: "2026-03-31T23:59:59",
   },
   {
     key: "2026-04",
     label: "April",
-    weight: 3,
+    weight: 2,
     start: "2026-04-01T00:00:00",
     end: "2026-04-30T23:59:59",
   },
   {
     key: "2026-05",
     label: "Maj",
-    weight: 4,
+    weight: 3,
     start: "2026-05-01T00:00:00",
     end: "2026-05-31T23:59:59",
   },
   {
     key: "2026-06",
     label: "Juni",
-    weight: 5,
+    weight: 4,
     start: "2026-06-01T00:00:00",
     end: "2026-06-30T23:59:59",
   },
   {
     key: "2026-07",
     label: "Juli",
-    weight: 6,
+    weight: 5,
     start: "2026-07-01T00:00:00",
     end: "2026-07-31T23:59:59",
+  },
+  {
+    key: "now",
+    label: "Nu",
+    weight: 6,
+    start: null,
+    end: null,
   },
 ] as const
 
@@ -247,6 +247,14 @@ function computeFixedMonths(
     snapshots.length > 0 ? snapshots[snapshots.length - 1].elo : startElo
 
   const monthCells: MonthCell[] = FIXED_MONTHS_2026.map((month) => {
+    if (month.key === "now") {
+      return {
+        label: month.label,
+        weight: month.weight,
+        avgElo: currentElo,
+      }
+    }
+
     const start = new Date(month.start!)
     const end = new Date(month.end!)
 
@@ -679,8 +687,8 @@ export default function LunarSide() {
       <h1 className="mb-4 text-3xl font-bold">🌙 Lunar – kommende hold</h1>
 
       <p className="mb-4 text-sm text-zinc-600 dark:text-zinc-300">
-        Elo vægtes fra februar til juli, og hver måned tæller kun med, hvis der
-        er spillet i den måned.
+        Elo vægtes fra marts til juli, og vægt 6 er nuværende Elo. Månederne
+        tæller kun med, hvis der er spillet i den måned.
       </p>
 
       <div className="mb-6 flex flex-col items-start gap-3 sm:flex-row sm:items-center">
