@@ -4,6 +4,7 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 import { use, useEffect, useState } from "react";
+import { LoadingState, PageShell } from "@/app/components/ui";
 import { supabase } from "@/lib/supabaseClient";
 import { CURRENT_HOLD_SEASON } from "@/lib/holdSeasons";
 
@@ -77,6 +78,16 @@ function getMatchTimestamp(dateString: string | null) {
   if (!dateString) return Number.MAX_SAFE_INTEGER;
   const ts = new Date(dateString).getTime();
   return Number.isNaN(ts) ? Number.MAX_SAFE_INTEGER : ts;
+}
+
+function pillClasses(tone: "neutral" | "success" | "warning" = "neutral") {
+  if (tone === "success") {
+    return "rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-700";
+  }
+  if (tone === "warning") {
+    return "rounded-full bg-rose-100 px-2.5 py-1 text-[11px] font-bold text-rose-700";
+  }
+  return "rounded-full bg-[#eceef2] px-2.5 py-1 text-[11px] font-bold text-[#656b79]";
 }
 
 export default function HoldSide({
@@ -373,6 +384,10 @@ export default function HoldSide({
 
   const primaryPlayers = medlemmer.filter((m) => m.member_type === "primary");
   const reservePlayers = medlemmer.filter((m) => m.member_type === "reserve");
+  const currentTime = new Intl.DateTimeFormat("da-DK", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date());
 
   function getStats(visningsnavn: string) {
     return statsMap[visningsnavn] ?? {
@@ -409,218 +424,218 @@ export default function HoldSide({
   }
 
   if (loading) {
-    return (
-      <main className="min-h-screen bg-gradient-to-b from-pink-50 to-white p-3 md:p-6">
-        <div className="mx-auto max-w-5xl rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-100">
-          <p className="text-sm text-gray-500">Henter hold...</p>
-        </div>
-      </main>
-    );
+    return <LoadingState text="Henter hold..." />;
   }
 
   if (error || !hold) {
     return (
-      <main className="min-h-screen bg-gradient-to-b from-pink-50 to-white p-3 md:p-6">
-        <div className="mx-auto max-w-5xl rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-100">
-          <Link
-            href="/holdkampe"
-            className="mb-3 inline-block text-sm font-semibold text-pink-700"
-          >
-            ← Tilbage til holdkampe
-          </Link>
-          <p className="text-sm text-red-600">Fejl: {error ?? "Hold ikke fundet"}</p>
+      <PageShell className="bg-[#1a1a2e] px-0 py-0 md:px-6 md:py-6">
+        <div className="mx-auto flex min-h-screen w-full max-w-[820px] flex-col overflow-hidden bg-[#f4f5f7] md:min-h-[min(100vh,980px)] md:rounded-[34px] md:border md:border-white/10 md:shadow-[0_28px_80px_rgba(0,0,0,0.35)]">
+          <header className="bg-gradient-to-br from-[#f01f78] to-[#c0135a] px-4 pb-5 pt-4 text-white md:px-6">
+            <div className="mb-4 flex items-center justify-between text-[11px] font-semibold opacity-90">
+              <span>Padelhuset</span>
+              <span>{currentTime}</span>
+            </div>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/75">Hold</p>
+            <h1 className="mt-1 text-2xl font-black tracking-tight">Holdside</h1>
+          </header>
+
+          <div className="flex-1 px-4 pb-10 pt-4 md:px-6">
+            <section className="rounded-[20px] bg-white p-4 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
+              <Link href="/holdkampe" className="mb-3 inline-block text-sm font-semibold text-[#f01f78]">
+                ← Tilbage til holdkampe
+              </Link>
+              <p className="text-sm text-red-600">Fejl: {error ?? "Hold ikke fundet"}</p>
+            </section>
+          </div>
         </div>
-      </main>
+      </PageShell>
     );
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-pink-50 to-white p-3 md:p-6">
-      <div className="mx-auto max-w-5xl space-y-5">
-        <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-100">
-          <Link
-            href="/holdkampe"
-            className="mb-3 inline-block text-sm font-semibold text-pink-700 hover:underline"
-          >
-            ← Tilbage til holdkampe
-          </Link>
-
-          <h1 className="text-2xl font-bold text-pink-700">{hold.name}</h1>
-          <p className="mt-1 text-sm text-gray-600">
-            {hold.division} • {hold.season}
-          </p>
-        </div>
-
-        <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-100">
-          <div className="mb-3">
-            <h2 className="text-lg font-bold text-gray-800">Holdets kampe</h2>
-            <p className="text-xs text-gray-500">Sorterede efter kampdato</p>
+    <PageShell className="bg-[#1a1a2e] px-0 py-0 md:px-6 md:py-6">
+      <div className="mx-auto flex min-h-screen w-full max-w-[820px] flex-col overflow-hidden bg-[#f4f5f7] md:min-h-[min(100vh,980px)] md:rounded-[34px] md:border md:border-white/10 md:shadow-[0_28px_80px_rgba(0,0,0,0.35)]">
+        <header className="bg-gradient-to-br from-[#f01f78] to-[#c0135a] px-4 pb-5 pt-4 text-white md:px-6">
+          <div className="mb-4 flex items-center justify-between text-[11px] font-semibold opacity-90">
+            <button
+              type="button"
+              onClick={() => {
+                if (typeof window !== "undefined") {
+                  if (window.history.length > 1) window.history.back();
+                  else window.location.href = "/holdkampe";
+                }
+              }}
+              className="inline-flex items-center rounded-full bg-white/15 px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-white/25"
+            >
+              ← Tilbage
+            </button>
+            <span>{currentTime}</span>
           </div>
 
-          {kampe.length === 0 ? (
-            <div className="rounded-2xl bg-pink-50 p-5 text-center">
-              <div className="text-3xl">📅</div>
-              <p className="mt-2 text-sm font-semibold text-gray-800">
-                Der er ikke oprettet kampe endnu
-              </p>
-              <p className="mt-1 text-xs text-gray-500">
-                Kampene kommer til at stå her, når de bliver lagt ind.
-              </p>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/75">Hold</p>
+              <h1 className="mt-1 text-2xl font-black tracking-tight">{hold.name}</h1>
+              <p className="mt-2 text-sm text-white/80">{hold.division} • {hold.season}</p>
             </div>
-          ) : (
-            <div className="space-y-2">
-              {kampe.map((kamp) => {
-                const signupCount = getSignupCount(kamp.id);
-                const enoughPlayers = signupCount >= 6;
-                const won = isWin(kamp);
-                const lost = isLoss(kamp);
 
-                return (
-                  <Link
-                    key={kamp.id}
-                    href={`/holdkampe/kamp/${kamp.id}`}
-                    className="block rounded-2xl bg-pink-50 px-4 py-3 transition hover:bg-pink-100"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <h3 className="text-sm font-bold text-gray-900 sm:text-base">
-                          {kamp.home_away === "home"
-                            ? `${hold.name} vs. ${kamp.opponent}`
-                            : `${kamp.opponent} vs. ${hold.name}`}
-                        </h3>
-
-                        <p className="mt-1 text-xs leading-snug text-gray-500">
-                          {formatDate(kamp.match_date)}
-                          {kamp.location ? ` • ${kamp.location}` : ""}
-                          {kamp.round ? ` • Runde ${kamp.round}` : ""}
-                        </p>
-
-                        <p
-                          className={`mt-2 inline-flex rounded-full px-2 py-1 text-[11px] font-bold ${
-                            enoughPlayers
-                              ? "bg-green-100 text-green-700"
-                              : "bg-red-100 text-red-600"
-                          }`}
-                        >
-                          {signupCount} tilmeldt
-                        </p>
-                      </div>
-
-                      <div className="shrink-0">
-                        {kamp.status === "played" &&
-                        kamp.result_for !== null &&
-                        kamp.result_against !== null ? (
-                          <div
-                            className={`rounded-full px-3 py-1 text-xs font-bold ring-1 ${
-                              won
-                                ? "bg-green-100 text-green-700 ring-green-200"
-                                : lost
-                                ? "bg-red-100 text-red-700 ring-red-200"
-                                : "bg-white text-gray-700 ring-gray-200"
-                            }`}
-                          >
-                            {formatDisplayedScore(kamp)}
-                          </div>
-                        ) : (
-                          <div className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-gray-600 ring-1 ring-pink-200">
-                            Se kamp
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </Link>
-                );
-              })}
+            <div className="rounded-[18px] bg-white/14 px-3 py-3 text-white">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70">Kampe</p>
+              <p className="mt-1 text-xl font-black">{kampe.length}</p>
             </div>
-          )}
-        </section>
+          </div>
+        </header>
 
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-          <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-100">
-            <h2 className="text-lg font-bold text-gray-800">Primært hold</h2>
-
-            {primaryPlayers.length === 0 ? (
-              <p className="mt-3 text-sm text-gray-500">
-                Ingen primære spillere fundet.
-              </p>
-            ) : (
-              <div className="mt-3 space-y-2">
-                {primaryPlayers.map((player) => {
-                  const stats = getStats(player.visningsnavn);
-
-                  return (
-                    <div
-                      key={player.id}
-                      className="flex items-center justify-between gap-3 rounded-2xl bg-pink-50 px-3 py-2.5"
-                    >
-                      <span className="min-w-0 truncate text-sm font-semibold text-gray-900">
-                        {player.visningsnavn}
-                      </span>
-
-                      <div className="flex shrink-0 items-center gap-1.5 text-xs font-bold">
-                        <span className="rounded-full bg-green-100 px-2 py-0.5 text-green-700">
-                          V {stats.wins}
-                        </span>
-                        <span className="rounded-full bg-red-100 px-2 py-0.5 text-red-700">
-                          T {stats.losses}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
+        <div className="flex-1 overflow-y-auto px-4 pb-28 pt-4 md:px-6">
+          <div className="space-y-4">
+            <section className="rounded-[20px] bg-white p-4 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h2 className="text-[13px] font-bold uppercase tracking-[0.12em] text-[#2d3340]">Holdets kampe</h2>
+                <span className="text-xs font-bold text-[#f01f78]">Sorterede efter dato</span>
               </div>
-            )}
-          </section>
 
-          <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-100">
-            <h2 className="text-lg font-bold text-gray-800">Reserver</h2>
+              {kampe.length === 0 ? (
+                <div className="rounded-[18px] bg-[#fbfbfc] p-4 text-sm text-[#6d7280]">
+                  Der er ikke oprettet kampe endnu.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {kampe.map((kamp) => {
+                    const signupCount = getSignupCount(kamp.id);
+                    const enoughPlayers = signupCount >= 6;
+                    const won = isWin(kamp);
+                    const lost = isLoss(kamp);
 
-            {reservePlayers.length === 0 ? (
-              <p className="mt-3 text-sm text-gray-500">Ingen reserver fundet.</p>
-            ) : (
-              <div className="mt-3 space-y-2">
-                {reservePlayers.map((player) => {
-                  const stats = getStats(player.visningsnavn);
-                  const availability = getReserveAvailability(player.visningsnavn);
-                  const canUse = availability > 0;
+                    return (
+                      <Link
+                        key={kamp.id}
+                        href={`/holdkampe/kamp/${kamp.id}`}
+                        className="block rounded-[18px] bg-[#fbfbfc] p-4 shadow-[0_1px_8px_rgba(0,0,0,0.04)] transition hover:-translate-y-0.5"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <h3 className="text-sm font-extrabold text-[#1f2430]">
+                              {kamp.home_away === "home"
+                                ? `${hold.name} vs. ${kamp.opponent}`
+                                : `${kamp.opponent} vs. ${hold.name}`}
+                            </h3>
 
-                  return (
-                    <div
-                      key={player.id}
-                      className="flex items-center justify-between gap-3 rounded-2xl bg-gray-50 px-3 py-2.5"
-                    >
-                      <div className="flex min-w-0 items-center gap-2">
-                        <span className="truncate text-sm font-semibold text-gray-900">
+                            <p className="mt-1 text-xs leading-snug text-[#838999]">
+                              {formatDate(kamp.match_date)}
+                              {kamp.location ? ` • ${kamp.location}` : ""}
+                              {kamp.round ? ` • Runde ${kamp.round}` : ""}
+                            </p>
+
+                            <div className="mt-2">
+                              <span className={pillClasses(enoughPlayers ? "success" : "warning")}>
+                                {signupCount} tilmeldt
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="shrink-0">
+                            {kamp.status === "played" &&
+                            kamp.result_for !== null &&
+                            kamp.result_against !== null ? (
+                              <span
+                                className={pillClasses(
+                                  won ? "success" : lost ? "warning" : "neutral"
+                                )}
+                              >
+                                {formatDisplayedScore(kamp)}
+                              </span>
+                            ) : (
+                              <span className={pillClasses()}>Se kamp</span>
+                            )}
+                          </div>
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
+            <section className="rounded-[20px] bg-white p-4 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h2 className="text-[13px] font-bold uppercase tracking-[0.12em] text-[#2d3340]">Primært hold</h2>
+                <span className="text-xs font-bold text-[#f01f78]">{primaryPlayers.length} spillere</span>
+              </div>
+
+              {primaryPlayers.length === 0 ? (
+                <div className="rounded-[18px] bg-[#fbfbfc] p-4 text-sm text-[#6d7280]">
+                  Ingen primære spillere fundet.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {primaryPlayers.map((player) => {
+                    const stats = getStats(player.visningsnavn);
+
+                    return (
+                      <div
+                        key={player.id}
+                        className="flex items-center justify-between gap-3 rounded-[18px] bg-[#fbfbfc] p-4 shadow-[0_1px_8px_rgba(0,0,0,0.04)]"
+                      >
+                        <span className="min-w-0 truncate text-sm font-extrabold text-[#1f2430]">
                           {player.visningsnavn}
                         </span>
 
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
-                            canUse
-                              ? "bg-green-100 text-green-700"
-                              : "bg-red-100 text-red-700"
-                          }`}
-                        >
-                          {availability > 0 ? `+${availability}` : `${availability}`}
-                        </span>
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          <span className={pillClasses("success")}>V {stats.wins}</span>
+                          <span className={pillClasses("warning")}>T {stats.losses}</span>
+                        </div>
                       </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
 
-                      <div className="flex shrink-0 items-center gap-1.5 text-xs font-bold">
-                        <span className="rounded-full bg-green-100 px-2 py-0.5 text-green-700">
-                          V {stats.wins}
-                        </span>
-                        <span className="rounded-full bg-red-100 px-2 py-0.5 text-red-700">
-                          T {stats.losses}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
+            <section className="rounded-[20px] bg-white p-4 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h2 className="text-[13px] font-bold uppercase tracking-[0.12em] text-[#2d3340]">Reserver</h2>
+                <span className="text-xs font-bold text-[#f01f78]">{reservePlayers.length} spillere</span>
               </div>
-            )}
-          </section>
+
+              {reservePlayers.length === 0 ? (
+                <div className="rounded-[18px] bg-[#fbfbfc] p-4 text-sm text-[#6d7280]">
+                  Ingen reserver fundet.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {reservePlayers.map((player) => {
+                    const stats = getStats(player.visningsnavn);
+                    const availability = getReserveAvailability(player.visningsnavn);
+                    const canUse = availability > 0;
+
+                    return (
+                      <div
+                        key={player.id}
+                        className="flex items-center justify-between gap-3 rounded-[18px] bg-[#fbfbfc] p-4 shadow-[0_1px_8px_rgba(0,0,0,0.04)]"
+                      >
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="truncate text-sm font-extrabold text-[#1f2430]">
+                            {player.visningsnavn}
+                          </span>
+                          <span className={pillClasses(canUse ? "success" : "warning")}>
+                            {availability > 0 ? `+${availability}` : `${availability}`}
+                          </span>
+                        </div>
+
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          <span className={pillClasses("success")}>V {stats.wins}</span>
+                          <span className={pillClasses("warning")}>T {stats.losses}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          </div>
         </div>
       </div>
-    </main>
+    </PageShell>
   );
 }

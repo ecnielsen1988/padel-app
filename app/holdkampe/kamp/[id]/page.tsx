@@ -4,6 +4,7 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 import { use, useEffect, useMemo, useState } from "react";
+import { LoadingState, PageShell } from "@/app/components/ui";
 import { supabase } from "@/lib/supabaseClient";
 
 type MatchData = {
@@ -68,6 +69,16 @@ function getMatchTitle(match: MatchData, team: TeamData | null) {
 
 function formatTeamScore(playerTotal: number) {
   return playerTotal / 2;
+}
+
+function pillClasses(tone: "neutral" | "success" | "warning" = "neutral") {
+  if (tone === "success") {
+    return "rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-700";
+  }
+  if (tone === "warning") {
+    return "rounded-full bg-rose-100 px-2.5 py-1 text-[11px] font-bold text-rose-700";
+  }
+  return "rounded-full bg-[#eceef2] px-2.5 py-1 text-[11px] font-bold text-[#656b79]";
 }
 
 export default function HoldkampSide({
@@ -233,6 +244,10 @@ export default function HoldkampSide({
     () => formatTeamScore(playerLossesTotal),
     [playerLossesTotal]
   );
+  const currentTime = new Intl.DateTimeFormat("da-DK", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date());
 
   function updateStatus(visningsnavn: string, status: "afventer" | "tilmeldt" | "afbud") {
     setRows((prev) => ({
@@ -422,139 +437,138 @@ export default function HoldkampSide({
   }
 
   if (loading) {
-    return (
-      <main className="min-h-screen bg-gradient-to-b from-pink-50 to-white p-3 text-slate-900 dark:from-slate-950 dark:to-slate-900 dark:text-slate-100 md:p-6">
-        <div className="mx-auto max-w-5xl rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-100 dark:bg-slate-900 dark:ring-slate-800">
-          <p className="text-sm text-gray-500 dark:text-slate-400">Henter kamp...</p>
-        </div>
-      </main>
-    );
+    return <LoadingState text="Henter kamp..." />;
   }
 
   if (error && !match) {
     return (
-      <main className="min-h-screen bg-gradient-to-b from-pink-50 to-white p-3 text-slate-900 dark:from-slate-950 dark:to-slate-900 dark:text-slate-100 md:p-6">
-        <div className="mx-auto max-w-5xl rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-100 dark:bg-slate-900 dark:ring-slate-800">
-          <Link
-            href="/holdkampe"
-            className="mb-3 inline-block text-sm font-semibold text-pink-700 hover:underline dark:text-pink-300"
-          >
-            ← Tilbage til holdkampe
-          </Link>
-          <p className="text-sm text-red-600 dark:text-red-300">Fejl: {error}</p>
+      <PageShell className="bg-[#1a1a2e] px-0 py-0 md:px-6 md:py-6">
+        <div className="mx-auto flex min-h-screen w-full max-w-[820px] flex-col overflow-hidden bg-[#f4f5f7] md:min-h-[min(100vh,980px)] md:rounded-[34px] md:border md:border-white/10 md:shadow-[0_28px_80px_rgba(0,0,0,0.35)]">
+          <header className="bg-gradient-to-br from-[#f01f78] to-[#c0135a] px-4 pb-5 pt-4 text-white md:px-6">
+            <div className="mb-4 flex items-center justify-between text-[11px] font-semibold opacity-90">
+              <span>Padelhuset</span>
+              <span>{currentTime}</span>
+            </div>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/75">Kamp</p>
+            <h1 className="mt-1 text-2xl font-black tracking-tight">Holdkamp</h1>
+          </header>
+
+          <div className="flex-1 px-4 pb-10 pt-4 md:px-6">
+            <section className="rounded-[20px] bg-white p-4 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
+              <Link href="/holdkampe" className="mb-3 inline-block text-sm font-semibold text-[#f01f78]">
+                ← Tilbage til holdkampe
+              </Link>
+              <p className="text-sm text-red-600">Fejl: {error}</p>
+            </section>
+          </div>
         </div>
-      </main>
+      </PageShell>
     );
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-pink-50 to-white p-3 text-slate-900 dark:from-slate-950 dark:to-slate-900 dark:text-slate-100 md:p-6">
-      <div className="mx-auto max-w-5xl space-y-5">
-        <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-100 dark:bg-slate-900 dark:ring-slate-800">
-          <Link
-            href={team ? `/holdkampe/${team.id}` : "/holdkampe"}
-            className="mb-3 inline-block text-sm font-semibold text-pink-700 hover:underline dark:text-pink-300"
-          >
-            ← Tilbage
-          </Link>
-
-          <h1 className="text-2xl font-bold text-pink-700 dark:text-pink-300">
-            {match && team ? getMatchTitle(match, team) : "Holdkamp"}
-          </h1>
-
-          <p className="mt-1 text-sm text-gray-600 dark:text-slate-400">
-            {team?.division ? `${team.division} • ` : ""}
-            {match?.round ? `Runde ${match.round} • ` : ""}
-            {match ? formatDate(match.match_date) : ""}
-            {match?.location ? ` • ${match.location}` : ""}
-            {match?.season ? ` • ${match.season}` : ""}
-          </p>
-
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <div className="rounded-full bg-pink-100 px-3 py-1 text-sm font-bold text-pink-700 dark:bg-pink-500/20 dark:text-pink-300">
-              Resultat: {resultFor}-{resultAgainst}
-            </div>
-
-            <div
-              className={`rounded-full px-3 py-1 text-sm font-bold ${
-                match?.status === "played"
-                  ? "bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300"
-                  : "bg-gray-100 text-gray-700 dark:bg-slate-800 dark:text-slate-300"
-              }`}
+    <PageShell className="bg-[#1a1a2e] px-0 py-0 md:px-6 md:py-6">
+      <div className="mx-auto flex min-h-screen w-full max-w-[820px] flex-col overflow-hidden bg-[#f4f5f7] md:min-h-[min(100vh,980px)] md:rounded-[34px] md:border md:border-white/10 md:shadow-[0_28px_80px_rgba(0,0,0,0.35)]">
+        <header className="bg-gradient-to-br from-[#f01f78] to-[#c0135a] px-4 pb-5 pt-4 text-white md:px-6">
+          <div className="mb-4 flex items-center justify-between text-[11px] font-semibold opacity-90">
+            <button
+              type="button"
+              onClick={() => {
+                if (typeof window !== "undefined") {
+                  if (window.history.length > 1) window.history.back();
+                  else window.location.href = team ? `/holdkampe/${team.id}` : "/holdkampe";
+                }
+              }}
+              className="inline-flex items-center rounded-full bg-white/15 px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-white/25"
             >
-              {match?.status === "played" ? "Spillet" : "Kommende"}
+              ← Tilbage
+            </button>
+            <span>{currentTime}</span>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/75">Kamp</p>
+            <h1 className="text-2xl font-black tracking-tight">
+              {match && team ? getMatchTitle(match, team) : "Holdkamp"}
+            </h1>
+            <p className="text-sm text-white/80">
+              {team?.division ? `${team.division} • ` : ""}
+              {match?.round ? `Runde ${match.round} • ` : ""}
+              {match ? formatDate(match.match_date) : ""}
+              {match?.location ? ` • ${match.location}` : ""}
+            </p>
+
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <span className="rounded-full bg-white/18 px-3 py-1 text-sm font-bold text-white">
+                Resultat: {resultFor}-{resultAgainst}
+              </span>
+              <span className="rounded-full bg-white/18 px-3 py-1 text-sm font-bold text-white">
+                {match?.status === "played" ? "Spillet" : "Kommende"}
+              </span>
             </div>
+          </div>
+        </header>
+
+        <div className="flex-1 overflow-y-auto px-4 pb-32 pt-4 md:px-6">
+          <div className="space-y-4">
+            {message && (
+              <div className="rounded-[18px] bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
+                {message}
+              </div>
+            )}
+
+            {error && (
+              <div className="rounded-[18px] bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
+                {error}
+              </div>
+            )}
+
+            <section className="rounded-[20px] bg-white p-4 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h2 className="text-[13px] font-bold uppercase tracking-[0.12em] text-[#2d3340]">Primært hold</h2>
+                <span className="text-xs font-bold text-[#f01f78]">Vælg status og V/T</span>
+              </div>
+
+              {primaryPlayers.length === 0 ? (
+                <div className="rounded-[18px] bg-[#fbfbfc] p-4 text-sm text-[#6d7280]">
+                  Ingen primære spillere fundet.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {primaryPlayers.map((player) => renderPlayerRow(player))}
+                </div>
+              )}
+            </section>
+
+            <section className="rounded-[20px] bg-white p-4 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h2 className="text-[13px] font-bold uppercase tracking-[0.12em] text-[#2d3340]">Reserver</h2>
+                <span className="text-xs font-bold text-[#f01f78]">Samme funktioner</span>
+              </div>
+
+              {reservePlayers.length === 0 ? (
+                <div className="rounded-[18px] bg-[#fbfbfc] p-4 text-sm text-[#6d7280]">
+                  Ingen reserver fundet.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {reservePlayers.map((player) => renderPlayerRow(player, true))}
+                </div>
+              )}
+            </section>
           </div>
         </div>
 
-        {message && (
-          <div className="rounded-2xl bg-green-50 px-4 py-3 text-sm font-semibold text-green-700 ring-1 ring-green-100 dark:bg-green-950/40 dark:text-green-300 dark:ring-green-900">
-            {message}
-          </div>
-        )}
-
-        {error && (
-          <div className="rounded-2xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 ring-1 ring-red-100 dark:bg-red-950/40 dark:text-red-300 dark:ring-red-900">
-            {error}
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-          <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-100 dark:bg-slate-900 dark:ring-slate-800">
-            <div className="mb-3">
-              <h2 className="text-lg font-bold text-gray-800 dark:text-slate-100">
-                Primært hold
-              </h2>
-              <p className="text-xs text-gray-500 dark:text-slate-400">
-                Vælg status og indtast V/T
-              </p>
-            </div>
-
-            {primaryPlayers.length === 0 ? (
-              <p className="text-sm text-gray-500 dark:text-slate-400">
-                Ingen primære spillere fundet.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {primaryPlayers.map((player) => renderPlayerRow(player))}
-              </div>
-            )}
-          </section>
-
-          <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-100 dark:bg-slate-900 dark:ring-slate-800">
-            <div className="mb-3">
-              <h2 className="text-lg font-bold text-gray-800 dark:text-slate-100">
-                Reserver
-              </h2>
-              <p className="text-xs text-gray-500 dark:text-slate-400">
-                Samme funktioner som primært hold
-              </p>
-            </div>
-
-            {reservePlayers.length === 0 ? (
-              <p className="text-sm text-gray-500 dark:text-slate-400">
-                Ingen reserver fundet.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {reservePlayers.map((player) => renderPlayerRow(player, true))}
-              </div>
-            )}
-          </section>
-        </div>
-
-        <div className="sticky bottom-4">
-          <div className="rounded-2xl bg-white p-4 shadow-lg ring-1 ring-pink-100 dark:bg-slate-900 dark:ring-slate-800">
+        <div className="sticky bottom-0 border-t border-[#ebeef3] bg-[#f4f5f7]/95 px-4 py-4 backdrop-blur md:px-6">
+          <div className="rounded-[20px] bg-white p-4 shadow-[0_8px_24px_rgba(0,0,0,0.08)]">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-sm text-gray-600 dark:text-slate-400">
-                2 spillersejre tæller som 1 holdpoint.
-              </div>
+              <div className="text-sm text-[#6d7280]">2 spillersejre tæller som 1 holdpoint.</div>
 
               <button
                 type="button"
                 onClick={handleSave}
                 disabled={saving}
-                className="rounded-2xl bg-pink-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-pink-700 disabled:opacity-60 dark:bg-pink-500 dark:hover:bg-pink-600"
+                className="rounded-full bg-[#f01f78] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#d61b6f] disabled:opacity-60"
               >
                 {saving ? "Gemmer..." : "Gem kamp"}
               </button>
@@ -562,6 +576,6 @@ export default function HoldkampSide({
           </div>
         </div>
       </div>
-    </main>
+    </PageShell>
   );
 }
