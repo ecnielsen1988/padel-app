@@ -5,6 +5,7 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { CURRENT_HOLD_SEASON, HOLD_SEASONS } from "@/lib/holdSeasons";
 
 type Hold = {
   id: string;
@@ -68,10 +69,10 @@ type PlayerStats = {
   lastWonMatchTs: number;
 };
 
-const CURRENT_SEASON = "2026 forår";
+const CURRENT_SEASON = CURRENT_HOLD_SEASON;
 const INITIAL_VISIBLE_MATCHES = 3;
 const INITIAL_VISIBLE_PLAYERS = 3;
-const PLAYER_STATS_SEASONS = ["2025 forår", "2025 efterår", "2026 forår"];
+const PLAYER_STATS_SEASONS = HOLD_SEASONS;
 const PLAYER_STATS_MATCH_LIMIT = 3000;
 const PLAYER_STATS_ROW_LIMIT = 3000;
 
@@ -338,7 +339,12 @@ export default function HoldkampeForside() {
         const season = joinedMatch?.season ?? null;
         const matchDate = joinedMatch?.match_date ?? null;
 
-        if (!season || !PLAYER_STATS_SEASONS.includes(season)) continue;
+        if (
+          !season ||
+          !PLAYER_STATS_SEASONS.includes(season as (typeof PLAYER_STATS_SEASONS)[number])
+        ) {
+          continue;
+        }
 
         const rowWins = Number(row.wins ?? 0);
         const rowLosses = Number(row.losses ?? 0);

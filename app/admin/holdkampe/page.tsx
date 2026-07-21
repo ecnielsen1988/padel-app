@@ -5,6 +5,7 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { CURRENT_HOLD_SEASON, HOLD_SEASONS } from "@/lib/holdSeasons";
 
 type Team = {
   id: string;
@@ -35,8 +36,8 @@ type MatchRow = {
       }[];
 };
 
-const SEASONS = ["2025 forår", "2025 efterår", "2026 forår"];
-const CURRENT_SEASON = "2026 forår";
+const SEASONS = HOLD_SEASONS;
+const CURRENT_SEASON = CURRENT_HOLD_SEASON;
 
 function formatDate(dateString: string | null) {
   if (!dateString) return "Ingen dato";
