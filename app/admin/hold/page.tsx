@@ -31,6 +31,14 @@ type ProfilePlayer = {
   visningsnavn: string | null;
 };
 
+function compareMembers(a: TeamMember, b: TeamMember) {
+  if (a.member_type !== b.member_type) {
+    return a.member_type === "primary" ? -1 : 1;
+  }
+
+  return (a.sort_order ?? 999) - (b.sort_order ?? 999);
+}
+
 function normalizeTeamName(name: string) {
   return name
     .trim()
@@ -404,18 +412,65 @@ export default function AdminHoldPage() {
     await fetchData();
   }
 
+  async function handleMoveMember(memberId: string, direction: "up" | "down") {
+    const member = members.find((item) => item.id === memberId);
+
+    if (!member) {
+      return;
+    }
+
+    const groupMembers = members
+      .filter(
+        (item) => item.team_id === member.team_id && item.member_type === member.member_type
+      )
+      .slice()
+      .sort(compareMembers);
+
+    const currentIndex = groupMembers.findIndex((item) => item.id === memberId);
+
+    if (currentIndex === -1) {
+      return;
+    }
+
+    const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+
+    if (targetIndex < 0 || targetIndex >= groupMembers.length) {
+      return;
+    }
+
+    const reorderedMembers = groupMembers.slice();
+    const [movedMember] = reorderedMembers.splice(currentIndex, 1);
+    reorderedMembers.splice(targetIndex, 0, movedMember);
+
+    setSaving(true);
+    setMessage(null);
+    setError(null);
+
+    const updates = reorderedMembers.map((item, index) =>
+      supabase
+        .from("hold_team_members")
+        .update({ sort_order: index + 1 })
+        .eq("id", item.id)
+    );
+
+    const results = await Promise.all(updates);
+    const failedUpdate = results.find((result) => result.error);
+
+    if (failedUpdate?.error) {
+      setError(failedUpdate.error.message);
+      setSaving(false);
+      return;
+    }
+
+    setMessage("Prioriteringen er opdateret.");
+    await fetchData();
+    setSaving(false);
+  }
+
   const groupedTeams = useMemo(() => {
     return teams.map((team) => ({
       ...team,
-      members: members
-        .filter((member) => member.team_id === team.id)
-        .sort((a, b) => {
-          if (a.member_type !== b.member_type) {
-            return a.member_type === "primary" ? -1 : 1;
-          }
-
-          return (a.sort_order ?? 999) - (b.sort_order ?? 999);
-        }),
+      members: members.filter((member) => member.team_id === team.id).sort(compareMembers),
     }));
   }, [teams, members]);
 
@@ -752,13 +807,31 @@ export default function AdminHoldPage() {
                               </div>
                             </div>
 
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteMember(member.id)}
-                              className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-red-600 ring-1 ring-red-200 transition hover:bg-red-50 dark:bg-slate-800 dark:text-red-300 dark:ring-red-900"
-                            >
-                              Fjern
-                            </button>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleMoveMember(member.id, "up")}
+                                disabled={saving}
+                                className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-gray-700 ring-1 ring-gray-200 transition hover:bg-gray-50 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-100 dark:ring-slate-700 dark:hover:bg-slate-700"
+                              >
+                                Op
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleMoveMember(member.id, "down")}
+                                disabled={saving}
+                                className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-gray-700 ring-1 ring-gray-200 transition hover:bg-gray-50 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-100 dark:ring-slate-700 dark:hover:bg-slate-700"
+                              >
+                                Ned
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteMember(member.id)}
+                                className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-red-600 ring-1 ring-red-200 transition hover:bg-red-50 dark:bg-slate-800 dark:text-red-300 dark:ring-red-900"
+                              >
+                                Fjern
+                              </button>
+                            </div>
                           </div>
                         ))
                       )}
