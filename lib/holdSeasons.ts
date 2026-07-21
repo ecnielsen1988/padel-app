@@ -16,3 +16,15 @@ export function getPreviousHoldSeason(season: string) {
 
   return HOLD_SEASONS[seasonIndex - 1];
 }
+
+export function getRecentHoldSeasons(season: string, count: number) {
+  const seasons: string[] = [];
+  let currentSeason: string | null = season;
+
+  while (currentSeason && seasons.length < count) {
+    seasons.push(currentSeason);
+    currentSeason = getPreviousHoldSeason(currentSeason);
+  }
+
+  return seasons;
+}
