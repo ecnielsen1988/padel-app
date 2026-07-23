@@ -110,7 +110,7 @@ export default function ReglementPage() {
           <li><strong>Tie-break</strong> ved 6–6</li>
         </ul>
 
-        <p className="font-semibold mt-2">Killer point ved 40–40</p>
+        <p className="font-semibold mt-2">Star Point ved 40–40</p>
 
         <p>
           Ved 40–40 spilles:
@@ -118,11 +118,12 @@ export default function ReglementPage() {
 
         <ol className="list-decimal pl-6 space-y-1">
           <li>én fordelbold</li>
-          <li>hvis stillingen igen bliver lige spilles en afgørende bold</li>
+          <li>hvis stillingen igen bliver lige spilles endnu en fordelbold</li>
+          <li>hvis stillingen bliver lige igen spilles en afgørende bold</li>
         </ol>
 
         <p>
-          Returnerende hold vælger side for serven.
+          Ved den afgørende bold vælger returnerende hold side for serven.
         </p>
       </Section>
 
@@ -156,7 +157,7 @@ export default function ReglementPage() {
         </p>
 
         <ul className="space-y-1">
-          <li>🥇 1. plads – 2 øl + 1 sodavand</li>
+          <li>🥇 1. plads – 2 øl</li>
           <li>🥈 2. plads – 1 øl</li>
           <li>🥉 3. plads – 1 sodavand</li>
         </ul>
@@ -190,7 +191,7 @@ export default function ReglementPage() {
         </p>
 
         <ul className="list-disc pl-6 space-y-1">
-          <li><strong>150 kr. pr. gang</strong></li>
+          <li><strong>200 kr. pr. gang</strong></li>
           <li><strong>100 kr. for medlemmer</strong></li>
         </ul>
 
@@ -199,8 +200,8 @@ export default function ReglementPage() {
         </p>
 
         <p>
-          Øvrige drikkevarer købes <strong>direkte i baren hos Padelhuset</strong>.
-          Der føres ikke længere kredit eller barkonto.
+          Der føres regnskab for yderligere drikkevarer, som
+          <strong> skal være betalt inden man forlader Padelhuset</strong>.
         </p>
       </Section>
 
@@ -231,36 +232,25 @@ export default function ReglementPage() {
         </p>
       </Section>
 
-      {/* Uskrevne regler */}
-      <Section title="🍻 Den uskrevne torsdagsregel">
+      {/* Bødekasse */}
+      <Section title="💸 Bødekasse">
         <p>
-          Bødekassen er sat på pause.
-        </p>
-
-        <p>
-          Men der findes stadig lidt <strong>torsdagslogik</strong>.
-        </p>
-
-        <p>
-          Hvis du fx:
+          Bødekassen bliver igen etableret.
         </p>
 
         <ul className="list-disc pl-6 space-y-1">
-          <li>kommer for sent</li>
-          <li>skyder din makker ned</li>
-          <li>giver eller får et æg</li>
-          <li>laver dobbeltfejl på killer point</li>
-          <li>eller på anden måde laver noget spektakulært</li>
+          <li>For sent fremmøde – 10 kr. pr. minut</li>
+          <li>Afbud efter tilmelding – 30 kr.</li>
+          <li>Dårlig opførsel – 30 kr.</li>
+          <li>Dårlig opførsel overfor banen – 100 kr.</li>
+          <li>Glemte sager – 30 kr.</li>
+          <li>Manglende holdkampstrøje til holdkampe – 30 kr.</li>
+          <li>Manglende betaling i baren – 100 kr.</li>
+          <li>Manglende betaling af bøder – 50 kr.</li>
         </ul>
 
         <p>
-          …så er det god stil at <strong>give en omgang til banen</strong>.
-        </p>
-
-        <p>
-          Det er ikke tvang – men det gør stemningen bedre, og
-          <strong> støtter samtidig baren i Padelhuset</strong>,
-          som lægger faciliteter til vores torsdage.
+          Alle pengene går ubeskåret til afslutningsfesterne.
         </p>
       </Section>
 
