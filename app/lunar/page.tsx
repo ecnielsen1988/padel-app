@@ -88,6 +88,15 @@ const TEAM_COLOR_BY_NAME = Object.fromEntries(
   FALL_2026_TEAM_OPTIONS.map((team) => [team.name, team.color])
 ) as Record<string, string>
 
+function normalizeTeamName(teamName: string | null | undefined) {
+  if (!teamName) return ""
+  return teamName
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase()
+}
+
 const FIXED_MONTHS_2026 = [
   {
     key: "2026-03",
@@ -373,8 +382,16 @@ function getTeamBadgeClass(teamName: string | null | undefined) {
   if (!teamName) {
     return "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
   }
+  const directMatch = TEAM_COLOR_BY_NAME[teamName]
+  if (directMatch) return directMatch
+
+  const normalizedTeamName = normalizeTeamName(teamName)
+  const aliasMatch = Object.entries(TEAM_COLOR_BY_NAME).find(
+    ([name]) => normalizeTeamName(name) === normalizedTeamName
+  )?.[1]
+
   return (
-    TEAM_COLOR_BY_NAME[teamName] ??
+    aliasMatch ??
     "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
   )
 }
@@ -404,10 +421,12 @@ export default function LunarSide() {
   const monthsHeader = useMemo(() => FIXED_MONTHS_2026, [])
 
   const orderedFallTeams = useMemo(() => {
-    const teamByName = new Map(fallTeams.map((team) => [team.name, team]))
+    const teamByName = new Map(
+      fallTeams.map((team) => [normalizeTeamName(team.name), team])
+    )
     return FALL_2026_TEAM_OPTIONS.map((option) => ({
       ...option,
-      team: teamByName.get(option.name) ?? null,
+      team: teamByName.get(normalizeTeamName(option.name)) ?? null,
     }))
   }, [fallTeams])
 
