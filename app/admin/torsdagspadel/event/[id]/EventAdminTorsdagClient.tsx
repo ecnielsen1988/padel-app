@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { beregnEloForKampe } from "@/lib/beregnElo";
+import { buildEventRulesText, parseEventRulesText } from "@/lib/eventConfig";
 
 /* ======================== Typer ======================== */
 type EventRow = {
@@ -409,6 +410,34 @@ useEffect(() => {
   })();
 }, [eventId]);
 
+  const persistEventMeta = useCallback(
+    async (metaPatch: { playerOrder?: string[]; matchOrder?: number[] }) => {
+      if (!event?.id) return;
+
+      const parsed = parseEventRulesText(event.rules_text);
+      const nextRulesText = buildEventRulesText(parsed.visibleRulesText, {
+        ...parsed.meta,
+        ...(metaPatch.playerOrder !== undefined ? { playerOrder: metaPatch.playerOrder } : {}),
+        ...(metaPatch.matchOrder !== undefined ? { matchOrder: metaPatch.matchOrder } : {}),
+      });
+
+      const { data, error } = await supabase
+        .from("events")
+        .update({ rules_text: nextRulesText })
+        .eq("id", event.id)
+        .select("*")
+        .maybeSingle();
+
+      if (error) {
+        console.warn("persistEventMeta error:", error.message);
+        return;
+      }
+
+      if (data) setEvent(data as EventRow);
+    },
+    [event]
+  );
+
 
   /* --- Elo map fra /api/rangliste --- */
   useEffect(() => {
@@ -470,8 +499,25 @@ useEffect(() => {
       });
 
     const seeded = sortByElo(filtered) as EventPlayer[];
-    setPlayers(seeded);
-    setOrderIds(seeded.map((p) => p.user_id));
+    const parsed = parseEventRulesText(event?.rules_text);
+    const savedPlayerOrder = Array.isArray(parsed.meta.playerOrder)
+      ? parsed.meta.playerOrder
+      : [];
+
+    if (savedPlayerOrder.length > 0) {
+      const byId = new Map(seeded.map((player) => [player.user_id, player] as const));
+      const preferred = savedPlayerOrder
+        .map((id: string) => byId.get(id))
+        .filter((player: EventPlayer | undefined): player is EventPlayer => Boolean(player));
+      const usedIds = new Set(preferred.map((player) => player.user_id));
+      const remainder = seeded.filter((player) => !usedIds.has(player.user_id));
+      const nextPlayers = [...preferred, ...remainder];
+      setPlayers(nextPlayers);
+      setOrderIds(nextPlayers.map((p) => p.user_id));
+    } else {
+      setPlayers(seeded);
+      setOrderIds(seeded.map((p) => p.user_id));
+    }
   } finally {
     setLoadingPlayers(false);
   }
@@ -520,6 +566,7 @@ useEffect(() => {
       return;
     }
     setSearch("");
+    void persistEventMeta({ playerOrder: [...orderIds, uid] });
     await loadPlayers();
   }
 
@@ -532,7 +579,10 @@ useEffect(() => {
     if (!confirm("Fjern spiller fra event?")) return;
     const { error } = await supabase.from("event_players").delete().eq("event_id", eventId).eq("user_id", uid);
     if (error) alert(error.message);
-    else await loadPlayers();
+    else {
+      void persistEventMeta({ playerOrder: orderIds.filter((id) => id !== uid) });
+      await loadPlayers();
+    }
   }
 
   async function replacePlayerAt(index: number, np: Profile & { elo?: number }) {
@@ -568,6 +618,7 @@ useEffect(() => {
       alert(ins.error.message);
       return;
     }
+    const nextOrder = orderIds.map((id, i) => (i === index ? np.id : id));
     setOrderIds((prev) => {
       const next = [...prev];
       next[index] = np.id;
@@ -584,6 +635,7 @@ useEffect(() => {
 
       return Array.from(map.values());
     });
+    void persistEventMeta({ playerOrder: nextOrder });
     setSwapIndex(null);
     setSearch("");
   }
@@ -608,6 +660,7 @@ useEffect(() => {
       if (i <= 0) return prev;
       const copy = [...prev];
       [copy[i - 1], copy[i]] = [copy[i], copy[i - 1]];
+      void persistEventMeta({ playerOrder: copy });
       return copy;
     });
   }
@@ -650,10 +703,20 @@ useEffect(() => {
       return n;
     });
 
-    setGroupOrder((prev) => {
-      const base = prev.length ? prev.slice(0, groups.length) : Array.from({ length: groups.length }, (_, i) => i);
-      for (let i = base.length; i < groups.length; i++) base[i] = i;
-      return base;
+    setGroupOrder(() => {
+      const len = groups.length;
+      const parsed = parseEventRulesText(event.rules_text);
+      const savedMatchOrder = Array.isArray(parsed.meta.matchOrder)
+        ? parsed.meta.matchOrder.filter((value: number) => Number.isInteger(value))
+        : [];
+      const validSavedOrder =
+        savedMatchOrder.length === len &&
+        new Set(savedMatchOrder).size === len &&
+        savedMatchOrder.every((value: number) => value >= 0 && value < len);
+
+      if (validSavedOrder) return savedMatchOrder;
+
+      return Array.from({ length: len }, (_, i) => i);
     });
   }, [event, groups.length]);
 
@@ -812,6 +875,7 @@ useEffect(() => {
     setCourtsOrder(nextCourts);
     setRoundsPerCourt(nextRounds);
     setMatchTimes(nextTimes);
+    void persistEventMeta({ matchOrder: nextGroup });
 
     setScores((prev) => {
       const out: typeof prev = {};

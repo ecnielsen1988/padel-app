@@ -403,7 +403,6 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
   const [matchTimes, setMatchTimes] = useState<Record<number, { start: string; end: string }>>({});
   const [scores, setScores] = useState<Record<string, Score>>({});
   const [groupOrder, setGroupOrder] = useState<number[]>([]);
-  const [dbGroups, setDbGroups] = useState<EventPlayer[][] | null>(null);
   const [resultsSubmitted, setResultsSubmitted] = useState(false);
   const [submittedSetCount, setSubmittedSetCount] = useState(0);
   const [submissionBusy, setSubmissionBusy] = useState(false);
@@ -444,6 +443,34 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
       } catch (error) {
         console.warn("submission state load error", error);
       }
+    },
+    [event]
+  );
+
+  const persistEventMeta = useCallback(
+    async (metaPatch: { playerOrder?: string[]; matchOrder?: number[] }) => {
+      if (!event?.id) return;
+
+      const parsed = parseEventRulesText(event.rules_text);
+      const nextRulesText = buildEventRulesText(parsed.visibleRulesText, {
+        ...parsed.meta,
+        ...(metaPatch.playerOrder !== undefined ? { playerOrder: metaPatch.playerOrder } : {}),
+        ...(metaPatch.matchOrder !== undefined ? { matchOrder: metaPatch.matchOrder } : {}),
+      });
+
+      const { data, error } = await supabase
+        .from("events")
+        .update({ rules_text: nextRulesText })
+        .eq("id", event.id)
+        .select("*")
+        .maybeSingle();
+
+      if (error) {
+        console.warn("persistEventMeta error:", error.message);
+        return;
+      }
+
+      if (data) setEvent(data as EventRow);
     },
     [event]
   );
@@ -512,59 +539,6 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
   async function loadPlayers() {
     setLoadingPlayers(true);
     try {
-      if (event?.status === "published") {
-        // Midterkolonnen: byg grupper fra event_result (kamp-rækkefølge)
-        const { data, error } = await supabase
-          .from("event_result")
-          .select("group_index, set_index, holdA1, holdA2, holdB1, holdB2")
-          .eq("event_id", eventId)
-          .order("group_index", { ascending: true })
-          .order("set_index", { ascending: true });
-
-        if (error) {
-          console.warn("event_result load error:", error.message);
-          setDbGroups(null);
-        } else if (data && data.length) {
-          const byGroup = new Map<number, string[]>();
-
-          for (const r of data as any[]) {
-            const gi = Number(r.group_index ?? 0);
-            const si = Number(r.set_index ?? 0);
-            if (!Number.isFinite(gi) || si !== 0) continue; // kun første sæt definerer rækkefølgen
-
-            const cand = [r.holdA1, r.holdA2, r.holdB1, r.holdB2]
-              .map((v: string | null) => (v ?? "").trim())
-              .filter(Boolean);
-
-            byGroup.set(gi, cand);
-          }
-
-          if (byGroup.size > 0) {
-            const maxGi = Math.max(...Array.from(byGroup.keys()));
-            const groups: EventPlayer[][] = [];
-
-            for (let gi = 0; gi <= maxGi; gi++) {
-              const names = byGroup.get(gi) ?? [];
-              const arr: EventPlayer[] = names.map((vn) => ({
-                user_id: vn,          // bruger visningsnavn som id i midterkolonnen
-                visningsnavn: vn,
-                elo: eloMap[vn] ?? 1000,
-              }));
-              if (arr.length) groups.push(arr);
-            }
-
-            setDbGroups(groups);
-          } else {
-            setDbGroups(null);
-          }
-        } else {
-          setDbGroups(null);
-        }
-      } else {
-        // Ikke publiceret: vi bruger Elo-grupper, så nulstil dbGroups
-        setDbGroups(null);
-      }
-
       // Venstre kolonne: ALTID Elo-sorteret event_players
       const { data: ep } = await supabase
         .from("event_players")
@@ -582,8 +556,25 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
       });
 
       const seeded = sortByElo(eloed) as EventPlayer[];
-      setPlayers(seeded);
-      setOrderIds(seeded.map((p) => p.user_id));
+      const parsed = parseEventRulesText(event?.rules_text);
+      const savedPlayerOrder = Array.isArray(parsed.meta.playerOrder)
+        ? parsed.meta.playerOrder
+        : [];
+
+      if (savedPlayerOrder.length > 0) {
+        const byId = new Map(seeded.map((player) => [player.user_id, player] as const));
+        const preferred = savedPlayerOrder
+          .map((id) => byId.get(id))
+          .filter((player): player is EventPlayer => Boolean(player));
+        const usedIds = new Set(preferred.map((player) => player.user_id));
+        const remainder = seeded.filter((player) => !usedIds.has(player.user_id));
+        const nextPlayers = [...preferred, ...remainder];
+        setPlayers(nextPlayers);
+        setOrderIds(nextPlayers.map((p) => p.user_id));
+      } else {
+        setPlayers(seeded);
+        setOrderIds(seeded.map((p) => p.user_id));
+      }
     } finally {
       setLoadingPlayers(false);
     }
@@ -676,6 +667,7 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
       return;
     }
     setSearch("");
+    void persistEventMeta({ playerOrder: [...orderIds, uid] });
     await loadPlayers();
   }
 
@@ -692,7 +684,10 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
       .eq("event_id", eventId)
       .eq("user_id", uid);
     if (error) alert(error.message);
-    else await loadPlayers();
+    else {
+      void persistEventMeta({ playerOrder: orderIds.filter((id) => id !== uid) });
+      await loadPlayers();
+    }
   }
 
   async function replacePlayerAt(index: number, np: Profile & { elo?: number }) {
@@ -732,6 +727,7 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
       alert(ins.error.message);
       return;
     }
+    const nextOrder = orderIds.map((id, i) => (i === index ? np.id : id));
     setOrderIds((prev) => {
       const next = [...prev];
       next[index] = np.id;
@@ -750,6 +746,7 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
 
       return Array.from(map.values());
     });
+    void persistEventMeta({ playerOrder: nextOrder });
     setSwapIndex(null);
     setSearch("");
   }
@@ -780,6 +777,7 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
       if (i <= 0) return prev;
       const copy = [...prev];
       [copy[i - 1], copy[i]] = [copy[i], copy[i - 1]];
+      void persistEventMeta({ playerOrder: copy });
       return copy;
     });
   }
@@ -792,13 +790,8 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
   }, [players, orderIds]);
 
     const groups = useMemo(() => {
-    if (locked && dbGroups && dbGroups.length) {
-      // Efter publicering: brug grupper fra event_result
-      return dbGroups;
-    }
-    // Før publicering: grupper baseret på Elo-rækkefølge
     return chunk4(orderedPlayers);
-  }, [orderedPlayers, locked, dbGroups]);
+  }, [orderedPlayers]);
 
 
   /* --- init courts/rounds/groupOrder --- */
@@ -845,10 +838,17 @@ useEffect(() => {
     setGroupOrder(() => {
       const len = groups.length;
       let base: number[];
+      const parsed = parseEventRulesText(event.rules_text);
+      const savedMatchOrder = Array.isArray(parsed.meta.matchOrder)
+        ? parsed.meta.matchOrder.filter((value) => Number.isInteger(value))
+        : [];
+      const validSavedOrder =
+        savedMatchOrder.length === len &&
+        new Set(savedMatchOrder).size === len &&
+        savedMatchOrder.every((value) => value >= 0 && value < len);
 
-      if (event.status === "published") {
-        // Når programmet er publiceret, skal midterkolonnen følge DB-rækkefølgen 1:1
-        base = Array.from({ length: len }, (_, i) => i);
+      if (validSavedOrder) {
+        base = savedMatchOrder;
       } else if (event.location === "Gilleleje" && !isTorsdag(event.name)) {
         if (len === 2) {
           base = [1, 0];
@@ -921,9 +921,7 @@ useEffect(() => {
 
   /* --- load court/time meta fra DB (seneste pr. group_index) --- */
   useEffect(() => {
-  // Kun hente fra event_result når programmet er offentliggjort
   if (!event?.id || basePlan.length === 0) return;
-  if (event.status !== "published") return;
 
   (async () => {
     const { data, error } = await supabase
@@ -973,7 +971,7 @@ useEffect(() => {
       });
     }
   })();
-}, [event?.id, event?.status, basePlan.length]);
+}, [event?.id, basePlan.length]);
 
 
   /* --- UI helpers --- */
@@ -1024,6 +1022,7 @@ useEffect(() => {
     setCourtsOrder(nextCourts);
     setRoundsPerCourt(nextRounds);
     setMatchTimes(nextTimes);
+    void persistEventMeta({ matchOrder: nextGroup });
 
     setScores((prev) => {
       const out: typeof prev = {};

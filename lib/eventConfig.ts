@@ -16,6 +16,8 @@ export type EventMeta = {
   format?: "standard" | "partner";
   partnerTeams?: PartnerTeamMeta[];
   submissionRange?: EventSubmissionRange | null;
+  playerOrder?: string[];
+  matchOrder?: number[];
 };
 
 export function parseEventRulesText(raw: string | null | undefined) {
@@ -64,6 +66,8 @@ export function buildEventRulesText(
   const hasMeta =
     (meta.format && meta.format !== "standard") ||
     (meta.partnerTeams && meta.partnerTeams.length > 0) ||
+    (meta.playerOrder && meta.playerOrder.length > 0) ||
+    (meta.matchOrder && meta.matchOrder.length > 0) ||
     (meta.submissionRange &&
       Number.isFinite(meta.submissionRange.from) &&
       Number.isFinite(meta.submissionRange.to));
