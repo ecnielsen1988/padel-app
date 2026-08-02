@@ -239,8 +239,10 @@ export default function ReglementPage() {
         </p>
 
         <ul className="list-disc pl-6 space-y-1">
-          <li>For sent fremmøde – 10 kr. pr. minut</li>
+          <li>For sent fremmøde – 5 kr. pr. minut</li>
           <li>Afbud efter tilmelding – 30 kr.</li>
+          <li>Afbud på dagen – 100 kr.</li>
+          <li>Udeblivelse – 500 kr.</li>
           <li>Dårlig opførsel – 30 kr.</li>
           <li>Dårlig opførsel overfor banen – 100 kr.</li>
           <li>Glemte sager – 30 kr.</li>

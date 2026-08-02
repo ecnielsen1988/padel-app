@@ -142,6 +142,13 @@ export default function AdminTorsdagsPage() {
         >
           📨 Fællesbesked
         </Link>
+
+        <Link
+          href="/admin/torsdagspadel/butik"
+          className="bg-emerald-700 hover:bg-emerald-800 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
+        >
+          🛍️ Butik
+        </Link>
       </div>
 
       {/* Torsdags-events (closed_group = true) */}
@@ -231,4 +238,3 @@ export default function AdminTorsdagsPage() {
     </main>
   )
 }
-

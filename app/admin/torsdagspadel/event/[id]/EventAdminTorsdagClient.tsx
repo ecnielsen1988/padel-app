@@ -566,7 +566,7 @@ useEffect(() => {
       return;
     }
     setSearch("");
-    void persistEventMeta({ playerOrder: [...orderIds, uid] });
+    void persistEventMeta({ playerOrder: [] });
     await loadPlayers();
   }
 
@@ -580,7 +580,7 @@ useEffect(() => {
     const { error } = await supabase.from("event_players").delete().eq("event_id", eventId).eq("user_id", uid);
     if (error) alert(error.message);
     else {
-      void persistEventMeta({ playerOrder: orderIds.filter((id) => id !== uid) });
+      void persistEventMeta({ playerOrder: [] });
       await loadPlayers();
     }
   }

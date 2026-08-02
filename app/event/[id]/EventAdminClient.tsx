@@ -667,7 +667,7 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
       return;
     }
     setSearch("");
-    void persistEventMeta({ playerOrder: [...orderIds, uid] });
+    void persistEventMeta({ playerOrder: [] });
     await loadPlayers();
   }
 
@@ -685,7 +685,7 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
       .eq("user_id", uid);
     if (error) alert(error.message);
     else {
-      void persistEventMeta({ playerOrder: orderIds.filter((id) => id !== uid) });
+      void persistEventMeta({ playerOrder: [] });
       await loadPlayers();
     }
   }

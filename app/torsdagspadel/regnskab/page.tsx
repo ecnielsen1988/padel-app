@@ -37,6 +37,7 @@ function productToEmojiText(productRaw?: string | null, note?: string | null, qt
   const product = (productRaw ?? '').trim()
   const p = product.toLowerCase()
   const n = (note ?? '').trim()
+  const noteLower = n.toLowerCase()
   const qtyStr = qty && qty > 1 ? ` x${qty}` : '' // fjern x1
 
   const add = (base: string, keepNote = false) =>
@@ -60,12 +61,14 @@ function productToEmojiText(productRaw?: string | null, note?: string | null, qt
   // ===== Øvrige varer/handlinger =====
   if (p.includes('bøde') || p.includes('boede')) return add('💰', true)   // behold note
   if (p.includes('indbetaling'))             return add('💸', true)      // behold note
+  if (p.includes('sodavand') && (noteLower.startsWith('præmie') || noteLower.startsWith('praemie'))) return add('🥤 Præmie', true)
   if (p.includes('sodavand'))                return add('🥤')
   if (p.includes('chips'))                   return add('🍟')
   if (p.includes('toast'))                   return add('🥪 Toast')
   if (p.includes('lunarkamp'))               return add('🏸 Lunarkamp')
   if (p.includes('tshirt') || p.includes('t-shirt') || p.includes('t-shirt')) return add('👕 T-shirt')
   if (p.includes('shorts'))                  return add('🩳 Shorts')
+  if ((p.includes('øl') || p.includes('oel')) && (noteLower.startsWith('præmie') || noteLower.startsWith('praemie'))) return add('🍺 Præmie', true)
   if (p.includes('øl') || p.includes('oel')) return add('🍺')
   if (p.includes('rabat'))                   return add('🤑', true)      // behold note
 
@@ -266,4 +269,3 @@ setMe(profile)
     </main>
   )
 }
-
