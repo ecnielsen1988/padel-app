@@ -13,6 +13,7 @@ type Bruger = {
   id: string;
   visningsnavn: string;
   torsdagspadel: boolean;
+  rolle?: string | null;
 };
 
 type Tilmelding = { kan_spille: boolean; tidligste_tid?: string | null } | null;
@@ -23,6 +24,7 @@ type EventRow = {
   date: string;
   start_time?: string | null;
   closed_group: boolean;
+  status?: "planned" | "published" | "ongoing" | "done" | "canceled" | null;
 };
 
 type RankingRow = {
@@ -432,7 +434,7 @@ export default function TorsdagStartside() {
         }
 
         const profResp = await (supabase.from("profiles") as any)
-          .select("id, visningsnavn, torsdagspadel")
+          .select("id, visningsnavn, torsdagspadel, rolle")
           .eq("id", user.id)
           .maybeSingle();
 
@@ -448,7 +450,7 @@ export default function TorsdagStartside() {
 
         const [eventsResp, holdResp, rangResp, torsResp] = await Promise.all([
           (supabase.from("events") as any)
-            .select("id, name, date, start_time, closed_group")
+            .select("id, name, date, start_time, closed_group, status")
             .eq("closed_group", true)
             .gte("date", todayISO)
             .order("date", { ascending: true })
@@ -555,7 +557,7 @@ export default function TorsdagStartside() {
         }
 
         const publishedEvents = ((eventsResp?.data ?? []) as EventRow[]).filter((event) => {
-          return event.closed_group && event.date >= todayISO;
+          return event.closed_group && event.date >= todayISO && event.status === "published";
         });
 
         if (publishedEvents.length > 0) {
@@ -735,6 +737,8 @@ export default function TorsdagStartside() {
       />
     );
   }
+
+  const isAdmin = bruger.rolle === "admin";
 
   return (
     <PageShell className="bg-[#16211d] px-0 py-0 md:px-6 md:py-6">
@@ -943,6 +947,22 @@ export default function TorsdagStartside() {
                 }
                 footer="Læs reglementet"
               />
+
+              {isAdmin && nextEvent ? (
+                <DashboardLinkCard
+                  href={`/admin/torsdagspadel/torsdagsevent/${nextEvent.id}`}
+                  eyebrow="7. Test"
+                  title="Torsdagsevent"
+                  icon="🎯"
+                  body={
+                    <>
+                      <p className="font-semibold text-zinc-800">Åbn torsdagens særlige eventvisning</p>
+                      <p className="mt-2 text-sm text-zinc-500">{nextEvent.name || "Torsdagspadel"}</p>
+                    </>
+                  }
+                  footer="Åbn testvisning"
+                />
+              ) : null}
             </section>
 
             <section className="rounded-[20px] bg-white p-4 shadow-[0_2px_12px_rgba(0,0,0,0.07)]">

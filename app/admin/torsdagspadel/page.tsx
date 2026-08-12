@@ -156,6 +156,7 @@ export default function AdminTorsdagsPage() {
         >
           💳 Betalinger
         </Link>
+
       </div>
 
       {/* Torsdags-events (closed_group = true) */}

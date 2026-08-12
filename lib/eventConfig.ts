@@ -18,6 +18,7 @@ export type EventMeta = {
   submissionRange?: EventSubmissionRange | null;
   playerOrder?: string[];
   matchOrder?: number[];
+  availabilityOverrides?: Record<string, string>;
 };
 
 export function parseEventRulesText(raw: string | null | undefined) {
@@ -68,6 +69,8 @@ export function buildEventRulesText(
     (meta.partnerTeams && meta.partnerTeams.length > 0) ||
     (meta.playerOrder && meta.playerOrder.length > 0) ||
     (meta.matchOrder && meta.matchOrder.length > 0) ||
+    (meta.availabilityOverrides &&
+      Object.keys(meta.availabilityOverrides).length > 0) ||
     (meta.submissionRange &&
       Number.isFinite(meta.submissionRange.from) &&
       Number.isFinite(meta.submissionRange.to));
