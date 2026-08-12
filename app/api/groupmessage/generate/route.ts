@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import OpenAI from "openai";
 import { format } from "date-fns";
 import { da } from "date-fns/locale";
+import { MOBILEPAY_BOX_ID } from "@/lib/mobilepay";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -117,7 +118,7 @@ export async function POST(req: NextRequest) {
           reason: f.reason ?? "",
         })),
         bigDebtors,
-        mobilepayBox: "2033WT",
+        mobilepayBox: MOBILEPAY_BOX_ID,
       };
 
       title = `Torsdagsopdatering – ${sections.dato}`;
@@ -205,7 +206,7 @@ ${JSON.stringify(sections, null, 2)}
 Krav:
 - Korte bullets under hver sektion (hvor data findes).
 - Tomme lister skal have “Ingen denne gang 👍”.
-- “Betaling” skal nævne: “Indbetal til MobilePay Box **2033WT**”.
+- “Betaling” skal nævne: “Indbetal til MobilePay Box **${MOBILEPAY_BOX_ID}**”.
 - “Røverhistorie” skal være kort (2–4 linjer), humoristisk og padel-relateret.
 - Max 140 ord i alt.`
         : `Lav en kort, venlig *gruppebesked* i **Markdown**.
@@ -240,4 +241,3 @@ Krav:
     );
   }
 }
-

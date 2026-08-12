@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { MOBILEPAY_BOX_ID } from '@/lib/mobilepay'
 import { supabase } from '@/lib/supabaseClient'
 
 type Bruger = { id: string; visningsnavn: string; torsdagspadel: boolean; rolle?: string }
@@ -226,7 +227,7 @@ setMe(profile)
           </div>
         </div>
         <div className="mt-2 text-md text-zinc-600 dark:text-zinc-400 italic">
-          Indbetalinger kan ske til MobilePay Box 9478FG
+          Indbetalinger kan ske til MobilePay Box {MOBILEPAY_BOX_ID}
         </div>
       </div>
 

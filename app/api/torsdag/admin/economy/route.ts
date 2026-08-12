@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
 
   const [finesResp, drinksResp] = await Promise.all([
     (supabaseServiceRole.from("torsdag_fines") as any)
-      .select("id, visningsnavn, fine_type, reason, amount_ore, status, event_date, minutes_late, created_at")
+      .select("id, visningsnavn, fine_type, reason, amount_ore, status, event_date, minutes_late, created_at, payment_requested_at, settled_at")
       .eq("visningsnavn", playerName)
       .order("created_at", { ascending: false }),
     (supabaseServiceRole.from("torsdag_drink_ledger") as any)
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     summary: {
-      outstandingFineOre: summarizeFineRows(fines).outstandingFineOre,
+      ...summarizeFineRows(fines),
       ...summarizeDrinkRows(drinks),
     },
     history: buildAdminHistory(fines, drinks),
@@ -108,6 +108,24 @@ export async function POST(request: NextRequest) {
   if (action === "deleteFine") {
     const id = String(body?.id ?? "").trim();
     const { error } = await (supabaseServiceRole.from("torsdag_fines") as any).delete().eq("id", id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  }
+
+  if (action === "updateFineStatus") {
+    const id = String(body?.id ?? "").trim();
+    const status = String(body?.status ?? "").trim();
+    if (!["open", "pending", "paid"].includes(status)) {
+      return NextResponse.json({ error: "Ugyldig status" }, { status: 400 });
+    }
+
+    const patch: Record<string, unknown> = { status };
+    if (status === "paid") patch.settled_at = new Date().toISOString();
+    if (status === "open") patch.settled_at = null;
+
+    const { error } = await (supabaseServiceRole.from("torsdag_fines") as any)
+      .update(patch)
+      .eq("id", id);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true });
   }

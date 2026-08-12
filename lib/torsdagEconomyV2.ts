@@ -8,6 +8,8 @@ export type TorsdagFineRow = {
   event_date?: string | null;
   created_at?: string | null;
   minutes_late?: number | null;
+  payment_requested_at?: string | null;
+  settled_at?: string | null;
 };
 
 export type TorsdagDrinkRow = {
@@ -42,17 +44,39 @@ function normalizeDirection(value?: string | null) {
 
 export function summarizeFineRows(rows: TorsdagFineRow[]) {
   let outstandingFineOre = 0;
+  let pendingFineOre = 0;
+  let paidFineOre = 0;
+  let openFineCount = 0;
+  let pendingFineCount = 0;
+  let paidFineCount = 0;
 
   for (const row of rows) {
     const status = normalizeStatus(row.status);
     const amount = Number(row.amount_ore ?? 0);
-    if (status !== "open") continue;
     if (!Number.isFinite(amount) || amount <= 0) continue;
-    outstandingFineOre += amount;
+    if (status === "open") {
+      outstandingFineOre += amount;
+      openFineCount += 1;
+    }
+    if (status === "pending") {
+      outstandingFineOre += amount;
+      pendingFineOre += amount;
+      pendingFineCount += 1;
+    }
+    if (status === "paid") {
+      paidFineOre += amount;
+      paidFineCount += 1;
+    }
   }
 
   return {
     outstandingFineOre,
+    pendingFineOre,
+    paidFineOre,
+    openFineCount,
+    pendingFineCount,
+    paidFineCount,
+    hasPending: pendingFineCount > 0,
   };
 }
 
@@ -86,7 +110,13 @@ export function buildAdminHistory(fines: TorsdagFineRow[], drinks: TorsdagDrinkR
     title: row.reason,
     subtitle: row.event_date ?? row.created_at ?? "",
     amountLabel: formatOre(row.amount_ore),
-    tone: "rose" as const,
+    tone:
+      normalizeStatus(row.status) === "paid"
+        ? ("emerald" as const)
+        : normalizeStatus(row.status) === "pending"
+          ? ("amber" as const)
+          : ("rose" as const),
+    status: normalizeStatus(row.status),
     createdAt: row.created_at ?? "",
   }));
 
@@ -105,6 +135,7 @@ export function buildAdminHistory(fines: TorsdagFineRow[], drinks: TorsdagDrinkR
       subtitle: row.event_date ?? row.created_at ?? "",
       amountLabel: `${prefix}${row.quantity} ${drinkEmoji}`,
       tone: normalizeDirection(row.direction) === "redeemed" ? ("rose" as const) : ("emerald" as const),
+      status: null,
       createdAt: row.created_at ?? "",
     };
   });
@@ -112,3 +143,19 @@ export function buildAdminHistory(fines: TorsdagFineRow[], drinks: TorsdagDrinkR
   return [...fineHistory, ...drinkHistory].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
+export function buildDrinkHistory(drinks: TorsdagDrinkRow[]) {
+  return [...drinks]
+    .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""))
+    .map((row) => {
+      const drinkEmoji = normalizeDrinkType(row.drink_type) === "soda" ? "🥤" : "🍺";
+      const isRedeemed = normalizeDirection(row.direction) === "redeemed";
+      return {
+        id: row.id,
+        title: row.note?.trim() || (isRedeemed ? `Udleveret ${drinkEmoji}` : `Tildelt ${drinkEmoji}`),
+        amountLabel: `${isRedeemed ? "-" : "+"}${row.quantity} ${drinkEmoji}`,
+        tone: isRedeemed ? ("rose" as const) : ("emerald" as const),
+        createdAt: row.created_at ?? "",
+        eventDate: row.event_date ?? "",
+      };
+    });
+}

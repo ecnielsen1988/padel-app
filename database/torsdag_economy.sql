@@ -7,11 +7,12 @@ create table if not exists public.torsdag_fines (
   fine_type text not null,
   reason text not null,
   amount_ore integer not null check (amount_ore > 0),
-  status text not null default 'open' check (status in ('open', 'paid', 'cancelled')),
+  status text not null default 'open' check (status in ('open', 'pending', 'paid', 'cancelled')),
   event_date date,
   minutes_late integer,
   created_by uuid references public.profiles(id) on delete set null,
   created_at timestamptz not null default now(),
+  payment_requested_at timestamptz,
   settled_at timestamptz
 );
 

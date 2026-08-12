@@ -27,6 +27,7 @@ export async function GET() {
 
     return NextResponse.json({
       outstandingFineOre: fineSummary.outstandingFineOre,
+      hasPendingFine: fineSummary.hasPending,
       beerPrizeCount: drinkSummary.beerCount,
       sodaPrizeCount: drinkSummary.sodaCount,
     });
@@ -34,4 +35,3 @@ export async function GET() {
     return NextResponse.json({ error: error?.message ?? "Kunne ikke hente økonomi" }, { status: 500 });
   }
 }
-

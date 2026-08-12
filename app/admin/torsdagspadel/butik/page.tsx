@@ -11,6 +11,8 @@ type Player = {
 
 type Summary = {
   outstandingFineOre: number;
+  pendingFineOre?: number;
+  hasPending?: boolean;
   beerCount: number;
   sodaCount: number;
 };
@@ -21,7 +23,8 @@ type HistoryEntry = {
   title: string;
   subtitle: string;
   amountLabel: string;
-  tone: "rose" | "emerald";
+  tone: "rose" | "emerald" | "amber";
+  status: string | null;
   createdAt: string;
 };
 
@@ -110,6 +113,8 @@ export default function AdminButikPage() {
 
     setSummary({
       outstandingFineOre: Number(data.summary?.outstandingFineOre ?? 0),
+      pendingFineOre: Number(data.summary?.pendingFineOre ?? 0),
+      hasPending: Boolean(data.summary?.hasPending),
       beerCount: Number(data.summary?.beerCount ?? 0),
       sodaCount: Number(data.summary?.sodaCount ?? 0),
     });
@@ -265,6 +270,17 @@ export default function AdminButikPage() {
     );
   }
 
+  async function updateFineStatus(id: string, status: "open" | "pending" | "paid") {
+    await submitAction(
+      {
+        action: "updateFineStatus",
+        id,
+        status,
+      },
+      "Bødestatus opdateret"
+    );
+  }
+
   const playerOptions = useMemo(() => players.map((player) => player.visningsnavn), [players]);
 
   if (loading) {
@@ -336,6 +352,11 @@ export default function AdminButikPage() {
             <InfoCard label="🍺 Til gode" value={String(summary.beerCount)} tone="emerald" />
             <InfoCard label="🥤 Til gode" value={String(summary.sodaCount)} tone="emerald" />
           </div>
+          {summary.hasPending && (
+            <div className="mt-3 rounded-2xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
+              Noget af beløbet står som afventende betaling.
+            </div>
+          )}
 
           <div className="mt-6 rounded-[24px] border border-sky-200 bg-sky-50 p-4">
             <div className="mb-3">
@@ -498,11 +519,39 @@ export default function AdminButikPage() {
                       <div className="text-sm font-black text-zinc-900">{entry.title}</div>
                       <div className="mt-1 text-xs text-zinc-500">{formatDateTime(entry.createdAt)}</div>
                     </div>
-                    <div className={`shrink-0 text-right text-lg font-black ${entry.tone === "rose" ? "text-rose-600" : "text-emerald-700"}`}>
+                    <div className={`shrink-0 text-right text-lg font-black ${entry.tone === "rose" ? "text-rose-600" : entry.tone === "amber" ? "text-amber-700" : "text-emerald-700"}`}>
                       {entry.amountLabel}
                     </div>
                   </div>
-                  <div className="mt-3 flex justify-end">
+                  <div className="mt-3 flex flex-wrap justify-end gap-2">
+                    {entry.entryType === "fine" && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => void updateFineStatus(entry.id, "open")}
+                          disabled={saving}
+                          className="rounded-full border border-rose-200 bg-white px-3 py-1.5 text-xs font-bold text-rose-700 transition hover:bg-rose-50 disabled:opacity-60"
+                        >
+                          Rød
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void updateFineStatus(entry.id, "pending")}
+                          disabled={saving}
+                          className="rounded-full border border-amber-200 bg-white px-3 py-1.5 text-xs font-bold text-amber-700 transition hover:bg-amber-50 disabled:opacity-60"
+                        >
+                          Gul
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void updateFineStatus(entry.id, "paid")}
+                          disabled={saving}
+                          className="rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-xs font-bold text-emerald-700 transition hover:bg-emerald-50 disabled:opacity-60"
+                        >
+                          Grøn
+                        </button>
+                      </>
+                    )}
                     <button
                       type="button"
                       onClick={() => void deleteHistoryEntry(entry)}

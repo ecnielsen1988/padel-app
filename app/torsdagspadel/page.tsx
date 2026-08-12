@@ -5,6 +5,7 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { LoadingState, LoggedOutState, PageShell } from "@/app/components/ui";
+import { MOBILEPAY_BOX_ID, MOBILEPAY_BOX_URL } from "@/lib/mobilepay";
 import { supabase } from "@/lib/supabaseClient";
 import { formatOre } from "@/lib/torsdagEconomyV2";
 
@@ -408,7 +409,9 @@ export default function TorsdagStartside() {
     outstandingCreditOre: 0,
     beerPrizeCount: 0,
     sodaPrizeCount: 0,
+    hasPendingFine: false,
   });
+  const mobilePayUrl = MOBILEPAY_BOX_URL;
   const [mineEventSets, setMineEventSets] = useState<EventSet[]>([]);
   const [scoreBusy, setScoreBusy] = useState(false);
   const [scoreError, setScoreError] = useState<string | null>(null);
@@ -530,6 +533,7 @@ export default function TorsdagStartside() {
             outstandingCreditOre: Number(economyData.outstandingCreditOre ?? 0),
             beerPrizeCount: Number(economyData.beerPrizeCount ?? 0),
             sodaPrizeCount: Number(economyData.sodaPrizeCount ?? 0),
+            hasPendingFine: Boolean(economyData.hasPendingFine),
           });
         } else {
           setEconomySummary({
@@ -537,6 +541,7 @@ export default function TorsdagStartside() {
             outstandingCreditOre: 0,
             beerPrizeCount: 0,
             sodaPrizeCount: 0,
+            hasPendingFine: false,
           });
         }
 
@@ -695,6 +700,22 @@ export default function TorsdagStartside() {
     }
   }
 
+  async function openMobilePay() {
+    if (!mobilePayUrl) {
+      window.alert(`MobilePay Box-link mangler endnu i opsætningen. Brug Box ${MOBILEPAY_BOX_ID}.`);
+      return;
+    }
+    try {
+      await fetch("/api/torsdag/fines", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "markPendingAllMine" }),
+      });
+    } finally {
+      window.location.href = mobilePayUrl;
+    }
+  }
+
   if (loading) return <LoadingState text="Indlæser torsdagspadel..." />;
 
   if (!bruger) {
@@ -833,27 +854,52 @@ export default function TorsdagStartside() {
                 footer="Se ranglisten"
               />
 
-              <DashboardLinkCard
-                href="/torsdagspadel/boedekasse"
-                eyebrow="4. Bødekassen"
-                title="Dit udestående"
-                icon="💸"
-                body={
-                  <>
+              <div className={`rounded-[22px] border p-4 ${cardAccentClasses()}`}>
+                <div className="space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <p className="text-[11px] font-black uppercase tracking-[0.18em] text-emerald-700">4. Bødekassen</p>
+                      <h2 className="text-lg font-black tracking-tight text-emerald-950">Dit udestående</h2>
+                    </div>
+                    <span className="text-3xl leading-none" aria-hidden="true">💸</span>
+                  </div>
+                  <div className="min-h-[82px] text-sm leading-5 text-zinc-700">
                     <p className="text-4xl font-black text-emerald-900">{formatOre(economySummary.outstandingFineOre)}</p>
                     <p className="mt-2 font-semibold text-zinc-800">
-                      {economySummary.outstandingFineOre > 0 ? "Du skylder penge" : "Du har opført dig pænt"}
+                      {economySummary.hasPendingFine
+                        ? "Betaling afventer"
+                        : economySummary.outstandingFineOre > 0
+                          ? "Du skylder penge"
+                          : "Du har opført dig pænt"}
                     </p>
                     <p className="mt-2 text-4xl leading-none">💰</p>
-                  </>
-                }
-                footer="Se bødelisten"
-              />
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Link
+                      href="/torsdagspadel/boedekasse"
+                      className="inline-flex items-center gap-2 rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-emerald-700"
+                    >
+                      Se bødelisten
+                      <span aria-hidden="true">→</span>
+                    </Link>
+                    {economySummary.outstandingFineOre > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => void openMobilePay()}
+                        className="inline-flex items-center gap-2 rounded-full bg-amber-500 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-amber-600"
+                      >
+                        Betal med MobilePay
+                        <span aria-hidden="true">↗</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
 
               <DashboardLinkCard
                 href="/torsdagspadel/praemieliste"
-                eyebrow="5. Præmielisten"
-                title="Det du har til gode"
+                eyebrow="5. Din historik"
+                title="Dine drikkevarer"
                 icon="🍺"
                 body={
                   <div className="space-y-2">
@@ -867,7 +913,7 @@ export default function TorsdagStartside() {
                     </div>
                   </div>
                 }
-                footer="Se præmielisten"
+                footer="Se din historik"
               />
 
               <DashboardLinkCard
