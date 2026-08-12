@@ -3,7 +3,36 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { LoadingState, LoggedOutState, PageShell } from "@/app/components/ui";
-import { formatOre, summarizeFineRows, type TorsdagFineRow } from "@/lib/torsdagEconomyV2";
+import { formatOre, getRemainingFineOre, summarizeFineRows, type TorsdagFineRow } from "@/lib/torsdagEconomyV2";
+
+function normalizeStatus(value?: string | null) {
+  return String(value ?? "open").trim().toLowerCase();
+}
+
+function fineTone(status: string) {
+  if (status === "paid") {
+    return {
+      card: "border-emerald-200 bg-emerald-50/40",
+      amount: "text-emerald-600",
+      badge: "bg-emerald-100 text-emerald-800",
+      label: "Betalt",
+    };
+  }
+  if (status === "pending") {
+    return {
+      card: "border-amber-200 bg-amber-50/40",
+      amount: "text-amber-600",
+      badge: "bg-amber-100 text-amber-800",
+      label: "Afventer",
+    };
+  }
+  return {
+    card: "border-rose-200 bg-white",
+    amount: "text-rose-600",
+    badge: "bg-rose-100 text-rose-800",
+    label: "Ubetalt",
+  };
+}
 
 export default function BoedekassePage() {
   const [loading, setLoading] = useState(true);
@@ -77,22 +106,29 @@ export default function BoedekassePage() {
             <div className="space-y-3">
               {rows.map((row) => {
                 const isMe = row.visningsnavn === myName;
+                const status = normalizeStatus(row.status);
+                const tone = fineTone(status);
                 return (
                   <div
                     key={row.id}
-                    className={`rounded-[24px] border border-rose-200 bg-white px-4 py-4 ${isMe ? "ring-2 ring-emerald-300" : ""}`}
+                    className={`rounded-[24px] border px-4 py-4 ${tone.card} ${isMe ? "ring-2 ring-emerald-300" : ""}`}
                   >
                     <div className="flex items-start justify-between gap-4">
                       <div>
-                        <div className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">
-                          {isMe ? "Dig" : row.visningsnavn}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">
+                            {isMe ? "Dig" : row.visningsnavn}
+                          </div>
+                          <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.14em] ${tone.badge}`}>
+                            {tone.label}
+                          </span>
                         </div>
                         <div className="mt-1 text-lg font-bold text-emerald-950">{row.reason}</div>
                         <div className="mt-1 text-sm text-zinc-500">{row.event_date ?? ""}</div>
                       </div>
                       <div className="text-right">
                         <div className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">Beløb</div>
-                        <div className="mt-1 text-2xl font-black text-rose-600">{formatOre(row.amount_ore)}</div>
+                        <div className={`mt-1 text-2xl font-black ${tone.amount}`}>{formatOre(getRemainingFineOre(row))}</div>
                       </div>
                     </div>
                   </div>

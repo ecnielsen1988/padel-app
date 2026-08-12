@@ -10,6 +10,7 @@ type Player = {
 };
 
 type Summary = {
+  openFineOre?: number;
   outstandingFineOre: number;
   pendingFineOre?: number;
   hasPending?: boolean;
@@ -112,6 +113,7 @@ export default function AdminButikPage() {
     }
 
     setSummary({
+      openFineOre: Number(data.summary?.openFineOre ?? 0),
       outstandingFineOre: Number(data.summary?.outstandingFineOre ?? 0),
       pendingFineOre: Number(data.summary?.pendingFineOre ?? 0),
       hasPending: Boolean(data.summary?.hasPending),
@@ -348,7 +350,7 @@ export default function AdminButikPage() {
           </div>
 
           <div className="mt-5 grid gap-3 sm:grid-cols-3">
-            <InfoCard label="Ubetalte bøder" value={formatOre(summary.outstandingFineOre)} tone="rose" />
+            <InfoCard label="Ubetalte bøder" value={formatOre(summary.openFineOre ?? summary.outstandingFineOre)} tone="rose" />
             <InfoCard label="🍺 Til gode" value={String(summary.beerCount)} tone="emerald" />
             <InfoCard label="🥤 Til gode" value={String(summary.sodaCount)} tone="emerald" />
           </div>

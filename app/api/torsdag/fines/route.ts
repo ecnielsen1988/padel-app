@@ -11,7 +11,7 @@ export async function GET() {
     if (!profile.torsdagspadel) return NextResponse.json({ error: "Ingen adgang" }, { status: 403 });
 
     const finesResp = await (supabaseServiceRole.from("torsdag_fines") as any)
-      .select("id, visningsnavn, fine_type, reason, amount_ore, status, event_date, minutes_late, created_at, payment_requested_at, settled_at")
+      .select("id, visningsnavn, fine_type, reason, amount_ore, paid_amount_ore, status, event_date, minutes_late, created_at, payment_requested_at, settled_at")
       .order("created_at", { ascending: false });
 
     return NextResponse.json({
@@ -37,13 +37,13 @@ export async function POST(request: NextRequest) {
 
     if (action === "markPendingAllMine") {
       const { data: ownFines, error: ownFinesError } = await (supabaseServiceRole.from("torsdag_fines") as any)
-        .select("id, status")
+        .select("id, status, paid_amount_ore, amount_ore")
         .eq("visningsnavn", profile.visningsnavn.trim());
 
       if (ownFinesError) return NextResponse.json({ error: ownFinesError.message }, { status: 500 });
 
-      const openFineIds = ((ownFines ?? []) as Array<{ id?: string; status?: string | null }>)
-        .filter((row) => String(row.status ?? "open").trim().toLowerCase() === "open")
+      const openFineIds = ((ownFines ?? []) as Array<{ id?: string; status?: string | null; amount_ore?: number | null; paid_amount_ore?: number | null }>)
+        .filter((row) => String(row.status ?? "open").trim().toLowerCase() === "open" && Number(row.amount_ore ?? 0) > Number(row.paid_amount_ore ?? 0))
         .map((row) => String(row.id ?? "").trim())
         .filter(Boolean);
 
@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { data: fine, error: fineError } = await (supabaseServiceRole.from("torsdag_fines") as any)
-      .select("id, visningsnavn, status")
+      .select("id, visningsnavn, status, paid_amount_ore, amount_ore")
       .eq("id", fineId)
       .maybeSingle();
 

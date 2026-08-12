@@ -405,10 +405,13 @@ export default function TorsdagStartside() {
   const [myRank, setMyRank] = useState<number | null>(null);
   const [rankingNeighbors, setRankingNeighbors] = useState<RankingRow[]>([]);
   const [economySummary, setEconomySummary] = useState({
+    openFineOre: 0,
     outstandingFineOre: 0,
+    pendingFineOre: 0,
     outstandingCreditOre: 0,
     beerPrizeCount: 0,
     sodaPrizeCount: 0,
+    hasOpenFine: false,
     hasPendingFine: false,
   });
   const mobilePayUrl = MOBILEPAY_BOX_URL;
@@ -529,18 +532,24 @@ export default function TorsdagStartside() {
         const economyData = await economyResp.json();
         if (economyResp.ok) {
           setEconomySummary({
+            openFineOre: Number(economyData.openFineOre ?? 0),
             outstandingFineOre: Number(economyData.outstandingFineOre ?? 0),
+            pendingFineOre: Number(economyData.pendingFineOre ?? 0),
             outstandingCreditOre: Number(economyData.outstandingCreditOre ?? 0),
             beerPrizeCount: Number(economyData.beerPrizeCount ?? 0),
             sodaPrizeCount: Number(economyData.sodaPrizeCount ?? 0),
+            hasOpenFine: Boolean(economyData.hasOpenFine),
             hasPendingFine: Boolean(economyData.hasPendingFine),
           });
         } else {
           setEconomySummary({
+            openFineOre: 0,
             outstandingFineOre: 0,
+            pendingFineOre: 0,
             outstandingCreditOre: 0,
             beerPrizeCount: 0,
             sodaPrizeCount: 0,
+            hasOpenFine: false,
             hasPendingFine: false,
           });
         }
@@ -864,14 +873,19 @@ export default function TorsdagStartside() {
                     <span className="text-3xl leading-none" aria-hidden="true">💸</span>
                   </div>
                   <div className="min-h-[82px] text-sm leading-5 text-zinc-700">
-                    <p className="text-4xl font-black text-emerald-900">{formatOre(economySummary.outstandingFineOre)}</p>
+                    <p className="text-4xl font-black text-emerald-900">{formatOre(economySummary.openFineOre)}</p>
                     <p className="mt-2 font-semibold text-zinc-800">
-                      {economySummary.hasPendingFine
-                        ? "Betaling afventer"
-                        : economySummary.outstandingFineOre > 0
+                      {economySummary.hasOpenFine
                           ? "Du skylder penge"
+                        : economySummary.hasPendingFine
+                          ? "Du har ingen udestående bøder"
                           : "Du har opført dig pænt"}
                     </p>
+                    {economySummary.hasPendingFine && (
+                      <p className="mt-2 font-semibold text-amber-700">
+                        {`Betaling afventer: ${formatOre(economySummary.pendingFineOre)}`}
+                      </p>
+                    )}
                     <p className="mt-2 text-4xl leading-none">💰</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -882,7 +896,7 @@ export default function TorsdagStartside() {
                       Se bødelisten
                       <span aria-hidden="true">→</span>
                     </Link>
-                    {economySummary.outstandingFineOre > 0 && (
+                    {economySummary.hasOpenFine && (
                       <button
                         type="button"
                         onClick={() => void openMobilePay()}

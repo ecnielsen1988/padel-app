@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
 
   const [finesResp, drinksResp] = await Promise.all([
     (supabaseServiceRole.from("torsdag_fines") as any)
-      .select("id, visningsnavn, fine_type, reason, amount_ore, status, event_date, minutes_late, created_at, payment_requested_at, settled_at")
+      .select("id, visningsnavn, fine_type, reason, amount_ore, paid_amount_ore, status, event_date, minutes_late, created_at, payment_requested_at, settled_at")
       .eq("visningsnavn", playerName)
       .order("created_at", { ascending: false }),
     (supabaseServiceRole.from("torsdag_drink_ledger") as any)
@@ -69,6 +69,7 @@ export async function POST(request: NextRequest) {
       fine_type: fineType,
       reason,
       amount_ore: amountOre,
+      paid_amount_ore: 0,
       status: "open",
       event_date: eventDate,
       minutes_late: minutesLate,
@@ -119,9 +120,33 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Ugyldig status" }, { status: 400 });
     }
 
+    const { data: fine, error: fineError } = await (supabaseServiceRole.from("torsdag_fines") as any)
+      .select("id, amount_ore, paid_amount_ore")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (fineError || !fine?.id) {
+      return NextResponse.json({ error: "Bøden blev ikke fundet" }, { status: 404 });
+    }
+
+    const amountOre = Number(fine.amount_ore ?? 0);
+    const currentPaidOre = Math.min(amountOre, Math.max(0, Number(fine.paid_amount_ore ?? 0)));
     const patch: Record<string, unknown> = { status };
-    if (status === "paid") patch.settled_at = new Date().toISOString();
-    if (status === "open") patch.settled_at = null;
+
+    if (status === "paid") {
+      patch.paid_amount_ore = amountOre;
+      patch.settled_at = new Date().toISOString();
+    }
+    if (status === "pending") {
+      patch.paid_amount_ore = currentPaidOre;
+      patch.settled_at = null;
+      patch.payment_requested_at = new Date().toISOString();
+    }
+    if (status === "open") {
+      patch.paid_amount_ore = currentPaidOre >= amountOre ? 0 : currentPaidOre;
+      patch.settled_at = null;
+      patch.payment_requested_at = null;
+    }
 
     const { error } = await (supabaseServiceRole.from("torsdag_fines") as any)
       .update(patch)

@@ -4,6 +4,7 @@ export type TorsdagFineRow = {
   fine_type?: string | null;
   reason: string;
   amount_ore: number;
+  paid_amount_ore?: number | null;
   status?: string | null;
   event_date?: string | null;
   created_at?: string | null;
@@ -30,6 +31,17 @@ export function formatOre(amountOre: number) {
   }).format(amountOre / 100);
 }
 
+export function getPaidFineOre(row: TorsdagFineRow) {
+  const paid = Number(row.paid_amount_ore ?? 0);
+  return Number.isFinite(paid) ? Math.max(0, paid) : 0;
+}
+
+export function getRemainingFineOre(row: TorsdagFineRow) {
+  const amount = Number(row.amount_ore ?? 0);
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  return Math.max(0, amount - Math.min(amount, getPaidFineOre(row)));
+}
+
 function normalizeStatus(value?: string | null) {
   return String(value ?? "open").trim().toLowerCase();
 }
@@ -43,6 +55,7 @@ function normalizeDirection(value?: string | null) {
 }
 
 export function summarizeFineRows(rows: TorsdagFineRow[]) {
+  let openFineOre = 0;
   let outstandingFineOre = 0;
   let pendingFineOre = 0;
   let paidFineOre = 0;
@@ -52,9 +65,14 @@ export function summarizeFineRows(rows: TorsdagFineRow[]) {
 
   for (const row of rows) {
     const status = normalizeStatus(row.status);
-    const amount = Number(row.amount_ore ?? 0);
-    if (!Number.isFinite(amount) || amount <= 0) continue;
+    const amount = getRemainingFineOre(row);
+    if (amount <= 0) {
+      paidFineOre += Number(row.amount_ore ?? 0);
+      paidFineCount += 1;
+      continue;
+    }
     if (status === "open") {
+      openFineOre += amount;
       outstandingFineOre += amount;
       openFineCount += 1;
     }
@@ -64,12 +82,13 @@ export function summarizeFineRows(rows: TorsdagFineRow[]) {
       pendingFineCount += 1;
     }
     if (status === "paid") {
-      paidFineOre += amount;
+      paidFineOre += Number(row.amount_ore ?? 0);
       paidFineCount += 1;
     }
   }
 
   return {
+    openFineOre,
     outstandingFineOre,
     pendingFineOre,
     paidFineOre,
@@ -109,7 +128,10 @@ export function buildAdminHistory(fines: TorsdagFineRow[], drinks: TorsdagDrinkR
     entryType: "fine" as const,
     title: row.reason,
     subtitle: row.event_date ?? row.created_at ?? "",
-    amountLabel: formatOre(row.amount_ore),
+    amountLabel:
+      getRemainingFineOre(row) < Number(row.amount_ore ?? 0)
+        ? `${formatOre(getRemainingFineOre(row))} / ${formatOre(Number(row.amount_ore ?? 0))}`
+        : formatOre(row.amount_ore),
     tone:
       normalizeStatus(row.status) === "paid"
         ? ("emerald" as const)

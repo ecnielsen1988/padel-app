@@ -149,6 +149,13 @@ export default function AdminTorsdagsPage() {
         >
           🛍️ Butik
         </Link>
+
+        <Link
+          href="/admin/torsdagspadel/betalinger"
+          className="bg-amber-500 hover:bg-amber-600 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
+        >
+          💳 Betalinger
+        </Link>
       </div>
 
       {/* Torsdags-events (closed_group = true) */}

@@ -15,7 +15,7 @@ export async function GET() {
 
     const [finesResp, drinksResp] = await Promise.all([
       (supabaseServiceRole.from("torsdag_fines") as any)
-        .select("id, visningsnavn, fine_type, reason, amount_ore, status, event_date, minutes_late, created_at")
+        .select("id, visningsnavn, fine_type, reason, amount_ore, paid_amount_ore, status, event_date, minutes_late, created_at")
         .eq("visningsnavn", profile.visningsnavn.trim()),
       (supabaseServiceRole.from("torsdag_drink_ledger") as any)
         .select("id, visningsnavn, drink_type, direction, quantity, note, event_date, created_at")
@@ -26,7 +26,10 @@ export async function GET() {
     const drinkSummary = summarizeDrinkRows((drinksResp?.data ?? []) as TorsdagDrinkRow[]);
 
     return NextResponse.json({
+      openFineOre: fineSummary.openFineOre,
       outstandingFineOre: fineSummary.outstandingFineOre,
+      pendingFineOre: fineSummary.pendingFineOre,
+      hasOpenFine: fineSummary.openFineCount > 0,
       hasPendingFine: fineSummary.hasPending,
       beerPrizeCount: drinkSummary.beerCount,
       sodaPrizeCount: drinkSummary.sodaCount,

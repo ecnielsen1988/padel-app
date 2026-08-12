@@ -13,7 +13,8 @@ create table if not exists public.torsdag_fines (
   created_by uuid references public.profiles(id) on delete set null,
   created_at timestamptz not null default now(),
   payment_requested_at timestamptz,
-  settled_at timestamptz
+  settled_at timestamptz,
+  paid_amount_ore integer not null default 0 check (paid_amount_ore >= 0 and paid_amount_ore <= amount_ore)
 );
 
 create index if not exists torsdag_fines_visningsnavn_idx on public.torsdag_fines (visningsnavn);
