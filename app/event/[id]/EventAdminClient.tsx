@@ -1218,14 +1218,23 @@ useEffect(() => {
         });
       }
 
-      const { data, error } = await (supabase.from("events") as any)
-        .update({ status: next ? "published" : "planned" })
-        .eq("id", event.id)
-        .select("*")
-        .maybeSingle();
+      const res = await fetch("/api/event-admin", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          eventId: event.id,
+          status: next ? "published" : "planned",
+        }),
+      });
 
-      if (error) throw error;
-      if (data) setEvent(data);
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json?.error ?? "Ukendt fejl ved publicering.");
+      }
+
+      if (json?.data) {
+        setEvent(json.data as EventRow);
+      }
 
       if (next) {
         alert("Program publiceret og gemt i event_result ✔️");
