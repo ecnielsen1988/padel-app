@@ -1,4 +1,7 @@
 import { EloChange, EloMap, Kamp, beregnEloForKampe } from "@/lib/beregnElo";
+import { revalidateTag, unstable_cache } from "next/cache";
+import { createSupabaseServerReadClient } from "@/lib/supabaseServerRead";
+import { gunzipSync, gzipSync } from "node:zlib";
 
 export type ResultMatchSet = {
   id: number;
@@ -31,17 +34,8 @@ export type ResultMatchCard = {
 const RESULTS_COLUMNS =
   "id,kampid,date,holdA1,holdA2,holdB1,holdB2,scoreA,scoreB,finish,event,tiebreak,indberettet_af";
 const PROFILE_COLUMNS = "visningsnavn,startElo";
-const CACHE_TTL_MS = 30_000;
-
-let cachedCards:
-  | {
-      expiresAt: number;
-      cards: ResultMatchCard[];
-    }
-  | null = null;
-
 export function clearRecentResultCardsCache() {
-  cachedCards = null;
+  revalidateTag("results-feed");
 }
 
 async function fetchAllResults(supabase: any): Promise<Kamp[]> {
@@ -211,29 +205,36 @@ export function filterCardsForPlayer(cards: ResultMatchCard[], spillerNavn: stri
 }
 
 export async function getRecentResultCards(
-  supabase: any,
+  _supabase: any,
   options?: { forceRefresh?: boolean }
 ): Promise<ResultMatchCard[]> {
   const forceRefresh = options?.forceRefresh ?? false;
-  const now = Date.now();
+  if (forceRefresh) return buildBaseResultCards();
 
-  if (!forceRefresh && cachedCards && cachedCards.expiresAt > now) {
-    return cachedCards.cards;
-  }
+  const compressed = await getCachedCompressedResultCards();
+  return JSON.parse(
+    gunzipSync(Buffer.from(compressed, "base64")).toString("utf8")
+  ) as ResultMatchCard[];
+}
 
+async function buildBaseResultCards(): Promise<ResultMatchCard[]> {
+  const supabase = createSupabaseServerReadClient();
   const [initialEloMap, resultaterData, openAdminIssues] = await Promise.all([
     fetchInitialEloMap(supabase),
     fetchAllResults(supabase),
     fetchOpenAdminIssues(supabase),
   ]);
-
   const { eloChanges } = beregnEloForKampe(resultaterData, initialEloMap);
-  const cards = buildCards(resultaterData, eloChanges, openAdminIssues);
-
-  cachedCards = {
-    expiresAt: now + CACHE_TTL_MS,
-    cards,
-  };
-
-  return cards;
+  return buildCards(resultaterData, eloChanges, openAdminIssues);
 }
+
+async function buildCompressedResultCards() {
+  const cards = await buildBaseResultCards();
+  return gzipSync(JSON.stringify(cards)).toString("base64");
+}
+
+const getCachedCompressedResultCards = unstable_cache(
+  buildCompressedResultCards,
+  ["result-cards-v2-gzip"],
+  { revalidate: 60, tags: ["results-feed"] }
+);
