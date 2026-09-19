@@ -1,7 +1,7 @@
-export const dynamic = 'force-dynamic';
+export const revalidate = 60;
 
-import { supabase } from '@/lib/supabaseClient';
-import { beregnNyRangliste } from '@/lib/beregnNyRangliste';
+import { createSupabaseServerReadClient } from '@/lib/supabaseServerRead';
+import { getCachedRangliste } from '@/lib/cachedRangliste';
 
 type Spiller = {
   visningsnavn: string;
@@ -12,8 +12,10 @@ type Spiller = {
 type TorsdagProfilRow = { visningsnavn: string | null };
 
 export default async function TorsdagspadelRangliste() {
+  const supabase = createSupabaseServerReadClient();
+
   // Hele ranglisten
-  const alleSpillere: Spiller[] = await beregnNyRangliste();
+  const alleSpillere: Spiller[] = await getCachedRangliste();
 
   // Hent torsdags-profiler (kun navne)
   const { data: torsdagsProfiler } = await (supabase

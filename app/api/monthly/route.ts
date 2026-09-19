@@ -1,9 +1,11 @@
 // app/api/monthly/route.ts
 export const dynamic = "force-dynamic";
-export const revalidate = 0;
-export const fetchCache = "force-no-store";
 
 import { NextResponse } from "next/server";
+import {
+  NO_STORE_HEADERS,
+  PUBLIC_DATA_CACHE_HEADERS,
+} from "@/lib/publicCache";
 import {
   beregnEloÆndringerForIndeværendeMåned,
   beregnEloÆndringerForMåned,
@@ -20,7 +22,7 @@ export async function GET(req: Request) {
     const data = await beregnEloÆndringerForIndeværendeMåned();
     return NextResponse.json(
       { year: null, month: null, mode: "current", data },
-      { headers: { "Cache-Control": "no-store" } }
+      { headers: PUBLIC_DATA_CACHE_HEADERS }
     );
   }
 
@@ -28,12 +30,15 @@ export async function GET(req: Request) {
   const month = Number(m);
 
   if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
-    return NextResponse.json({ error: "Invalid year or month" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Invalid year or month" },
+      { status: 400, headers: NO_STORE_HEADERS }
+    );
   }
 
   const data = await beregnEloÆndringerForMåned(year, month);
   return NextResponse.json(
     { year, month, mode: "specific", data },
-    { headers: { "Cache-Control": "no-store" } }
+    { headers: PUBLIC_DATA_CACHE_HEADERS }
   );
 }

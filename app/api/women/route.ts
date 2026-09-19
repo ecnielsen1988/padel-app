@@ -1,12 +1,14 @@
 // app/api/women/route.ts
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const revalidate = 0;
-export const fetchCache = "force-no-store";
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { beregnNyRangliste } from "@/lib/beregnNyRangliste";
+import { getCachedRangliste } from "@/lib/cachedRangliste";
+import {
+  NO_STORE_HEADERS,
+  PUBLIC_DATA_CACHE_HEADERS,
+} from "@/lib/publicCache";
 
 function getSupabase() {
   const url = process.env.SUPABASE_URL;
@@ -27,7 +29,7 @@ export async function GET(req: Request) {
   try {
     const supabase = getSupabase();
     // 1) Hent fuld rangliste (samme som /api/rangliste)
-    const raw = await beregnNyRangliste();
+    const raw = await getCachedRangliste();
 
     const list: RangRow[] = Array.isArray(raw)
       ? raw
@@ -46,7 +48,7 @@ export async function GET(req: Request) {
       console.error("[/api/women] Fejl ved hentning af profiles:", womenErr);
       // Returnér bare tom liste ved fejl
       return NextResponse.json([], {
-        headers: { "Cache-Control": "no-store" },
+        headers: NO_STORE_HEADERS,
       });
     }
 
@@ -82,13 +84,13 @@ export async function GET(req: Request) {
     }));
 
     return NextResponse.json(withPosition, {
-      headers: { "Cache-Control": "no-store" },
+      headers: PUBLIC_DATA_CACHE_HEADERS,
     });
   } catch (error) {
     console.error("[/api/women] Ukendt fejl:", error);
     return NextResponse.json([], {
       status: 500,
-      headers: { "Cache-Control": "no-store" },
+      headers: NO_STORE_HEADERS,
     });
   }
 }

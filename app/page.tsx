@@ -1,8 +1,10 @@
 import Image from "next/image"
 import Link from "next/link"
-import { beregnNyRangliste } from "@/lib/beregnNyRangliste"
+import { getCachedRangliste } from "@/lib/cachedRangliste"
 import { PageShell } from "./components/ui"
-import { supabase } from "@/lib/supabaseClient"
+import { createSupabaseServerReadClient } from "@/lib/supabaseServerRead"
+
+export const revalidate = 60
 
 type Spiller = {
   visningsnavn: string
@@ -16,8 +18,10 @@ type ProfileRow = {
 
 // ✅ Server component
 export default async function Home() {
+  const supabase = createSupabaseServerReadClient()
+
   // 1) Hent rangliste (alle spillere)
-  const rangliste: Spiller[] = await beregnNyRangliste()
+  const rangliste: Spiller[] = await getCachedRangliste()
 
   // 2) Hent aktive profiler
   const { data: profiles } = await supabase

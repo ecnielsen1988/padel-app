@@ -1,12 +1,14 @@
 // app/api/active/route.ts
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const revalidate = 0;
-export const fetchCache = "force-no-store";
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { beregnEloÆndringerForMåned } from "@/lib/beregnEloMonthly";
+import {
+  NO_STORE_HEADERS,
+  PUBLIC_DATA_CACHE_HEADERS,
+} from "@/lib/publicCache";
 
 function getSupabase() {
   const url = process.env.SUPABASE_URL;
@@ -48,7 +50,10 @@ export async function GET(req: Request) {
   if (y && m) {
     year = Number(y); month = Number(m);
     if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
-      return NextResponse.json({ error: "Invalid year or month" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid year or month" },
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
     }
     mode = "specific";
   } else {
@@ -74,7 +79,10 @@ export async function GET(req: Request) {
 
   if (error) {
     console.error("Fejl i /api/active:", error);
-    return NextResponse.json({ year, month, mode, data: [] }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json(
+      { year, month, mode, data: [] },
+      { headers: NO_STORE_HEADERS }
+    );
   }
 
   const count = new Map<string, number>();
@@ -94,6 +102,6 @@ export async function GET(req: Request) {
 
   return NextResponse.json(
     { year, month, mode, data: arr },
-    { headers: { "Cache-Control": "no-store" } }
+    { headers: PUBLIC_DATA_CACHE_HEADERS }
   );
 }

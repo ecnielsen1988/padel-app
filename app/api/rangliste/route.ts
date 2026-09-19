@@ -1,18 +1,20 @@
 // app/api/rangliste/route.ts
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const revalidate = 0;
-export const fetchCache = "force-no-store";
 
 import { NextResponse } from "next/server";
-import { beregnNyRangliste } from "@/lib/beregnNyRangliste";
+import { getCachedRangliste } from "@/lib/cachedRangliste";
+import {
+  NO_STORE_HEADERS,
+  PUBLIC_DATA_CACHE_HEADERS,
+} from "@/lib/publicCache";
 
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
     const format = url.searchParams.get("format"); // "obj" for { data: [...] }
 
-    const raw = await beregnNyRangliste();
+    const raw = await getCachedRangliste();
 
     // Normalisér til liste
     const list = Array.isArray(raw)
@@ -24,19 +26,19 @@ export async function GET(req: Request) {
     // Default: råt array (backwards compatible)
     if (format !== "obj") {
       return NextResponse.json(list, {
-        headers: { "Cache-Control": "no-store" },
+        headers: PUBLIC_DATA_CACHE_HEADERS,
       });
     }
 
     // Alternativ: indpakket objekt
     return NextResponse.json(
       { data: list },
-      { headers: { "Cache-Control": "no-store" } }
+      { headers: PUBLIC_DATA_CACHE_HEADERS }
     );
   } catch (error) {
     return NextResponse.json(
       [], // bevar også fallback som råt array ved fejl
-      { status: 500, headers: { "Cache-Control": "no-store" } }
+      { status: 500, headers: NO_STORE_HEADERS }
     );
   }
 }
