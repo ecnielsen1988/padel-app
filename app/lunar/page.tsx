@@ -71,10 +71,10 @@ type LunarRow = {
 }
 
 const DEFAULT_START_ELO = 1000
-const SPRING_2026 = "2026 forår"
-const FALL_2026 = "2026 efterår"
+const FIXED_TEAM_SEASON = "2026 efterår"
+const EDITABLE_TEAM_SEASON = "2027 forår"
 
-const FALL_2026_TEAM_OPTIONS = [
+const TEAM_OPTIONS = [
   { name: "Titanes", color: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200" },
   { name: "Gladiadores", color: "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200" },
   { name: "Espartanos", color: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200" },
@@ -85,7 +85,7 @@ const FALL_2026_TEAM_OPTIONS = [
 ] as const
 
 const TEAM_COLOR_BY_NAME = Object.fromEntries(
-  FALL_2026_TEAM_OPTIONS.map((team) => [team.name, team.color])
+  TEAM_OPTIONS.map((team) => [team.name, team.color])
 ) as Record<string, string>
 
 function normalizeTeamName(teamName: string | null | undefined) {
@@ -97,45 +97,45 @@ function normalizeTeamName(teamName: string | null | undefined) {
     .toLowerCase()
 }
 
-const FIXED_MONTHS_2026 = [
+const LUNAR_MONTHS_2026 = [
   {
-    key: "2026-03",
-    label: "Marts",
+    key: "2026-08",
+    label: "August",
     weight: 1,
-    start: "2026-03-01T00:00:00",
-    end: "2026-03-31T23:59:59",
+    start: "2026-08-01T00:00:00",
+    end: "2026-08-31T23:59:59",
   },
   {
-    key: "2026-04",
-    label: "April",
+    key: "2026-09",
+    label: "September",
     weight: 2,
-    start: "2026-04-01T00:00:00",
-    end: "2026-04-30T23:59:59",
+    start: "2026-09-01T00:00:00",
+    end: "2026-09-30T23:59:59",
   },
   {
-    key: "2026-05",
-    label: "Maj",
+    key: "2026-10",
+    label: "Oktober",
     weight: 3,
-    start: "2026-05-01T00:00:00",
-    end: "2026-05-31T23:59:59",
+    start: "2026-10-01T00:00:00",
+    end: "2026-10-31T23:59:59",
   },
   {
-    key: "2026-06",
-    label: "Juni",
+    key: "2026-11",
+    label: "November",
     weight: 4,
-    start: "2026-06-01T00:00:00",
-    end: "2026-06-30T23:59:59",
+    start: "2026-11-01T00:00:00",
+    end: "2026-11-30T23:59:59",
   },
   {
-    key: "2026-07",
-    label: "Juli",
+    key: "2026-12",
+    label: "December",
     weight: 5,
-    start: "2026-07-01T00:00:00",
-    end: "2026-07-31T23:59:59",
+    start: "2026-12-01T00:00:00",
+    end: "2026-12-31T23:59:59",
   },
   {
     key: "now",
-    label: "Nu",
+    label: "Nuværende",
     weight: 6,
     start: null,
     end: null,
@@ -143,13 +143,13 @@ const FIXED_MONTHS_2026 = [
 ] as const
 
 const HOLD_MATCH_WIN_BONUS_BY_SEASON: Record<string, number> = {
-  "2025 forår": 2,
-  "2025 efterår": 5,
-  "2026 forår": 10,
+  "2025 efterår": 2,
+  "2026 forår": 5,
+  "2026 efterår": 10,
 }
 
-const THURSDAY_PERIOD_START = new Date("2026-01-01T00:00:00")
-const THURSDAY_PERIOD_END = new Date("2026-07-31T23:59:59")
+const BONUS_PERIOD_START = new Date("2026-07-01T00:00:00")
+const BONUS_PERIOD_END = new Date("2027-01-31T23:59:59")
 
 async function fetchAllNewresults(): Promise<NewResultRow[]> {
   const PAGE_SIZE = 1000
@@ -255,7 +255,7 @@ function computeFixedMonths(
   const currentElo =
     snapshots.length > 0 ? snapshots[snapshots.length - 1].elo : startElo
 
-  const monthCells: MonthCell[] = FIXED_MONTHS_2026.map((month) => {
+  const monthCells: MonthCell[] = LUNAR_MONTHS_2026.map((month) => {
     if (month.key === "now") {
       return {
         label: month.label,
@@ -326,23 +326,23 @@ function buildHoldMatchBonusMap(rows: HoldMatchPlayerBonusRow[]) {
 }
 
 function computeThursdayStats(navn: string, kampe: NewResultRow[]) {
-  const uniqueThursdayDates = new Set<string>()
+  const uniqueBonusDates = new Set<string>()
 
   for (const row of kampe) {
     const dateStr = row.date
     if (!dateStr) continue
-    if (weekdayFromISO(dateStr) !== 4) continue
+    if (weekdayFromISO(dateStr) !== 4 && row.event !== true) continue
 
     const d = parseDateSafe(dateStr)
     if (!d) continue
-    if (d < THURSDAY_PERIOD_START || d > THURSDAY_PERIOD_END) continue
+    if (d < BONUS_PERIOD_START || d > BONUS_PERIOD_END) continue
 
     if (getMatchParticipants(row).includes(navn)) {
-      uniqueThursdayDates.add(dateStr)
+      uniqueBonusDates.add(dateStr.slice(0, 10))
     }
   }
 
-  const thursdayCount = uniqueThursdayDates.size
+  const thursdayCount = uniqueBonusDates.size
   const thursdayPoints = thursdayCount * 5
 
   return { thursdayCount, thursdayPoints }
@@ -410,25 +410,25 @@ export default function LunarSide() {
   const [rows, setRows] = useState<LunarRow[]>([])
   const [inputNavn, setInputNavn] = useState("")
 
-  const [springPrimaryTeamByPlayer, setSpringPrimaryTeamByPlayer] = useState<
+  const [fixedPrimaryTeamByPlayer, setFixedPrimaryTeamByPlayer] = useState<
     Record<string, string>
   >({})
-  const [fallTeams, setFallTeams] = useState<TeamRow[]>([])
-  const [fallPrimaryTeamIdByPlayer, setFallPrimaryTeamIdByPlayer] = useState<
+  const [editableTeams, setEditableTeams] = useState<TeamRow[]>([])
+  const [editablePrimaryTeamIdByPlayer, setEditablePrimaryTeamIdByPlayer] = useState<
     Record<string, string>
   >({})
 
-  const monthsHeader = useMemo(() => FIXED_MONTHS_2026, [])
+  const monthsHeader = useMemo(() => LUNAR_MONTHS_2026, [])
 
-  const orderedFallTeams = useMemo(() => {
+  const orderedEditableTeams = useMemo(() => {
     const teamByName = new Map(
-      fallTeams.map((team) => [normalizeTeamName(team.name), team])
+      editableTeams.map((team) => [normalizeTeamName(team.name), team])
     )
-    return FALL_2026_TEAM_OPTIONS.map((option) => ({
+    return TEAM_OPTIONS.map((option) => ({
       ...option,
       team: teamByName.get(normalizeTeamName(option.name)) ?? null,
     }))
-  }, [fallTeams])
+  }, [editableTeams])
 
   useEffect(() => {
     let cancelled = false
@@ -448,9 +448,9 @@ export default function LunarSide() {
         const [
           profilesRes,
           lunarResp,
-          springPrimaryRes,
-          fallTeamsRes,
-          fallPrimaryRes,
+          fixedPrimaryRes,
+          editableTeamsRes,
+          editablePrimaryRes,
         ] = await Promise.all([
           supabase.from("profiles").select("visningsnavn, startElo"),
           supabase.from("lunar").select("visningsnavn"),
@@ -464,16 +464,16 @@ export default function LunarSide() {
                 division
               )
             `)
-            .eq("season", SPRING_2026)
+            .eq("season", FIXED_TEAM_SEASON)
             .eq("member_type", "primary"),
           supabase
             .from("hold_teams")
             .select("id, name, division, season")
-            .eq("season", FALL_2026),
+            .eq("season", EDITABLE_TEAM_SEASON),
           supabase
             .from("hold_team_members")
             .select("visningsnavn, team_id")
-            .eq("season", FALL_2026)
+            .eq("season", EDITABLE_TEAM_SEASON)
             .eq("member_type", "primary"),
         ])
 
@@ -516,24 +516,24 @@ export default function LunarSide() {
 
         initialRows.sort((a, b) => b.total - a.total)
 
-        const nextSpringPrimaryTeamByPlayer: Record<string, string> = {}
-        for (const row of (springPrimaryRes.data ?? []) as TeamMemberRow[]) {
+        const nextFixedPrimaryTeamByPlayer: Record<string, string> = {}
+        for (const row of (fixedPrimaryRes.data ?? []) as TeamMemberRow[]) {
           const relation = Array.isArray(row.hold_teams)
             ? row.hold_teams[0]
             : row.hold_teams
 
           if (row.visningsnavn && relation?.name) {
-            nextSpringPrimaryTeamByPlayer[row.visningsnavn] = relation.name
+            nextFixedPrimaryTeamByPlayer[row.visningsnavn] = relation.name
           }
         }
 
-        const nextFallPrimaryTeamIdByPlayer: Record<string, string> = {}
-        for (const row of (fallPrimaryRes.data ?? []) as Array<{
+        const nextEditablePrimaryTeamIdByPlayer: Record<string, string> = {}
+        for (const row of (editablePrimaryRes.data ?? []) as Array<{
           visningsnavn: string
           team_id: string
         }>) {
           if (row.visningsnavn && row.team_id) {
-            nextFallPrimaryTeamIdByPlayer[row.visningsnavn] = row.team_id
+            nextEditablePrimaryTeamIdByPlayer[row.visningsnavn] = row.team_id
           }
         }
 
@@ -543,9 +543,9 @@ export default function LunarSide() {
           setInitialEloMap(eloMap)
           setHoldMatchBonusMap(nextHoldMatchBonusMap)
           setRows(initialRows)
-          setSpringPrimaryTeamByPlayer(nextSpringPrimaryTeamByPlayer)
-          setFallTeams((fallTeamsRes.data ?? []) as TeamRow[])
-          setFallPrimaryTeamIdByPlayer(nextFallPrimaryTeamIdByPlayer)
+          setFixedPrimaryTeamByPlayer(nextFixedPrimaryTeamByPlayer)
+          setEditableTeams((editableTeamsRes.data ?? []) as TeamRow[])
+          setEditablePrimaryTeamIdByPlayer(nextEditablePrimaryTeamIdByPlayer)
           setError(null)
         }
       } catch (e: any) {
@@ -633,13 +633,13 @@ export default function LunarSide() {
     setRows((prev) => prev.filter((r) => r.visningsnavn !== navn))
   }
 
-  async function setFallPrimaryTeam(visningsnavn: string, nextTeamId: string) {
+  async function setEditablePrimaryTeam(visningsnavn: string, nextTeamId: string) {
     setSavingAssignment(visningsnavn)
 
     const { error: deleteError } = await supabase
       .from("hold_team_members")
       .delete()
-      .eq("season", FALL_2026)
+      .eq("season", EDITABLE_TEAM_SEASON)
       .eq("member_type", "primary")
       .eq("visningsnavn", visningsnavn)
 
@@ -650,7 +650,7 @@ export default function LunarSide() {
     }
 
     if (!nextTeamId) {
-      setFallPrimaryTeamIdByPlayer((prev) => {
+      setEditablePrimaryTeamIdByPlayer((prev) => {
         const next = { ...prev }
         delete next[visningsnavn]
         return next
@@ -667,7 +667,7 @@ export default function LunarSide() {
       visningsnavn,
       member_type: "primary",
       sort_order: sortOrder,
-      season: FALL_2026,
+      season: EDITABLE_TEAM_SEASON,
     })
 
     if (insertError) {
@@ -676,7 +676,7 @@ export default function LunarSide() {
       return
     }
 
-    setFallPrimaryTeamIdByPlayer((prev) => ({
+    setEditablePrimaryTeamIdByPlayer((prev) => ({
       ...prev,
       [visningsnavn]: nextTeamId,
     }))
@@ -706,8 +706,11 @@ export default function LunarSide() {
       <h1 className="mb-4 text-3xl font-bold">🌙 Lunar – kommende hold</h1>
 
       <p className="mb-4 text-sm text-zinc-600 dark:text-zinc-300">
-        Elo vægtes fra marts til juli, og vægt 6 er nuværende Elo. Månederne
-        tæller kun med, hvis der er spillet i den måned.
+        Elo vægtes fra august til december 2026, og vægt 6 er nuværende Elo.
+        Månederne tæller kun med, hvis der er spillet i den måned. Lunar+ giver
+        10/5/2 point pr. holdsejr i henholdsvis efterår 2026, forår 2026 og
+        efterår 2025. Torsdage og events fra juli 2026 til januar 2027 giver 5
+        point pr. spilledag.
       </p>
 
       <div className="mb-6 flex flex-col items-start gap-3 sm:flex-row sm:items-center">
@@ -757,9 +760,9 @@ export default function LunarSide() {
                 ))}
                 <th className="px-2 py-2 text-right">Vægtet Elo</th>
                 <th className="px-2 py-2 text-right">Lunar +</th>
-                <th className="px-2 py-2 text-right">Torsdage</th>
-                <th className="px-2 py-2 text-left">Forår 26</th>
-                <th className="px-2 py-2 text-left">Efterår 26 primær</th>
+                <th className="px-2 py-2 text-right">Torsdage/events</th>
+                <th className="px-2 py-2 text-left">Efterår 26</th>
+                <th className="px-2 py-2 text-left">Forår 27 primær</th>
                 <th className="px-2 py-2 text-right">Sum</th>
                 <th className="px-2 py-2 text-right"></th>
               </tr>
@@ -771,9 +774,9 @@ export default function LunarSide() {
                 else if (idx === 1) badge = "🥈"
                 else if (idx === 2) badge = "🥉"
 
-                const springTeam = springPrimaryTeamByPlayer[r.visningsnavn]
-                const fallTeamId = fallPrimaryTeamIdByPlayer[r.visningsnavn]
-                const fallTeam = fallTeams.find((team) => team.id === fallTeamId)
+                const fixedTeam = fixedPrimaryTeamByPlayer[r.visningsnavn]
+                const editableTeamId = editablePrimaryTeamIdByPlayer[r.visningsnavn]
+                const editableTeam = editableTeams.find((team) => team.id === editableTeamId)
 
                 return (
                   <tr
@@ -808,9 +811,9 @@ export default function LunarSide() {
                         : "–"}
                     </td>
                     <td className="px-2 py-2">
-                      {springTeam ? (
-                        <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${getTeamBadgeClass(springTeam)}`}>
-                          {springTeam}
+                      {fixedTeam ? (
+                        <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${getTeamBadgeClass(fixedTeam)}`}>
+                          {fixedTeam}
                         </span>
                       ) : (
                         "–"
@@ -818,19 +821,19 @@ export default function LunarSide() {
                     </td>
                     <td className="px-2 py-2">
                       <select
-                        value={fallTeamId ?? ""}
+                        value={editableTeamId ?? ""}
                         onChange={(e) =>
-                          setFallPrimaryTeam(r.visningsnavn, e.target.value)
+                          setEditablePrimaryTeam(r.visningsnavn, e.target.value)
                         }
                         disabled={savingAssignment === r.visningsnavn}
                         className={`min-w-[190px] rounded border px-2 py-1 dark:bg-zinc-900 ${
-                          fallTeam?.name
-                            ? getTeamBadgeClass(fallTeam.name)
+                          editableTeam?.name
+                            ? getTeamBadgeClass(editableTeam.name)
                             : "border-zinc-300 bg-white text-zinc-900 dark:border-zinc-700 dark:text-white"
                         }`}
                       >
                         <option value="">Ingen</option>
-                        {orderedFallTeams.map((option) =>
+                        {orderedEditableTeams.map((option) =>
                           option.team ? (
                             <option key={option.team.id} value={option.team.id}>
                               {option.team.name}

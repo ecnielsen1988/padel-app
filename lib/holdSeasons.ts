@@ -3,9 +3,10 @@ export const HOLD_SEASONS = [
   "2025 efterår",
   "2026 forår",
   "2026 efterår",
+  "2027 forår",
 ] as const;
 
-export const CURRENT_HOLD_SEASON = "2026 efterår";
+export const CURRENT_HOLD_SEASON = "2027 forår";
 
 export function getPreviousHoldSeason(season: string) {
   const seasonIndex = HOLD_SEASONS.indexOf(season as (typeof HOLD_SEASONS)[number]);
