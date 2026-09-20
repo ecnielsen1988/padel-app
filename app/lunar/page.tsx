@@ -331,7 +331,7 @@ function computeThursdayStats(navn: string, kampe: NewResultRow[]) {
   for (const row of kampe) {
     const dateStr = row.date
     if (!dateStr) continue
-    if (weekdayFromISO(dateStr) !== 4 && row.event !== true) continue
+    if (weekdayFromISO(dateStr) !== 4 || row.event !== true) continue
 
     const d = parseDateSafe(dateStr)
     if (!d) continue
@@ -709,8 +709,8 @@ export default function LunarSide() {
         Elo vægtes fra august til december 2026, og vægt 6 er nuværende Elo.
         Månederne tæller kun med, hvis der er spillet i den måned. Lunar+ giver
         10/5/2 point pr. holdsejr i henholdsvis efterår 2026, forår 2026 og
-        efterår 2025. Torsdage og events fra juli 2026 til januar 2027 giver 5
-        point pr. spilledag.
+        efterår 2025. Events spillet på torsdage fra juli 2026 til januar 2027
+        giver 5 point pr. spilledag.
       </p>
 
       <div className="mb-6 flex flex-col items-start gap-3 sm:flex-row sm:items-center">
@@ -760,7 +760,7 @@ export default function LunarSide() {
                 ))}
                 <th className="px-2 py-2 text-right">Vægtet Elo</th>
                 <th className="px-2 py-2 text-right">Lunar +</th>
-                <th className="px-2 py-2 text-right">Torsdage/events</th>
+                <th className="px-2 py-2 text-right">Torsdags-events</th>
                 <th className="px-2 py-2 text-left">Efterår 26</th>
                 <th className="px-2 py-2 text-left">Forår 27 primær</th>
                 <th className="px-2 py-2 text-right">Sum</th>
