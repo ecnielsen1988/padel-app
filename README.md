@@ -2,6 +2,16 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
+### Admin: ændring af spillernavne
+
+Kør `database/rename_player.sql` én gang i Supabase SQL Editor, før den nye
+side `/admin/spillernavne` tages i brug. Siden findes fra adminforsiden.
+Funktionen kræver en indlogget bruger med `profiles.rolle = 'admin'` og
+ændrer profil, alle fire spillerfelter samt `indberettet_af` i `newresults`
+og navnene i `elo_day_state` i én transaktion. Scores og Elo-værdier bevares.
+Navnekollisioner og ændringer siden siden blev indlæst afvises. Den nye
+funktion kræver rigtig login også ved lokal udvikling med login-bypass.
+
 First, run the development server:
 
 ```bash

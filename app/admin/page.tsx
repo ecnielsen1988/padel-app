@@ -86,6 +86,13 @@ export default function AdminHomePage() {
   </Link>
 
         <Link
+          href="/admin/spillernavne"
+          className="block bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
+        >
+          ✏️ Admin · Spillernavne
+        </Link>
+
+        <Link
           href="/admin/event"
           className="block bg-zinc-800 hover:bg-zinc-900 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
         >
@@ -110,4 +117,3 @@ export default function AdminHomePage() {
     </main>
   );
 }
-
