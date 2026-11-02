@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import ts from "typescript";
 const require = createRequire(import.meta.url);
 function load(path, overrides = {}) {
-  const js = ts.transpileModule(fs.readFileSync(new URL(path, import.meta.url), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText;
+  const js = ts.transpileModule(fs.readFileSync(new URL(path, import.meta.url), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX } }).outputText;
   const mod = { exports: {} };
   new Function("require", "module", "exports", js)(name => overrides[name] ?? require(name), mod, mod.exports);
   return mod.exports;
@@ -119,3 +119,28 @@ const eventsRoute = load("../app/api/events/route.ts", {
 assert.equal((await eventsRoute.GET(new Request("http://localhost/api/events?format=royal"))).status, 200);
 assert.deepEqual(royalFilter, ["rules_text", '%"format":"royal"%']);
 console.log("Royal event-list filtering check passed.");
+
+
+// Render the real scorecard: old three-slot events must show the full schedule too.
+const React = require("react");
+const { renderToStaticMarkup } = require("react-dom/server");
+const RoyalMatches = load("../app/event/[id]/RoyalMatches.tsx", { "@/lib/royal": rules }).default;
+const props = {
+  plan: [{ gi: 0, court: "CC", players: ["Anna", "Bo", "Clara", "David"].map((visningsnavn, i) => ({ user_id: String(i), visningsnavn, elo: 1500 })) }],
+  roundsPerCourt: { 0: 3 }, scores: {}, setScore() {}, submittedLocked: false,
+};
+let markup = renderToStaticMarkup(React.createElement(RoyalMatches, props));
+assert.equal((markup.match(/<input /g) ?? []).length, 18);
+for (const n of [1, 2, 3]) assert.ok(markup.includes(`aria-label="Kamp ${n} på bane CC"`));
+const input = (html, label) => html.match(new RegExp(`<input[^>]*aria-label="${label}"[^>]*>`))?.[0] ?? "";
+const secondGameLabel = "Bane CC, kamp 2, sæt 1, hold A";
+assert.ok(input(markup, secondGameLabel).includes('disabled=""'));
+markup = renderToStaticMarkup(React.createElement(RoyalMatches, { ...props, scores: { "0-0": win, "0-1": win } }));
+assert.ok(!input(markup, secondGameLabel).includes('disabled=""'));
+assert.ok(markup.includes("Afgjort i to sæt"));
+assert.ok(input(markup, "Bane CC, kamp 1, matchtiebreak, hold A").includes('disabled=""'));
+markup = renderToStaticMarkup(React.createElement(RoyalMatches, { ...props, scores: { "0-0": win, "0-1": loss } }));
+assert.ok(!input(markup, "Bane CC, kamp 1, matchtiebreak, hold A").includes('disabled=""'));
+markup = renderToStaticMarkup(React.createElement(RoyalMatches, { ...props, submittedLocked: true }));
+assert.equal((markup.match(/disabled=""/g) ?? []).length, 18);
+console.log("Royal scorecard rendering and score-entry checks passed.");

@@ -11,6 +11,8 @@ import {
   getEventSubmissionState,
 } from "@/lib/eventSubmission";
 
+import RoyalMatches from "./RoyalMatches";
+
 import { eventRotation, isRoyalTiebreak, finishedEventSet, ROYAL_COURTS, ROYAL_RULES, royalSetLabel, royalPairingComplete, validateRoyalScores, validateRoyalEvent } from "@/lib/royal";
 
 /* ======================== Typer ======================== */
@@ -231,7 +233,7 @@ function buildPlannedEventResultRows(params: {
   for (let gi = 0; gi < plan.length; gi++) {
     const g = plan[gi];
 
-    const sets = Math.max(1, roundsPerCourt[gi] ?? 3);
+    const sets = Math.max(royal ? 9 : 1, roundsPerCourt[gi] ?? 3);
 
     // Brug banen fra kampen, ellers courtsOrder, ellers gi+1
     const rawCourt =
@@ -416,7 +418,7 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
         .maybeSingle<EventRow>();
       setEvent(ev ?? null);
 
-      const res = await fetch("/api/events?all=1", { cache: "no-store" });
+      const res = await fetch(isRoyalEvent(ev?.rules_text) ? "/api/events?all=1&format=royal" : "/api/events?all=1", { cache: "no-store" });
       const json = await res.json();
       setEventsList((json?.data ?? []) as EventRow[]);
     })();
@@ -823,7 +825,7 @@ useEffect(() => {
   setRoundsPerCourt((prev) => {
     const n: Record<number, number> = { ...prev };
     for (let gi = 0; gi < groups.length; gi++)
-      if (!n[gi] || n[gi] < 1) n[gi] = 3;
+      n[gi] = Math.max(n[gi] ?? 0, royal ? 9 : 3);
     Object.keys(n)
       .map(Number)
       .forEach((gi) => {
@@ -1494,7 +1496,10 @@ useEffect(() => {
         </div>
       </div>
 
-      {royal && <p className="mx-auto mb-4 max-w-3xl rounded-xl border border-pink-300 bg-pink-50 p-4 text-sm text-pink-900 dark:bg-pink-950 dark:text-pink-100">👑 {ROYAL_RULES}</p>}
+      {royal && <details className="mx-auto mb-4 max-w-3xl rounded-xl border border-pink-200 bg-pink-50/70 px-4 py-3 text-sm text-pink-900 dark:border-pink-900 dark:bg-pink-950 dark:text-pink-100">
+        <summary className="cursor-pointer font-semibold">Tre kampe · Tre makkerpar · Bedst af tre sæt <span className="ml-2 font-normal opacity-60">Se regler</span></summary>
+        <p className="mt-3 leading-relaxed">{ROYAL_RULES}</p>
+      </details>}
 
       {/* Top controls */}
       <div className="flex flex-wrap items-center justify-center gap-2 mb-4">
@@ -1893,6 +1898,8 @@ function CenterMatches({
     b: s?.b ?? 0,
   });
 
+
+  if (royal) return <RoyalMatches plan={plan} roundsPerCourt={roundsPerCourt} scores={scores} setScore={setScore} submittedLocked={submittedLocked} />;
 
   return (
     <div className="space-y-3">
