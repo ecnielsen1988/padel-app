@@ -1496,8 +1496,8 @@ useEffect(() => {
         </div>
       </div>
 
-      {royal && <details className="mx-auto mb-4 max-w-3xl rounded-xl border border-pink-200 bg-pink-50/70 px-4 py-3 text-sm text-pink-900 dark:border-pink-900 dark:bg-pink-950 dark:text-pink-100">
-        <summary className="cursor-pointer font-semibold">Tre kampe · Tre makkerpar · Bedst af tre sæt <span className="ml-2 font-normal opacity-60">Se regler</span></summary>
+      {royal && <details className="mx-auto mb-4 max-w-3xl rounded-xl border border-pink-200 bg-pink-50/70 px-3 py-1.5 text-xs text-pink-900 dark:border-pink-900 dark:bg-pink-950 dark:text-pink-100">
+        <summary className="cursor-pointer font-semibold">Regler</summary>
         <p className="mt-3 leading-relaxed">{ROYAL_RULES}</p>
       </details>}
 
@@ -1899,7 +1899,7 @@ function CenterMatches({
   });
 
 
-  if (royal) return <RoyalMatches plan={plan} roundsPerCourt={roundsPerCourt} scores={scores} setScore={setScore} submittedLocked={submittedLocked} />;
+  if (royal) return <RoyalMatches plan={plan} roundsPerCourt={roundsPerCourt} scores={scores} setScore={setScore} submittedLocked={submittedLocked} eloMap={eloMap} />;
 
   return (
     <div className="space-y-3">

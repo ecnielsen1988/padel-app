@@ -28,7 +28,6 @@ export function validateRoyalScores(sets: RoyalScore[]): string | null {
     if (!nonEmpty(sc)) continue;
     if (!isRoyalTiebreak(si) && Math.max(sc.a, sc.b) > 7) return "Et almindeligt sæt kan højst gå til 7.";
     const base = Math.floor(si / 3) * 3;
-    if (base > 0 && !royalPairingComplete(sets.slice(base - 3, base))) return "Afslut den foregående makkerkombination før holdskift.";
     if (isRoyalTiebreak(si)) {
       const [a, b] = sets.slice(base, base + 2);
       if (!a || !b || !finishedEventSet(a.a, a.b) || !finishedEventSet(b.a, b.b) || (a.a > a.b) === (b.a > b.b)) {

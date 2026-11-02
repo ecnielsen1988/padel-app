@@ -21,7 +21,7 @@ Formatet gemmes i eventets eksisterende regelmetadata; der kræves ingen databas
 Royal bruger mandage kl. 18–20 i Helsinge, højst 16 spillere og banerne CC, 1, 2, 3.
 Hver makkerkombination har to almindelige sæt og en valgfri matchtiebreak ved 1–1.
 Alle tre kampe vises fra start på hver bane, med parrene over hinanden og tre sæt ved siden af hinanden.
-Den næste kamp åbner for indtastning efter 2–0 eller en færdig matchtiebreak.
+Resultater kan indtastes i alle tre kampe uafhængigt af hinanden. Vinderchancer vises pr. kamp og Elo-point under hvert sæt.
 Uafsluttede sæt ved kl. 20 indberettes efter de eksisterende eventregler.
 
 Kontrollér Royal-regler og score-API uden databaseadgang med `node scripts/test-royal.mjs`.

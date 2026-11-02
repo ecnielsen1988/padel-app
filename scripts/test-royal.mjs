@@ -26,7 +26,8 @@ assert.ok(!royalPairingComplete([win, loss, empty]));
 assert.ok(royalPairingComplete([win, loss, tb]));
 assert.equal(validateRoyalScores([win, win, empty, { a: 2, b: 1 }]), null);
 assert.ok(validateRoyalScores([win, win, tb]));
-assert.ok(validateRoyalScores([win, loss, empty, win]));
+assert.equal(validateRoyalScores([win, loss, empty, win]), null);
+assert.equal(validateRoyalScores([empty, empty, empty, empty, empty, empty, win]), null);
 assert.ok(validateRoyalScores([{ a: -1, b: 0 }]));
 assert.ok(validateRoyalScores([{ a: 2.5, b: 0 }]));
 assert.ok(validateRoyalScores([{ a: 10, b: 8 }]));
@@ -124,23 +125,60 @@ console.log("Royal event-list filtering check passed.");
 // Render the real scorecard: old three-slot events must show the full schedule too.
 const React = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
-const RoyalMatches = load("../app/event/[id]/RoyalMatches.tsx", { "@/lib/royal": rules }).default;
+const elo = load("../lib/beregnElo.ts");
+const royalElo = load("../lib/royalElo.ts", { "@/lib/royal": rules, "@/lib/beregnElo": elo });
+const RoyalMatches = load("../app/event/[id]/RoyalMatches.tsx", { "@/lib/royal": rules, "@/lib/royalElo": royalElo }).default;
 const props = {
   plan: [{ gi: 0, court: "CC", players: ["Anna", "Bo", "Clara", "David"].map((visningsnavn, i) => ({ user_id: String(i), visningsnavn, elo: 1500 })) }],
-  roundsPerCourt: { 0: 3 }, scores: {}, setScore() {}, submittedLocked: false,
+  roundsPerCourt: { 0: 3 }, scores: {}, setScore() {}, submittedLocked: false, eloMap: { Anna: 1500, Bo: 1500, Clara: 1500, David: 1500 },
 };
 let markup = renderToStaticMarkup(React.createElement(RoyalMatches, props));
 assert.equal((markup.match(/<input /g) ?? []).length, 18);
 for (const n of [1, 2, 3]) assert.ok(markup.includes(`aria-label="Kamp ${n} på bane CC"`));
 const input = (html, label) => html.match(new RegExp(`<input[^>]*aria-label="${label}"[^>]*>`))?.[0] ?? "";
 const secondGameLabel = "Bane CC, kamp 2, sæt 1, hold A";
-assert.ok(input(markup, secondGameLabel).includes('disabled=""'));
+assert.ok(!input(markup, secondGameLabel).includes('disabled=""'));
+assert.ok(!input(markup, "Bane CC, kamp 3, sæt 1, hold A").includes('disabled=""'));
+assert.ok(markup.includes("50%"));
+assert.ok(!markup.includes("Klar til spil"));
+assert.ok(!markup.includes("MTB ="));
 markup = renderToStaticMarkup(React.createElement(RoyalMatches, { ...props, scores: { "0-0": win, "0-1": win } }));
 assert.ok(!input(markup, secondGameLabel).includes('disabled=""'));
-assert.ok(markup.includes("Afgjort i to sæt"));
+assert.ok(!markup.includes("Afgjort i to sæt"));
 assert.ok(input(markup, "Bane CC, kamp 1, matchtiebreak, hold A").includes('disabled=""'));
 markup = renderToStaticMarkup(React.createElement(RoyalMatches, { ...props, scores: { "0-0": win, "0-1": loss } }));
 assert.ok(!input(markup, "Bane CC, kamp 1, matchtiebreak, hold A").includes('disabled=""'));
 markup = renderToStaticMarkup(React.createElement(RoyalMatches, { ...props, submittedLocked: true }));
 assert.equal((markup.match(/disabled=""/g) ?? []).length, 18);
 console.log("Royal scorecard rendering and score-entry checks passed.");
+
+
+// Points must follow the ordinary event calculation, including partial sets and MTB weighting.
+const previewScores = { "0-0": win, "0-1": loss, "0-2": tb, "0-6": { a: 3, b: 2 } };
+const preview = royalElo.calculateRoyalElo(props.plan, props.roundsPerCourt, previewScores, props.eloMap);
+const referenceRows = Object.entries(previewScores).map(([key, score], id) => {
+  const si = Number(key.split("-")[1]);
+  const names = eventRotation(si, true).flatMap(team => team.map(i => props.plan[0].players[i].visningsnavn));
+  return { id, kampid: 1, date: event.date, holdA1: names[0], holdA2: names[1], holdB1: names[2], holdB2: names[3], scoreA: score.a, scoreB: score.b, finish: finishedEventSet(score.a, score.b, si % 3 === 2), event: true, tiebreak: si % 3 === 2 ? "matchtiebreak" : "false" };
+});
+const reference = elo.beregnEloForKampe(referenceRows, props.eloMap);
+for (const [id, row] of referenceRows.entries()) {
+  const si = Number(Object.keys(previewScores)[id].split("-")[1]);
+  const points = preview[`0-${Math.floor(si / 3)}`].sets[si % 3];
+  assert.equal(points.a, reference.eloChanges[id][row.holdA1].diff);
+  assert.equal(points.b, reference.eloChanges[id][row.holdB1].diff);
+}
+assert.deepEqual(preview["0-1"].sets, [null, null, null]);
+assert.equal(royalElo.calculateRoyalElo(props.plan, props.roundsPerCourt, {}, props.eloMap)["0-2"].probabilityA, 0.5);
+markup = renderToStaticMarkup(React.createElement(RoyalMatches, { ...props, scores: { "0-0": { a: 6, b: 0 } } }));
+assert.ok(markup.includes("+32,0"));
+assert.ok(markup.includes("-32,0"));
+// The player API also accepts later games while earlier ones remain empty or partial.
+eventRules = raw;
+reset(Array(9).fill(empty));
+for (const setIndex of [3, 6]) {
+  assert.equal((await post({ action: "updateScore", setIndex, scoreA: 6, scoreB: 2 })).status, 200);
+}
+assert.equal(writes.length, 2);
+assert.equal(validateRoyalScores([empty, empty, empty, win, win, tb]), "Matchtiebreak spilles kun ved 1–1 i færdige sæt.");
+console.log("Royal per-set Elo and independent game-entry checks passed.");
