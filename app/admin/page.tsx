@@ -99,6 +99,8 @@ export default function AdminHomePage() {
           📅 Admin · Event
         </Link>
 
+        <Link href="/admin/event/royal" className="block bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-4 rounded-lg">👑 Rangliste Padel Royal</Link>
+
         {/* Ret evt. stien her, hvis din side ligger på /admin/event/torsdagspadel */}
         <Link
           href="/admin/torsdagspadel"

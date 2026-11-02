@@ -4,12 +4,14 @@ import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { beregnEloForKampe } from "@/lib/beregnElo";
-import { buildEventRulesText, parseEventRulesText } from "@/lib/eventConfig";
+import { buildEventRulesText, parseEventRulesText, isRoyalEvent } from "@/lib/eventConfig";
 import {
   getEventKampidRange,
   getNextKampId,
   getEventSubmissionState,
 } from "@/lib/eventSubmission";
+
+import { eventRotation, isRoyalTiebreak, finishedEventSet, ROYAL_COURTS, ROYAL_RULES, royalSetLabel, royalPairingComplete, validateRoyalScores, validateRoyalEvent } from "@/lib/royal";
 
 /* ======================== Typer ======================== */
 type EventRow = {
@@ -59,7 +61,7 @@ type EventResultMeta = Pick<
 type NewResultInsert = {
   date: string; // "YYYY-MM-DD"
   finish: boolean;
-  tiebreak: boolean;
+  tiebreak: boolean | "matchtiebreak";
   event: boolean;
   kampid: number; // fælles for sæt i samme kamp
   holdA1: string;
@@ -97,26 +99,7 @@ const thursdayTime = (gi: number) =>
     ? { start: "18:40", end: "20:20" }
     : { start: "20:20", end: "22:00" };
 
-const ROTATIONS = [
-  [
-    [0, 1],
-    [2, 3],
-  ],
-  [
-    [0, 2],
-    [1, 3],
-  ],
-  [
-    [0, 3],
-    [1, 2],
-  ],
-] as const;
-
-const erFærdigtSæt = (a: number, b: number) => {
-  const max = Math.max(a, b),
-    min = Math.min(a, b);
-  return (max === 6 && min <= 4) || (max === 7 && (min === 5 || min === 6));
-};
+const erFærdigtSæt = finishedEventSet;
 
 const pctColor = (p: number) =>
   `hsl(${Math.round(120 * Math.max(0, Math.min(1, p)))} ${
@@ -236,12 +219,13 @@ async function loadEventResultsToState(
 // Bygger alle sæt fra det nuværende UI-state, score=0–0 (forudfyld program)
 function buildPlannedEventResultRows(params: {
   eventId: string;
+  royal?: boolean;
   plan: Array<{ gi: number; court: string | number; players: { visningsnavn?: string | null }[] }>;
   roundsPerCourt: Record<number, number>;
   courtsOrder: (string | number)[];
   matchTimes: Record<number, { start: string; end: string }>;
 }) {
-  const { eventId, plan, roundsPerCourt, courtsOrder, matchTimes } = params;
+  const { eventId, plan, roundsPerCourt, courtsOrder, matchTimes, royal = false } = params;
   const rows: EventResultInsert[] = [];
 
   for (let gi = 0; gi < plan.length; gi++) {
@@ -266,7 +250,7 @@ function buildPlannedEventResultRows(params: {
       };
 
     for (let si = 0; si < sets; si++) {
-      const rot = ROTATIONS[si % ROTATIONS.length];
+      const rot = eventRotation(si, royal);
       const a1 = (g.players[rot[0][0]]?.visningsnavn || "").trim();
       const a2 = (g.players[rot[0][1]]?.visningsnavn || "").trim();
       const b1 = (g.players[rot[1][0]]?.visningsnavn || "").trim();
@@ -285,7 +269,7 @@ function buildPlannedEventResultRows(params: {
         holdB2: b2 || null,
         scoreA: 0,
         scoreB: 0,
-        tiebreak: false,
+        tiebreak: isRoyalTiebreak(si, royal),
       });
     }
   }
@@ -296,6 +280,7 @@ function buildPlannedEventResultRows(params: {
 // Upserter hele programmet til event_result inden publicering (idempotent)
 async function ensureProgramPersistedToEventResult(params: {
   eventId: string;
+  royal?: boolean;
   plan: Array<{ gi: number; court: string | number; players: { visningsnavn?: string | null }[] }>;
   roundsPerCourt: Record<number, number>;
   courtsOrder: (string | number)[];
@@ -303,6 +288,15 @@ async function ensureProgramPersistedToEventResult(params: {
 }) {
   const rows = buildPlannedEventResultRows(params);
   if (!rows.length) return;
+  // Publishing again must preserve scores already entered for Royal.
+  if (params.royal) {
+    const { data, error } = await supabase.from("event_result").select("group_index, set_index, scoreA, scoreB").eq("event_id", params.eventId);
+    if (error) throw error;
+    for (const row of rows) {
+      const saved = (data ?? []).find((r: any) => r.group_index === row.group_index && r.set_index === row.set_index);
+      if (saved) { row.scoreA = saved.scoreA ?? 0; row.scoreB = saved.scoreB ?? 0; }
+    }
+  }
 
   const CHUNK = 500;
   for (let i = 0; i < rows.length; i += CHUNK) {
@@ -385,6 +379,7 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
 
 
   const [event, setEvent] = useState<EventRow | null>(null);
+  const royal = isRoyalEvent(event?.rules_text);
   const [eventsList, setEventsList] = useState<EventRow[]>([]);
   const [players, setPlayers] = useState<EventPlayer[]>([]);
   const [orderIds, setOrderIds] = useState<string[]>([]);
@@ -646,6 +641,7 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
   /* --- spillere add/remove/swap (respekter locked) --- */
   async function addPlayer(uid: string, nameFromList?: string | null) {
     if (!eventId) return;
+    if (royal && players.length >= (event?.max_players ?? 16)) { alert("Royal har ikke plads til flere spillere."); return; }
     if (locked) {
       alert("Programmet er offentliggjort – spillere kan ikke ændres.");
       return;
@@ -803,6 +799,8 @@ useEffect(() => {
   const need = groups.length;
   if (need === 0) return [];
 
+  if (royal) return ROYAL_COURTS.slice(0, need);
+
   // ✅ Gilleleje: altid deres mønster (uanset dag)
   if (event.location === "Gilleleje") {
     const pattern = ["2", "1", "3", "6", "5"] as const;
@@ -866,7 +864,7 @@ useEffect(() => {
       return base;
     });
 
-}, [event, groups.length]);
+}, [event, groups.length, royal]);
 
 
   /* --------- basePlan (ingen ekstra sortering) --------- */
@@ -976,6 +974,7 @@ useEffect(() => {
 
   /* --- UI helpers --- */
   function setCourtLabel(gi: number, value: string) {
+    if (royal) return;
     if (!event?.id) return;
     setCourtsOrder((prev) => {
       const next = [...prev];
@@ -995,6 +994,7 @@ useEffect(() => {
   }
 
   function moveCourtUp(gi: number) {
+    if (royal) return;
     if (!event?.id || gi <= 0) return;
 
     const nextGroup = (() => {
@@ -1041,31 +1041,45 @@ useEffect(() => {
   }
 
   function addRoundForMatch(gi: number) {
-    setRoundsPerCourt((prev) => {
-      const next = (prev[gi] ?? 3) + 1;
+    const current = roundsPerCourt[gi] ?? 3;
+    if (royal && (!royalPairingComplete(Array.from({ length: 3 }, (_, i) => scores[`${gi}-${current - 3 + i}`] ?? { a: 0, b: 0 })))) {
+      alert("Afslut den nuværende makkerkombination først. ");
+      return;
+    }
+    const next = current + (royal ? 3 : 1);
+    const g = basePlan[gi];
+    for (let si = current; si < next; si++) {
+      const rot = eventRotation(si, royal);
       void upsertEventResultRow({
-        eventId: event?.id ?? "",
-        gi,
-        si: next - 1,
-        scoreA: 0,
-        scoreB: 0,
+        eventId, gi, si, courtLabel: courtsOrder[gi],
+        start: matchTimes[gi]?.start, end: matchTimes[gi]?.end,
+        a1: g?.players[rot[0][0]]?.visningsnavn ?? "",
+        a2: g?.players[rot[0][1]]?.visningsnavn ?? "",
+        b1: g?.players[rot[1][0]]?.visningsnavn ?? "",
+        b2: g?.players[rot[1][1]]?.visningsnavn ?? "",
+        scoreA: 0, scoreB: 0, tiebreak: isRoyalTiebreak(si, royal),
       });
-      return { ...prev, [gi]: next };
-    });
+    }
+    setRoundsPerCourt(prev => ({ ...prev, [gi]: next }));
   }
 
   function setScore(gi: number, si: number, side: "a" | "b", raw: string) {
     const n = (() => {
       const t = raw.replace(/\D/g, "");
-      return t === "" ? 0 : Math.min(7, Math.max(0, parseInt(t, 10)));
+      return t === "" ? 0 : Math.min(isRoyalTiebreak(si, royal) ? Number.MAX_SAFE_INTEGER : 7, Math.max(0, parseInt(t, 10)));
     })();
     const key = `${gi}-${si}`;
+    if (royal) {
+      const nextScores = Array.from({ length: roundsPerCourt[gi] ?? 3 }, (_, i) => ({ ...(scores[`${gi}-${i}`] ?? { a: 0, b: 0 }), ...(i === si ? { [side]: n } : {}) }));
+      const error = validateRoyalScores(nextScores);
+      if (error) { alert(error); return; }
+    }
 
     setScores((s) => {
       const prev = s[key] ?? { a: 0, b: 0 };
       const next = { ...prev, [side]: n };
 
-      const rot = ROTATIONS[si % ROTATIONS.length];
+      const rot = eventRotation(si, royal);
       const g = basePlan[gi] || plan.find((x) => x.gi === gi);
       void upsertEventResultRow({
         eventId: event?.id ?? "",
@@ -1080,13 +1094,14 @@ useEffect(() => {
         b2: g?.players[rot[1][1]]?.visningsnavn || "",
         scoreA: next.a,
         scoreB: next.b,
-        tiebreak: false,
+        tiebreak: isRoyalTiebreak(si, royal),
       });
       return { ...s, [key]: next };
     });
   }
 
   function resetEmptyExtraSets() {
+    if (royal) return;
     setRoundsPerCourt((prev) => {
       const next = { ...prev };
       for (let gi = 0; gi < basePlan.length; gi++) {
@@ -1134,10 +1149,10 @@ useEffect(() => {
 
   const courtSuggestions = useMemo(
     () =>
-      event?.location === "Gilleleje"
+      royal ? ROYAL_COURTS : event?.location === "Gilleleje"
         ? ["1", "2", "3", "5", "6"]
         : ["CC", "1", "2", "3", "4", "5", "6"],
-    [event?.location]
+    [event?.location, royal]
   );
 
   const dayDiffSorted = useMemo(() => {
@@ -1145,15 +1160,16 @@ useEffect(() => {
     basePlan.forEach((g, gi) => {
       const r = roundsPerCourt[gi] ?? 3;
       for (let si = 0; si < r; si++) {
-        const rot = ROTATIONS[si % ROTATIONS.length];
+        const rot = eventRotation(si, royal);
         const a1 = g.players[rot[0][0]]?.visningsnavn || "?";
         const a2 = g.players[rot[0][1]]?.visningsnavn || "?";
         const b1 = g.players[rot[1][0]]?.visningsnavn || "?";
         const b2 = g.players[rot[1][1]]?.visningsnavn || "?";
         const sc = scores[`${gi}-${si}`] ?? { a: 0, b: 0 };
+        if (royal && sc.a === 0 && sc.b === 0) continue;
         const done =
           sc.a !== 0 || sc.b !== 0
-            ? erFærdigtSæt(sc.a, sc.b)
+            ? erFærdigtSæt(sc.a, sc.b, isRoyalTiebreak(si, royal))
             : false;
         sets.push({
           id: 1_000_000 + gi * 100 + si,
@@ -1167,7 +1183,7 @@ useEffect(() => {
           scoreB: sc.b,
           finish: done,
           event: true,
-          tiebreak: "false",
+          tiebreak: isRoyalTiebreak(si, royal) ? "matchtiebreak" : "false",
         });
       }
     });
@@ -1188,10 +1204,11 @@ useEffect(() => {
     return Object.entries(totals)
       .map(([navn, diff]) => ({ navn, diff }))
       .sort((a, b) => b.diff - a.diff);
-  }, [basePlan, roundsPerCourt, scores, eloMap, event?.date]);
+  }, [basePlan, roundsPerCourt, scores, eloMap, event?.date, royal]);
 
   const header = useMemo(() => {
     if (!event) return { emojiLeft: "🎾", emojiRight: "🎾" };
+    if (royal) return { emojiLeft: "👑", emojiRight: "👑" };
     if (event.closed_group) return { emojiLeft: "🍺", emojiRight: "🍺" };
     if (event.only_women)
       return { emojiLeft: "👯‍♀️", emojiRight: "👯‍♀️" };
@@ -1204,6 +1221,9 @@ useEffect(() => {
 
     try {
       if (next) {
+        if (royal && (orderedPlayers.length % 4 !== 0 || orderedPlayers.length > 16)) {
+          alert("Royal kræver hele grupper med fire spillere og højst 16 spillere."); return;
+        }
         if (!plan.length) {
           alert("Ingen kampe at publicere. Tilføj spillere først.");
           return;
@@ -1211,6 +1231,7 @@ useEffect(() => {
 
         await ensureProgramPersistedToEventResult({
           eventId: event.id,
+          royal,
           plan,
           roundsPerCourt,
           courtsOrder,
@@ -1267,6 +1288,12 @@ useEffect(() => {
         auth?.user?.email ??
         "EventAdmin";
 
+      if (royal) {
+        for (let gi = 0; gi < basePlan.length; gi++) {
+          const error = validateRoyalScores(Array.from({ length: roundsPerCourt[gi] ?? 3 }, (_, si) => scores[`${gi}-${si}`] ?? { a: 0, b: 0 }));
+          if (error) throw new Error(error);
+        }
+      }
       const rows: NewResultInsert[] = [];
       const groupsWithData = basePlan
         .map((g, gi) => ({ g, gi }))
@@ -1283,13 +1310,14 @@ useEffect(() => {
       let firstKampId: number | null = null;
       let lastKampId: number | null = null;
       groupsWithData.forEach(({ g, gi }) => {
-        const kampid = nextKampId++;
+        let kampid = nextKampId++;
         if (firstKampId == null) firstKampId = kampid;
         lastKampId = kampid;
 
         const r = roundsPerCourt[gi] ?? 3;
         for (let si = 0; si < r; si++) {
-          const rot = ROTATIONS[si % ROTATIONS.length];
+          if (royal && si > 0 && si % 3 === 0) { kampid = nextKampId++; lastKampId = kampid; }
+          const rot = eventRotation(si, royal);
           const a1 = g.players[rot[0][0]]?.visningsnavn || "";
           const a2 = g.players[rot[0][1]]?.visningsnavn || "";
           const b1 = g.players[rot[1][0]]?.visningsnavn || "";
@@ -1300,8 +1328,8 @@ useEffect(() => {
 
           rows.push({
             date: event.date,
-            finish: erFærdigtSæt(sc.a, sc.b),
-            tiebreak: false,
+            finish: erFærdigtSæt(sc.a, sc.b, isRoyalTiebreak(si, royal)),
+            tiebreak: isRoyalTiebreak(si, royal) ? "matchtiebreak" : false,
             event: true,
             kampid,
             holdA1: a1,
@@ -1465,6 +1493,8 @@ useEffect(() => {
           {fmtTime(event.end_time)} · {event.location}
         </div>
       </div>
+
+      {royal && <p className="mx-auto mb-4 max-w-3xl rounded-xl border border-pink-300 bg-pink-50 p-4 text-sm text-pink-900 dark:bg-pink-950 dark:text-pink-100">👑 {ROYAL_RULES}</p>}
 
       {/* Top controls */}
       <div className="flex flex-wrap items-center justify-center gap-2 mb-4">
@@ -1759,6 +1789,10 @@ useEffect(() => {
           event={event}
           onClose={() => setShowEdit(false)}
           onSave={async (patch) => {
+            if (royal) {
+              const error = validateRoyalEvent({ ...event, ...patch, start_time: (patch.start_time ?? event.start_time) ?? undefined, end_time: (patch.end_time ?? event.end_time) ?? undefined, max_players: (patch.max_players ?? event.max_players) ?? undefined });
+              if (error) { alert(error); return; }
+            }
             const cleanPatch = Object.fromEntries(
               Object.entries(patch).filter(([_, v]) => v !== undefined)
             );
@@ -1797,6 +1831,28 @@ useEffect(() => {
 }
 
 /* ===================== Midterkolonnen ===================== */
+function EventScoreBox({ value, onChange, title, multipleDigits, disabled }: {
+  value: number;
+  onChange: (value: string) => void;
+  title: string;
+  multipleDigits: boolean;
+  disabled: boolean;
+}) {
+  return <input
+    type="text"
+    inputMode="numeric"
+    pattern={multipleDigits ? "[0-9]*" : "[0-7]"}
+    maxLength={multipleDigits ? 6 : 1}
+    value={String(value)}
+    onFocus={e => e.currentTarget.select()}
+    onChange={e => onChange(e.target.value)}
+    disabled={disabled}
+    className="w-10 border rounded px-0.5 py-0.5 text-center text-sm tabnums bg-white dark:bg-zinc-900 border-pink-300 dark:border-pink-700"
+    title={title}
+    aria-label={title}
+  />;
+}
+
 function CenterMatches({
   plan,
   courtsOrder,
@@ -1830,34 +1886,13 @@ function CenterMatches({
   courtSuggestions: string[];
   submittedLocked: boolean;
 }) {
+  const royal = isRoyalEvent(event.rules_text);
   const setKey = (gi: number, si: number) => `${gi}-${si}`;
   const scoreOf = (s?: { a: number; b: number }) => ({
     a: s?.a ?? 0,
     b: s?.b ?? 0,
   });
 
-  const ScoreBox = ({
-    value,
-    onChange,
-    title,
-  }: {
-    value: number;
-    onChange: (val: string) => void;
-    title: string;
-  }) => (
-    <input
-      type="text"
-      inputMode="numeric"
-      pattern="[0-7]"
-      maxLength={1}
-      value={String(value)}
-      onFocus={(e) => e.currentTarget.select()}
-      onChange={(e) => onChange(e.target.value)}
-      disabled={submittedLocked}
-      className="w-7 border rounded px-0.5 py-0.5 text-center text-sm tabnums bg-white dark:bg-zinc-900 border-pink-300 dark:border-pink-700"
-      title={title}
-    />
-  );
 
   return (
     <div className="space-y-3">
@@ -1887,7 +1922,7 @@ function CenterMatches({
                   <select
                     className="border rounded px-2 py-1 text-sm bg-white dark:bg-zinc-900 border-pink-300 dark:border-pink-700"
                     value={String(courtsOrder[gi] ?? "")}
-                    disabled={submittedLocked}
+                    disabled={submittedLocked || royal}
                     onChange={(e) =>
                       setCourtLabel(gi, e.target.value)
                     }
@@ -1903,6 +1938,7 @@ function CenterMatches({
                   <input
                     type="time"
                     name="start"
+                    readOnly={royal}
                     value={mt.start}
                     disabled={submittedLocked}
                     onChange={(e) => {
@@ -1929,6 +1965,7 @@ function CenterMatches({
                   <input
                     type="time"
                     name="end"
+                    readOnly={royal}
                     value={mt.end}
                     disabled={submittedLocked}
                     onChange={(e) => {
@@ -1959,14 +1996,14 @@ function CenterMatches({
                   onClick={() => addRoundForMatch(gi)}
                   disabled={submittedLocked}
                   className="text-xs px-2 py-1 rounded border bg-white/80 hover:bg-pink-50 border-pink-300 dark:border-pink-700 dark:bg-zinc-900"
-                  title="Tilføj sæt"
+                  title={royal ? "Næste makkerkombination" : "Tilføj sæt"}
                 >
-                  + Tilføj sæt
+                  {royal ? "+ Næste makkerkombination" : "+ Tilføj sæt"}
                 </button>
                 <button
                   type="button"
                   onClick={() => moveCourtUp(gi)}
-                  disabled={submittedLocked}
+                  disabled={submittedLocked || royal}
                   className="text-xs px-2 py-1 rounded border bg-white/80 hover:bg-pink-50 border-pink-300 dark:border-pink-700 dark:bg-zinc-900"
                   title="Ryk kampen op"
                 >
@@ -1978,7 +2015,7 @@ function CenterMatches({
             {/* Sætlinjer */}
             <div className="px-3 py-2 space-y-1">
               {Array.from({ length: runder }).map((_, si) => {
-                const rot = ROTATIONS[si % ROTATIONS.length];
+                const rot = eventRotation(si, royal);
                 const a1 = g.players[rot[0][0]];
                 const a2 = g.players[rot[0][1]];
                 const b1 = g.players[rot[1][0]];
@@ -1995,7 +2032,7 @@ function CenterMatches({
                   const players =
                     plan.find((x) => x.gi === gg)?.players ?? [];
                   for (let s = 0; s <= lastSi; s++) {
-                    const rRot = ROTATIONS[s % ROTATIONS.length];
+                    const rRot = eventRotation(s, royal);
                     const A1 =
                       players[rRot[0][0]]?.visningsnavn || "?";
                     const A2 =
@@ -2005,9 +2042,10 @@ function CenterMatches({
                     const B2 =
                       players[rRot[1][1]]?.visningsnavn || "?";
                     const SS = scoreOf(scores[setKey(gg, s)]);
+                    if (royal && SS.a === 0 && SS.b === 0) continue;
                     const done =
                       SS.a !== 0 || SS.b !== 0
-                        ? erFærdigtSæt(SS.a, SS.b)
+                        ? erFærdigtSæt(SS.a, SS.b, isRoyalTiebreak(s, royal))
                         : false;
                     prevSets.push({
                       id: 2_000_000 + gg * 100 + s,
@@ -2021,7 +2059,7 @@ function CenterMatches({
                       scoreB: SS.b,
                       finish: done,
                       event: true,
-                      tiebreak: "false",
+                      tiebreak: isRoyalTiebreak(s, royal) ? "matchtiebreak" : "false",
                     });
                   }
                 }
@@ -2066,9 +2104,9 @@ function CenterMatches({
                   holdB2: b2?.visningsnavn || "?",
                   scoreA: sc.a,
                   scoreB: sc.b,
-                  finish: erFærdigtSæt(sc.a, sc.b),
+                  finish: erFærdigtSæt(sc.a, sc.b, isRoyalTiebreak(si, royal)),
                   event: true,
-                  tiebreak: "false",
+                  tiebreak: isRoyalTiebreak(si, royal) ? "matchtiebreak" : "false",
                 };
                 const { eloChanges: chForThis } =
                   beregnEloForKampe(
@@ -2095,11 +2133,11 @@ function CenterMatches({
                 return (
                   <div
                     key={key}
-                    className="flex items-center justify-between gap-2 text-sm"
+                    className={royal ? "flex flex-wrap items-center justify-between gap-2 border-t border-pink-100 py-2 text-sm dark:border-pink-900" : "flex items-center justify-between gap-2 text-sm"}
                   >
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                      <span className="opacity-70 shrink-0">
-                        Sæt {si + 1}
+                    <div className={royal ? "flex w-full flex-wrap items-center gap-2 min-w-0" : "flex items-center gap-2 min-w-0 flex-1"}>
+                      <span className={royal ? "w-full font-semibold text-pink-700 dark:text-pink-300" : "opacity-70 shrink-0"}>
+                        {royal ? royalSetLabel(si) : `Sæt ${si + 1}`}
                       </span>
                       <div className="flex-1 flex items-center gap-2 min-w-0">
                         <span className="truncate basis-0 grow min-w-0">
@@ -2128,23 +2166,27 @@ function CenterMatches({
                       </div>
                     </div>
                     <div className="ml-auto flex min-w-[8rem] shrink-0 items-center justify-end gap-1">
-                      <div className="flex w-[4.75rem] items-center justify-end gap-1">
-                        <ScoreBox
+                      <div className="flex w-[6rem] items-center justify-end gap-1">
+                        <EventScoreBox
+                          multipleDigits={isRoyalTiebreak(si, royal)}
+                          disabled={submittedLocked}
                           value={sc.a}
                           onChange={(val) =>
                             setScore(gi, si, "a", val)
                           }
-                          title="Score A (0–7)"
+                          title={isRoyalTiebreak(si, royal) ? "Matchtiebreak A – til 10 med to overskydende" : "Score A (0–7)"}
                         />
                         <span className="opacity-60">
                           -
                         </span>
-                        <ScoreBox
+                        <EventScoreBox
+                          multipleDigits={isRoyalTiebreak(si, royal)}
+                          disabled={submittedLocked}
                           value={sc.b}
                           onChange={(val) =>
                             setScore(gi, si, "b", val)
                           }
-                          title="Score B (0–7)"
+                          title={isRoyalTiebreak(si, royal) ? "Matchtiebreak B – til 10 med to overskydende" : "Score B (0–7)"}
                         />
                       </div>
                       <span
@@ -2207,6 +2249,7 @@ function EditModal({
             Sted
             <select
               className="mt-1 w-full border rounded px-2 py-1 bg-white dark:bg-zinc-900 border-pink-400/70 dark:border-pink-700"
+              disabled={isRoyalEvent(event.rules_text)}
               value={draft.location ?? "Helsinge"}
               onChange={(e) =>
                 setDraft({
@@ -2235,6 +2278,7 @@ function EditModal({
             <input
               type="time"
               className="mt-1 w-full border rounded px-2 py-1 bg-white dark:bg-zinc-900 border-pink-400/70 dark:border-pink-700"
+              readOnly={isRoyalEvent(event.rules_text)}
               value={(draft.start_time ?? "").slice(0, 5)}
               onChange={(e) =>
                 setDraft({
@@ -2249,6 +2293,7 @@ function EditModal({
             <input
               type="time"
               className="mt-1 w-full border rounded px-2 py-1 bg-white dark:bg-zinc-900 border-pink-400/70 dark:border-pink-700"
+              readOnly={isRoyalEvent(event.rules_text)}
               value={(draft.end_time ?? "").slice(0, 5)}
               onChange={(e) =>
                 setDraft({
@@ -2312,11 +2357,11 @@ function EditModal({
             Fritekst / regler
             <input
               className="mt-1 w-full border rounded px-2 py-1 bg-white dark:bg-zinc-900 border-pink-400/70 dark:border-pink-700"
-              value={draft.rules_text ?? ""}
+              value={parseEventRulesText(draft.rules_text).visibleRulesText}
               onChange={(e) =>
                 setDraft({
                   ...draft,
-                  rules_text: e.target.value,
+                  rules_text: buildEventRulesText(e.target.value, parseEventRulesText(event.rules_text).meta),
                 })
               }
             />
@@ -2351,6 +2396,7 @@ function EditModal({
         <div className="p-3 sm:p-4 border-t border-pink-300 dark:border-pink-800 flex items-center justify-between gap-2">
           <button
             className="px-3 py-1 rounded-md border bg-white hover:bg-pink-50 border-pink-400/70 dark:border-pink-700 dark:bg-zinc-900"
+            disabled={isRoyalEvent(event.rules_text)}
             onClick={onResetEmptySets}
           >
             🧹 Nulstil tomme sæt

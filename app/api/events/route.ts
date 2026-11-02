@@ -1,3 +1,5 @@
+import { isRoyalEvent } from "@/lib/eventConfig";
+import { validateRoyalEvent } from "@/lib/royal";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -19,6 +21,7 @@ export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
     const all = url.searchParams.get("all") === "1";
+    const royalOnly = url.searchParams.get("format") === "royal";
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -42,6 +45,9 @@ export async function GET(req: Request) {
       .select("*")
       .order("date", { ascending: true })
       .order("start_time", { ascending: true });
+
+    // Keep Royal's list and participant-count query limited to its own events.
+    if (royalOnly) query.like("rules_text", '%"format":"royal"%');
 
     if (!all) {
       query.gte("date", today);
@@ -71,6 +77,9 @@ export async function GET(req: Request) {
     return NextResponse.json({ data: enriched }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
     console.error("GET /api/events error", err);
+    if (new URL(req.url).searchParams.get("format") === "royal") {
+      return NextResponse.json({ error: "Kunne ikke hente Royal-dage." }, { status: 500 });
+    }
     return NextResponse.json({ data: [] }, { headers: { "Cache-Control": "no-store" } });
   }
 }
@@ -97,6 +106,11 @@ export async function POST(req: Request) {
     }
     if (!payload?.name || !payload?.max_players) {
       return NextResponse.json({ error: "Mangler navn eller max spillere" }, { status: 400 });
+    }
+
+    if (isRoyalEvent(payload.rules_text)) {
+      const royalError = validateRoyalEvent(payload);
+      if (royalError) return NextResponse.json({ error: royalError }, { status: 400 });
     }
 
     const row = [{ ...payload, created_by: user.id }];

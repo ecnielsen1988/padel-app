@@ -1,5 +1,7 @@
 "use client";
 
+import { royalPairingComplete } from "@/lib/royal";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -43,6 +45,7 @@ type EventResultRow = {
   holdA2: string | null;
   holdB1: string | null;
   holdB2: string | null;
+  tiebreak?: boolean | null;
   scoreA: number | null;
   scoreB: number | null;
 };
@@ -60,6 +63,7 @@ type EventSet = {
   holda2: string;
   holdb1: string;
   holdb2: string;
+  tiebreak?: boolean;
   scoreA: number;
   scoreB: number;
 };
@@ -154,6 +158,7 @@ function mapEventRowsToSets(rows: EventResultRow[], eventDate: string): EventSet
     holda2: r.holdA2 ?? "",
     holdb1: r.holdB1 ?? "",
     holdb2: r.holdB2 ?? "",
+    tiebreak: !!r.tiebreak,
     scoreA: Number(r.scoreA ?? 0),
     scoreB: Number(r.scoreB ?? 0),
   }));
@@ -900,12 +905,13 @@ export default function StartSide() {
                             onClick={() => void addExtraSet(sets)}
                             disabled={
                               scoreBusy ||
-                              (sets[sets.length - 1]?.scoreA === 0 &&
-                                sets[sets.length - 1]?.scoreB === 0)
+                              (sets.some(row => row.tiebreak)
+                                ? !royalPairingComplete(sets.slice(-3).map(row => ({ a: row.scoreA, b: row.scoreB })))
+                                : sets[sets.length - 1]?.scoreA === 0 && sets[sets.length - 1]?.scoreB === 0)
                             }
                             className="inline-flex items-center justify-center rounded-full border-2 border-emerald-500 bg-white px-3 py-1.5 text-sm font-semibold text-emerald-700 shadow transition hover:bg-emerald-50"
                           >
-                            + Tilføj sæt
+                            {sets.some(row => row.tiebreak) ? "+ Næste makkerkombination" : "+ Tilføj sæt"}
                           </button>
                           <Link
                             href="/kommende"
@@ -1131,7 +1137,7 @@ function StartsideScoreEntryCard({
   }, [row.id, row.scoreA, row.scoreB]);
 
   function sanitize(value: string) {
-    const trimmed = value.replace(/\D/g, "").slice(0, 1);
+    const trimmed = value.replace(/\D/g, "").slice(0, row.tiebreak ? 6 : 1);
     return trimmed === "" ? "0" : trimmed;
   }
 
@@ -1153,7 +1159,7 @@ function StartsideScoreEntryCard({
     <div className="rounded-[18px] bg-[#fbfbfc] p-4 shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
       <div className="grid grid-cols-[1fr_auto] items-start gap-3">
         <div className="min-w-0">
-          <p className="text-sm font-extrabold text-[#1f2430]">Sæt {row.saet_nr}</p>
+          <p className="text-sm font-extrabold text-[#1f2430]">{row.tiebreak ? "Matchtiebreak (ved 1–1)" : `Sæt ${row.saet_nr}`}</p>
           <p className="mt-1 text-xs text-[#838999]">
             🏟 {row.bane} · ⏱ {formatTime(row.starttid)}–{formatTime(row.sluttid)}
           </p>

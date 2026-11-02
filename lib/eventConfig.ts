@@ -13,7 +13,7 @@ export type EventSubmissionRange = {
 };
 
 export type EventMeta = {
-  format?: "standard" | "partner";
+  format?: "standard" | "partner" | "royal";
   partnerTeams?: PartnerTeamMeta[];
   submissionRange?: EventSubmissionRange | null;
   playerOrder?: string[];
@@ -92,4 +92,8 @@ export function getEventAdminHref(
   rulesText: string | null | undefined
 ) {
   return isPartnerEvent(rulesText) ? `/makkerevent/${id}` : `/event/${id}`;
+}
+
+export function isRoyalEvent(raw: string | null | undefined) {
+  return parseEventRulesText(raw).meta.format === "royal";
 }

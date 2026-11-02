@@ -193,7 +193,8 @@ export default function AdminEventPage() {
       <header className="flex items-center justify-between mb-6">
         <h1 className="text-3xl font-bold">📅 Admin · Event</h1>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Link href="/admin/event/royal" className="inline-flex items-center gap-2 rounded-xl bg-pink-600 px-4 py-2.5 font-semibold text-white shadow hover:bg-pink-700">👑 Padel Royal</Link>
           <Link
             href="/lavevent"
             className="inline-flex items-center gap-2 rounded-xl bg-pink-600 px-4 py-2.5 font-semibold text-white shadow hover:bg-pink-700"

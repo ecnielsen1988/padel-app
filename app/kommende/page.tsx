@@ -1,4 +1,6 @@
 'use client'
+
+import { royalPairingComplete } from '@/lib/royal'
 export const dynamic = 'force-dynamic'
 
 import { useEffect, useMemo, useState } from 'react'
@@ -56,6 +58,7 @@ type EventSet = {
   holda2: string
   holdb1: string
   holdb2: string
+  tiebreak?: boolean
   scoreA: number
   scoreB: number
 }
@@ -83,6 +86,7 @@ function mapEventRowsToSets(rows: EventResultRow[], eventDate: string): EventSet
     holda2: r.holdA2 ?? '',
     holdb1: r.holdB1 ?? '',
     holdb2: r.holdB2 ?? '',
+    tiebreak: !!r.tiebreak,
     scoreA: Number(r.scoreA ?? 0),
     scoreB: Number(r.scoreB ?? 0),
   }))
@@ -429,6 +433,7 @@ export default function KommendeKampePage() {
               <h1 className="mt-1 text-2xl font-black tracking-tight">
                 Kommende Events
               </h1>
+              <Link href="/royal" className="mt-2 inline-block text-sm font-semibold underline">👑 Rangliste Padel Royal · Mandag 18–20</Link>
             </div>
 
             <Link
@@ -779,12 +784,13 @@ export default function KommendeKampePage() {
                 disabled={
                   scoreBusy ||
                   scoreRows.length === 0 ||
-                  (scoreRows[scoreRows.length - 1]?.scoreA === 0 &&
-                    scoreRows[scoreRows.length - 1]?.scoreB === 0)
+                  (scoreRows.some(row => row.tiebreak)
+                    ? !royalPairingComplete(scoreRows.slice(-3).map(row => ({ a: row.scoreA, b: row.scoreB })))
+                    : scoreRows[scoreRows.length - 1]?.scoreA === 0 && scoreRows[scoreRows.length - 1]?.scoreB === 0)
                 }
                 className="rounded-full border-2 border-emerald-500 bg-white px-3 py-1.5 text-sm font-semibold text-emerald-700 shadow transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                + Tilføj sæt
+                {scoreRows.some(row => row.tiebreak) ? "+ Næste makkerkombination" : "+ Tilføj sæt"}
               </button>
               <button
                 onClick={lukScore}
@@ -819,7 +825,7 @@ function ScoreEntryCard({
   }, [row.id, row.scoreA, row.scoreB])
 
   function sanitize(value: string) {
-    const trimmed = value.replace(/\D/g, '').slice(0, 1)
+    const trimmed = value.replace(/\D/g, '').slice(0, row.tiebreak ? 6 : 1)
     return trimmed === '' ? '0' : trimmed
   }
 
@@ -827,7 +833,7 @@ function ScoreEntryCard({
     <div className="rounded-[18px] bg-[#fbfbfc] p-4 shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-sm font-extrabold text-[#1f2430]">Sæt {row.saet_nr}</p>
+          <p className="text-sm font-extrabold text-[#1f2430]">{row.tiebreak ? "Matchtiebreak (ved 1–1)" : `Sæt ${row.saet_nr}`}</p>
           <p className="mt-1 text-xs text-[#838999]">
             🏟 {row.bane} · ⏱ {fmt(row.starttid)}–{fmt(row.sluttid)}
           </p>

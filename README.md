@@ -12,6 +12,19 @@ og navnene i `elo_day_state` i én transaktion. Scores og Elo-værdier bevares.
 Navnekollisioner og ændringer siden siden blev indlæst afvises. Den nye
 funktion kræver rigtig login også ved lokal udvikling med login-bypass.
 
+### Rangliste Padel Royal
+
+Royal findes på `/royal` med regler og kommende spilledage. Opret en spilledag
+via **Admin → Rangliste Padel Royal** (`/admin/event/royal`), og tilføj spillere,
+offentliggør program og indberet resultater på den almindelige eventside.
+Formatet gemmes i eventets eksisterende regelmetadata; der kræves ingen databaseændring.
+Royal bruger mandage kl. 18–20 i Helsinge, højst 16 spillere og banerne CC, 1, 2, 3.
+Hver makkerkombination har to almindelige sæt og en valgfri matchtiebreak ved 1–1.
+Knappen **Næste makkerkombination** kan bruges efter 2–0 eller en færdig matchtiebreak.
+Uafsluttede sæt ved kl. 20 indberettes efter de eksisterende eventregler.
+
+Kontrollér Royal-regler og score-API uden databaseadgang med `node scripts/test-royal.mjs`.
+
 First, run the development server:
 
 ```bash

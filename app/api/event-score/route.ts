@@ -5,7 +5,8 @@ export const fetchCache = "force-no-store";
 
 import { NextResponse } from "next/server";
 import { getEventSubmissionState } from "@/lib/eventSubmission";
-import { isPartnerEvent } from "@/lib/eventConfig";
+import { eventRotation, isRoyalTiebreak, royalPairingComplete, validateRoyalScores } from "@/lib/royal";
+import { isPartnerEvent, isRoyalEvent } from "@/lib/eventConfig";
 import { supabaseRoute } from "@/lib/supabaseClient";
 
 const ROTATIONS = [
@@ -104,6 +105,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Kampen blev ikke fundet." }, { status: 404 });
     }
 
+    const royal = isRoyalEvent(eventRow.rules_text);
     const firstRow = groupRows[0];
     const allowed = viewer.isAdmin || canEditMatch(viewer.visningsnavn, firstRow);
     if (!allowed) {
@@ -126,8 +128,19 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Ugyldige scorer." }, { status: 400 });
       }
 
+      if (!groupRows.some((row: any) => row.set_index === setIndex)) {
+        return NextResponse.json({ error: "Sættet blev ikke fundet." }, { status: 404 });
+      }
+      if (royal) {
+        const sets = Array.from({ length: Math.max(...groupRows.map((row: any) => row.set_index)) + 1 }, (_, si) => {
+          const row = groupRows.find((row: any) => row.set_index === si);
+          return si === setIndex ? { a: scoreA, b: scoreB } : { a: row?.scoreA ?? 0, b: row?.scoreB ?? 0 };
+        });
+        const error = validateRoyalScores(sets);
+        if (error) return NextResponse.json({ error }, { status: 400 });
+      }
       const { error } = await (supabase.from("event_result") as any)
-        .update({ scoreA, scoreB })
+        .update({ scoreA, scoreB, ...(royal ? { tiebreak: isRoyalTiebreak(setIndex) } : {}) })
         .eq("event_id", eventId)
         .eq("group_index", groupIndex)
         .eq("set_index", setIndex);
@@ -159,6 +172,27 @@ export async function POST(req: Request) {
           { error: "Kampen mangler spillere og kan ikke udvides endnu." },
           { status: 400 }
         );
+      }
+
+      if (royal) {
+        const lastSets = groupRows.slice(-3).map((row: any) => ({ a: row.scoreA ?? 0, b: row.scoreB ?? 0 }));
+        if (nextSetIndex % 3 !== 0 || !royalPairingComplete(lastSets)) {
+          return NextResponse.json({ error: "Afslut den nuværende makkerkombination først." }, { status: 400 });
+        }
+        const rows = Array.from({ length: 3 }, (_, i) => {
+          const si = nextSetIndex + i;
+          const rot = eventRotation(si, true);
+          return {
+            event_id: eventId, group_index: groupIndex, set_index: si,
+            court_label: firstRow.court_label, start_time: firstRow.start_time, end_time: firstRow.end_time,
+            holdA1: playerOrder[rot[0][0]], holdA2: playerOrder[rot[0][1]],
+            holdB1: playerOrder[rot[1][0]], holdB2: playerOrder[rot[1][1]],
+            scoreA: 0, scoreB: 0, tiebreak: isRoyalTiebreak(si),
+          };
+        });
+        const { error } = await (supabase.from("event_result") as any).upsert(rows, { onConflict: "event_id,group_index,set_index" });
+        if (error) throw error;
+        return NextResponse.json({ ok: true, setIndex: nextSetIndex });
       }
 
       const payload = {
