@@ -11,6 +11,7 @@
 - Beskedsiden og forsiden bruger Realtime med genindlæsning ved fokus og hver
   30. sekund, når siden er synlig. Ældre beskeder kan hentes fra beskedsiden.
 - Notifikationer kan aktiveres, genaktiveres, testes og deaktiveres på denne enhed.
+  Åbn indstillingerne med klokken ved siden af beskeder på forsiden.
   Desktop og Android kræver ikke installation; iPhone/iPad får installationshjælp.
 - Klik på push åbner den relevante samtale, også når en appfane allerede er åben.
 - Logout fra appens to logoutknapper afmelder enhedens abonnement først.

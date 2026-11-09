@@ -1,6 +1,5 @@
 "use client";
 
-import NotificationsCard from "@/app/components/NotificationsCard";
 import { royalPairingComplete } from "@/lib/royal";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -830,6 +829,13 @@ export default function StartSide() {
                 ) : null}
               </Link>
               <Link
+                href="/notifikationer"
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/18 text-lg backdrop-blur"
+                aria-label="Notifikationsindstillinger"
+              >
+                <span aria-hidden="true">🔔</span>
+              </Link>
+              <Link
                 href={`/profil/${encodeURIComponent(bruger.visningsnavn)}`}
                 className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#ffd44d] text-xs font-black text-[#463018]"
                 aria-label="Min profil"
@@ -842,7 +848,6 @@ export default function StartSide() {
 
         <div className="flex-1 overflow-y-auto px-4 pb-28 pt-4 md:px-6">
           <div className="space-y-4">
-            <NotificationsCard />
             <p className="text-sm text-[#6d7280]">
               {soverPaaRanglisten
                 ? "Du er ikke på ranglisten lige nu, "

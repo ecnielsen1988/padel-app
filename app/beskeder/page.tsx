@@ -5,7 +5,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
 import { Message, sendDirectMessage } from '@/lib/messages';
-import NotificationsCard from '@/app/components/NotificationsCard';
 
 type Thread = {
   counterpartId: string;
@@ -383,7 +382,6 @@ export default function BeskederThreadView() {
   return (
     <main className="min-h-screen py-6 sm:py-8 px-4 sm:px-6 md:px-10 bg-white dark:bg-[#1e1e1e] text-gray-900 dark:text-white">
       <div className="mx-auto max-w-5xl">
-        <NotificationsCard />
         {error && <p role="alert" className="mb-4 rounded-xl bg-red-50 p-3 text-red-700">{error}</p>}
         {notice && <p role="status" className="mb-4 rounded-xl bg-amber-50 p-3 text-amber-900">{notice}</p>}
       </div>
