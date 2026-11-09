@@ -2,6 +2,13 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
+### Beskeder og notifikationer
+
+Se [opsætning og test af beskeder](docs/messaging.md). Før ibrugtagning skal
+`database/messaging_security.sql` køres i Supabase, og VAPID-nøgleparret skal
+være sat på hosting. Test sikkerhed og telefonlevering med to rigtige konti.
+Kontroller serverlogik uden eksterne kald med `node scripts/test-messaging.mjs`.
+
 ### Admin: ændring af spillernavne
 
 Kør `database/rename_player.sql` én gang i Supabase SQL Editor, før den nye

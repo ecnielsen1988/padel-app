@@ -1,10 +1,12 @@
 "use client";
 
+import NotificationsCard from "@/app/components/NotificationsCard";
 import { royalPairingComplete } from "@/lib/royal";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { detachDevicePush } from '@/lib/pushClient';
 import { supabase } from "@/lib/supabaseClient";
 import { LoadingState, PageShell } from "../components/ui";
 import {
@@ -477,7 +479,49 @@ export default function StartSide() {
     };
   }, [supabase, router]);
 
+  // Keep the inbox preview current without reloading rankings and events.
+  useEffect(() => {
+    let cancelled = false;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let refreshing = false;
+    let userId: string | null = null;
+    async function refresh() {
+      if (!userId || cancelled || refreshing || document.visibilityState !== 'visible') return;
+      refreshing = true;
+      try {
+        const [unread, latest] = await Promise.all([
+          supabase.from('beskeder').select('*', { count: 'exact', head: true }).eq('recipient_id', userId).is('read_at', null),
+          supabase.from('beskeder').select('*').or(`recipient_id.eq.${userId},sender_id.eq.${userId}`).order('created_at', { ascending: false }).limit(3),
+        ]);
+        if (!cancelled) {
+          if (!unread.error) setUlæsteDM(unread.count ?? 0);
+          if (!latest.error) setLatestMessages((latest.data ?? []) as MessagePreview[]);
+        }
+      } finally { refreshing = false; }
+    }
+    const refreshVisible = () => { void refresh().catch(() => {}); };
+    void supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user || cancelled) return;
+      userId = user.id;
+      channel = supabase.channel(`inbox-preview-${user.id}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'beskeder', filter: `recipient_id=eq.${user.id}` }, refreshVisible)
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'beskeder', filter: `sender_id=eq.${user.id}` }, refreshVisible)
+        .subscribe((status) => { if (status === 'SUBSCRIBED') refreshVisible(); });
+    }).catch(() => {});
+    const timer = window.setInterval(refreshVisible, 30000);
+    window.addEventListener('focus', refreshVisible);
+    document.addEventListener('visibilitychange', refreshVisible);
+    return () => {
+      cancelled = true; window.clearInterval(timer);
+      window.removeEventListener('focus', refreshVisible);
+      document.removeEventListener('visibilitychange', refreshVisible);
+      if (channel) void supabase.removeChannel(channel);
+    };
+  }, []);
+
   const logUd = async () => {
+    try { await detachDevicePush(); }
+    catch { alert('Kunne ikke deaktivere notifikationer før logout. Prøv igen.'); return; }
     await supabase.auth.signOut();
     router.replace("/registrer"); // efter logout ⇒ reglen
   };
@@ -798,6 +842,7 @@ export default function StartSide() {
 
         <div className="flex-1 overflow-y-auto px-4 pb-28 pt-4 md:px-6">
           <div className="space-y-4">
+            <NotificationsCard />
             <p className="text-sm text-[#6d7280]">
               {soverPaaRanglisten
                 ? "Du er ikke på ranglisten lige nu, "

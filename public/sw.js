@@ -1,28 +1,35 @@
-// public/sw.js
 self.addEventListener('install', () => self.skipWaiting());
-self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
+self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
 
-// 👉 Modtag push fra serveren og vis notifikation
-self.addEventListener('push', (e) => {
+function appUrl(value) {
+  try {
+    const url = new URL(value || '/beskeder', self.location.origin);
+    if (url.origin === self.location.origin && ['http:', 'https:'].includes(url.protocol)) return url.href;
+  } catch {}
+  return new URL('/beskeder', self.location.origin).href;
+}
+
+self.addEventListener('push', (event) => {
   let data = {};
-  try { data = e.data?.json() || {}; } catch {}
-  const title = data.title || 'Padel';
-  const options = {
+  try { data = event.data?.json() || {}; } catch {}
+  event.waitUntil(self.registration.showNotification(data.title || 'Padelhuset', {
     body: data.body || '',
-    icon: '/icons/maskable-192.png',
-    badge: '/icons/maskable-192.png',
-    data: { url: data.url || '/' }
-  };
-  e.waitUntil(self.registration.showNotification(title, options));
+    icon: '/Icons/maskable-192.png',
+    badge: '/Icons/maskable-192.png',
+    data: { url: appUrl(data.url) },
+  }));
 });
 
-// Åbn appen ved klik
-self.addEventListener('notificationclick', (e) => {
-  e.notification.close();
-  const url = e.notification.data?.url || '/';
-  e.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
-    const client = list.find(w => 'focus' in w);
-    if (client) return client.focus();
-    return clients.openWindow(url);
-  }));
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = appUrl(event.notification.data?.url);
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const client = windows.find((item) => new URL(item.url).origin === self.location.origin);
+    if (client && 'navigate' in client) {
+      const navigated = await client.navigate(url);
+      if (navigated) return navigated.focus();
+    }
+    return self.clients.openWindow(url);
+  })());
 });

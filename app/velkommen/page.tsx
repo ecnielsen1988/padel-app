@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { detachDevicePush } from '@/lib/pushClient';
 import { supabase } from "../../lib/supabaseClient";
 
 export default function SignupPage() {
@@ -43,6 +44,8 @@ export default function SignupPage() {
   }, [user, router]);
 
   const handleLogout = async () => {
+    try { await detachDevicePush(); }
+    catch { alert('Kunne ikke deaktivere notifikationer før logout. Prøv igen.'); return; }
     await supabase.auth.signOut();
     router.push("/login");
   };

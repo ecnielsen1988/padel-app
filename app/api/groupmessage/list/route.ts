@@ -1,23 +1,15 @@
-// app/api/groupmessage/list/route.ts
-import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { messagingAuth, messagingReply as reply } from '@/lib/messagingAuth';
+import { supabaseServiceRole } from '@/lib/supabaseServiceRole';
 
 export async function GET() {
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_ANON_KEY! // kun læsning; sørg for RLS så kun torsdagsfolk ser dem
-  );
-
-  const { data, error } = await supabase
-    .from("group_messages")
-    .select("*")
-    .eq("audience", "torsdagspadel")
-    .order("created_at", { ascending: false })
-    .limit(50);
-
-  if (error) {
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json({ ok: true, messages: data });
+  try {
+    const access = await messagingAuth();
+    if (access.response) return access.response;
+    const { data: profile, error } = await access.db!.from('profiles').select('rolle, torsdagspadel').eq('id', access.user!.id).maybeSingle();
+    if (error || (!profile?.torsdagspadel && profile?.rolle !== 'admin')) return reply({ error: 'Kun torsdagsspillere og admin har adgang.' }, 403);
+    const { data, error: listError } = await supabaseServiceRole.from('group_messages').select('*')
+      .eq('audience', 'torsdagspadel').order('created_at', { ascending: false }).limit(50);
+    if (listError) return reply({ error: 'Kunne ikke hente fællesbeskeder.' }, 500);
+    return reply({ ok: true, messages: data });
+  } catch { return reply({ error: 'Kunne ikke hente fællesbeskeder.' }, 500); }
 }

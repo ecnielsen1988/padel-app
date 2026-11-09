@@ -1,37 +1,19 @@
-// app/api/groupmessage/send/route.ts
-import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { messagingAdmin, messagingReply as reply } from '@/lib/messagingAuth';
+import { supabaseServiceRole } from '@/lib/supabaseServiceRole';
 
-export async function POST(req: NextRequest) {
-  const { title, body, kind } = (await req.json()) as {
-    title: string;
-    body: string;
-    kind: "weekly" | "monthly" | "custom";
-  };
-
-  if (!title || !body || !kind) {
-    return NextResponse.json({ ok: false, error: "Mangler title/body/kind" }, { status: 400 });
-  }
-
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-
-  // (Valgfrit) hent aktuelt admins navn via dit auth-setup. Her bruger vi "System".
-  const created_by_visningsnavn = "System";
-
-  const { error } = await supabase.from("group_messages").insert({
-    created_by_visningsnavn,
-    audience: "torsdagspadel",
-    kind,
-    title,
-    body, // markdown
-  });
-
-  if (error) {
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
-  }
-  return NextResponse.json({ ok: true });
+export async function POST(req: Request) {
+  try {
+    const access = await messagingAdmin();
+    if (access.response) return access.response;
+    const input = await req.json().catch(() => null);
+    if (!input || typeof input.title !== 'string' || !input.title.trim() || input.title.length > 200 ||
+      typeof input.body !== 'string' || !input.body.trim() || input.body.length > 10000 ||
+      !['weekly', 'monthly', 'custom'].includes(input.kind)) return reply({ error: 'Udfyld titel og besked, og vælg en gyldig type.' }, 400);
+    const { error } = await (supabaseServiceRole.from('group_messages') as any).insert({
+      created_by_visningsnavn: access.profile?.visningsnavn || 'Admin',
+      audience: 'torsdagspadel', kind: input.kind, title: input.title.trim(), body: input.body.trim(),
+    });
+    if (error) return reply({ error: 'Kunne ikke gemme fællesbeskeden.' }, 500);
+    return reply({ ok: true });
+  } catch { return reply({ error: 'Kunne ikke gemme fællesbeskeden.' }, 500); }
 }
-

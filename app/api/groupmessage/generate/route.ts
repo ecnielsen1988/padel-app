@@ -1,3 +1,4 @@
+import { messagingAdmin } from "@/lib/messagingAuth";
 // app/api/groupmessage/generate/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
@@ -34,8 +35,10 @@ async function safeImportElo() {
 
 export async function POST(req: NextRequest) {
   try {
+    const access = await messagingAdmin();
+    if (access.response) return access.response;
     const { kind } = (await req.json()) as { kind: Kind };
-    if (!kind) {
+    if (kind !== "weekly" && kind !== "monthly") {
       return NextResponse.json({ ok: false, error: "Missing kind" }, { status: 400 });
     }
 

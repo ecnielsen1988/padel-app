@@ -5,7 +5,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { PageShell } from '../components/ui';
 import { supabase } from '@/lib/supabaseClient';
-import { notifyUser } from '@/lib/notify';
+import { sendDirectMessage } from '@/lib/messages';
 
 type Spiller = { visningsnavn: string; elo: number; koen: string | null };
 
@@ -419,29 +419,7 @@ function Udfordring({
         return;
       }
 
-      const senderName = ((user.user_metadata as any)?.visningsnavn ?? 'Ukendt spiller')?.toString().trim();
-
-      const row = {
-        sender_id: user.id,
-        sender_visningsnavn: senderName,
-        recipient_id: rec.id,
-        recipient_visningsnavn: rec.visningsnavn,
-        body: body.trim(),
-      };
-
-      const { error: insErr } = await (supabase.from('beskeder') as any).insert(row);
-      if (insErr) throw insErr;
-
-      try {
-        await notifyUser({
-          user_id: rec.id,
-          title: 'Ny udfordring',
-          body: `${senderName}: ${body.trim()}`,
-          url: '/beskeder',
-        });
-      } catch (e) {
-        console.warn('Kunne ikke sende push (udfordring):', e);
-      }
+      await sendDirectMessage(rec.id, body.trim());
 
       setOpen(false);
       setBody('');
