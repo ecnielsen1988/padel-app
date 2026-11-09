@@ -153,3 +153,93 @@ handlers.notificationclick({ notification: { close() {}, data: { url: '//evil.ex
 await pending;
 assert.equal(opened[0], 'https://padel.example/beskeder');
 console.log('Messaging checks passed: authentication, validation, sender identity, saved-message/push separation, subscription cleanup, test scope and notification navigation.');
+
+// Program recipients are derived from the saved lineup, never the caller.
+const programCalls = [];
+let savedStatus = 'planned';
+let failPublication = false;
+const programDb = {
+  from(table) {
+    let patch, guarded = false;
+    const query = {
+      select() { return this; },
+      eq() { return this; },
+      or() { guarded = true; return this; },
+      update(value) { patch = value; return this; },
+      async maybeSingle() {
+        if (failPublication) return { data: null, error: { message: 'DB failed' } };
+        if (patch && guarded && savedStatus === 'published') return { data: null, error: null };
+        if (patch?.status) savedStatus = patch.status;
+        return { data: { id: 'event-1', status: savedStatus }, error: null };
+      },
+      async in(_field, names) {
+        assert.deepEqual(new Set(names), new Set(['A', 'B', 'Dobbelt']));
+        return { data: [
+          { id: me, visningsnavn: 'A' }, { id: other, visningsnavn: 'B' },
+          { id: 'duplicate1', visningsnavn: 'Dobbelt' }, { id: 'duplicate2', visningsnavn: 'Dobbelt' },
+        ] };
+      },
+      then(resolve) {
+        assert.ok(['event_result', 'event_sets'].includes(table));
+        const modern = table === 'event_result';
+        resolve({ data: modern
+          ? [{ holdA1: 'A', holdA2: 'B' }, { holdA1: 'A', holdB2: 'Dobbelt' }]
+          : [{ holda1: 'A', holda2: 'B' }, { holda1: 'A', holdb2: 'Dobbelt' }] });
+      },
+    };
+    return query;
+  },
+};
+const serviceOverride = { supabaseServiceRole: programDb };
+const programPush = load('../lib/programPush.ts', {
+  '@/lib/supabaseServiceRole': serviceOverride,
+  '@/lib/pushServer': { sendPush: async (id, payload) => {
+    programCalls.push({ id, url: payload.url });
+    return { status: id === me ? 'sent' : 'no_subscription' };
+  } },
+});
+const programOverrides = {
+  '@/lib/programPush': programPush,
+  '@/lib/supabaseServiceRole': serviceOverride,
+  '@/lib/messagingAuth': auth,
+};
+const eventAdmin = load('../app/api/event-admin/route.ts', programOverrides);
+const publish = (status = 'published') => eventAdmin.PATCH(new Request('http://localhost/api/event-admin', {
+  method: 'PATCH', body: JSON.stringify({ eventId: 'event-1', status }),
+}));
+authenticated = true; admin = false;
+assert.equal((await publish()).status, 403);
+assert.equal(programCalls.length, 0);
+admin = true; failPublication = true;
+assert.equal((await publish()).status, 500);
+assert.equal(programCalls.length, 0);
+failPublication = false;
+assert.deepEqual((await (await publish()).json()).push, { sent: 1, failed: 0 });
+assert.deepEqual(programCalls, [
+  { id: me, url: '/program/event-event-1' },
+  { id: other, url: '/program/event-event-1' },
+]);
+assert.equal((await (await publish()).json()).push, undefined);
+assert.equal((await (await publish('planned')).json()).push, undefined);
+assert.equal(programCalls.length, 2);
+const legacyProgram = load('../app/api/program-notifications/route.ts', programOverrides);
+const notifyLegacy = date => legacyProgram.POST(new Request('http://localhost/api/program-notifications', {
+  method: 'POST', body: JSON.stringify({ date }),
+}));
+assert.equal((await notifyLegacy('2026-02-30')).status, 400);
+assert.equal(programCalls.length, 2);
+assert.deepEqual(await (await notifyLegacy('2026-11-11')).json(), { sent: 1, failed: 0 });
+assert.deepEqual(programCalls.slice(2), [
+  { id: me, url: '/program/2026-11-11' }, { id: other, url: '/program/2026-11-11' },
+]);
+const partnerAdmin = load('../app/api/partner-event-admin/route.ts', {
+  ...programOverrides,
+  '@/lib/eventConfig': load('../lib/eventConfig.ts'),
+});
+const patchPartner = body => partnerAdmin.PATCH(new Request('http://localhost/api/partner-event-admin', {
+  method: 'PATCH', body: JSON.stringify({ eventId: 'event-1', ...body }),
+}));
+assert.deepEqual((await (await patchPartner({ status: 'published' })).json()).push, { sent: 1, failed: 0 });
+assert.equal((await (await patchPartner({ rulesText: 'Nye regler' })).json()).push, undefined);
+assert.equal(programCalls.length, 6);
+console.log('Program push checks passed.');

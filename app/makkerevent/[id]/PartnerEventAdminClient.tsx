@@ -1,5 +1,6 @@
 "use client";
 
+import { programPushSummary } from "@/lib/programNotificationsClient";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -685,7 +686,9 @@ export default function PartnerEventAdminClient({
 
     if (error) {
       alert(`Kunne ikke gemme sættet: ${error.message}`);
+      return false;
     }
+    return true;
   }
 
   function setScore(match: MatchPlan, setIndex: number, side: "a" | "b", raw: string) {
@@ -750,7 +753,7 @@ export default function PartnerEventAdminClient({
       const rounds = roundsPerCourt[match.gi] ?? 3;
       for (let setIndex = 0; setIndex < rounds; setIndex += 1) {
         const sc = scores[scoreKey(match.gi, setIndex)] ?? { a: 0, b: 0 };
-        await upsertEventRow(match, setIndex, sc.a, sc.b);
+        if (!await upsertEventRow(match, setIndex, sc.a, sc.b)) return;
       }
     }
 
@@ -774,7 +777,7 @@ export default function PartnerEventAdminClient({
     }
     alert(
       nextPublished
-        ? "Program publiceret og klar til spiller-input."
+        ? "Program publiceret og klar til spiller-input." + programPushSummary(json.push)
         : "Event sat tilbage til planned."
     );
   }

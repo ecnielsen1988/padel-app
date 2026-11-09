@@ -18,6 +18,10 @@
 - Det tidligere åbne push-API kræver admin. Test-API kan kun sende til den
   indloggede bruger. De gamle gruppebesked-API'er kræver også relevant adgang.
 
+- Ved udgivelse af et eventprogram eller et ugeprogram sendes push til spillerne
+  i det gemte program. Hver spiller tælles kun én gang, selv om de spiller flere
+  sæt. Linket viser spillerens egne kampe. En pushfejl ændrer ikke udgivelsen.
+
 ## Ibrugtagning
 
 1. Kør `database/messaging_security.sql` i Supabase SQL Editor.

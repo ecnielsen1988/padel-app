@@ -1,5 +1,6 @@
 "use client";
 
+import { programPushSummary } from "@/lib/programNotificationsClient";
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
@@ -1260,7 +1261,7 @@ useEffect(() => {
       }
 
       if (next) {
-        alert("Program publiceret og gemt i event_result ✔️");
+        alert("Program publiceret og gemt i event_result ✔️" + programPushSummary(json.push));
       } else {
         alert("Event sat tilbage til planned.");
       }

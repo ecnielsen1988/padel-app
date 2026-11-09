@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { beregnEloForKampe } from '@/lib/beregnElo';
-import { notifyUser } from '@/lib/notify';
+import { legacyProgramPushSummary } from '@/lib/programNotificationsClient';
 
 // ================== Typer ==================
 type Slot = { id: number; label: string; start: string; end: string };
@@ -561,47 +561,23 @@ export default function SundaysPage() {
       })
     );
 
-    await (supabase.from('event_sets') as any).delete().eq('event_dato', eventDatoISO);
+    if (!rows.length) {
+      alert('Ingen kampe at publicere.');
+      return;
+    }
+    const { error: deleteError } = await (supabase.from('event_sets') as any).delete().eq('event_dato', eventDatoISO);
+    if (deleteError) {
+      alert('❌ Kunne ikke publicere planen: ' + deleteError.message);
+      return;
+    }
 
     const { error } = await (supabase.from('event_sets') as any).insert(rows);
     if (error) {
       alert('❌ Kunne ikke publicere planen: ' + error.message);
-    } else {
-      alert('📢 Plan publiceret – spillerne kan nu se deres kampe!');
-
-      try {
-        const { data: auth } = await supabase.auth.getUser();
-        const me = auth?.user;
-        if (me) {
-          const { data: prof } = await supabase
-            .from('profiles')
-            .select('visningsnavn')
-            .eq('id', me.id)
-            .maybeSingle<ProfileNameRow>();
-
-          const myName = (prof?.visningsnavn || '').trim();
-
-          const participants = Array.from(
-            new Set(
-              kampe.flatMap((k) =>
-                k.sæt.flatMap((s) => [s.holdA1, s.holdA2, s.holdB1, s.holdB2])
-              )
-            )
-          );
-
-          if (myName && participants.includes(myName)) {
-            await notifyUser({
-              user_id: me.id,
-              title: '📢 Dine kampe er klar',
-              body: `Planen for ${new Date(eventDatoISO + 'T00:00:00').toLocaleDateString('da-DK')} er publiceret.`,
-              url: `/event?date=${encodeURIComponent(eventDatoISO)}`,
-            });
-          }
-        }
-      } catch (e) {
-        console.error('notifyUser error', e);
-      }
+      return;
     }
+    const pushSummary = await legacyProgramPushSummary(eventDatoISO);
+    alert('📢 Plan publiceret – spillerne kan nu se deres kampe!' + pushSummary);
   };
 
   const sendEventResultater = async () => {

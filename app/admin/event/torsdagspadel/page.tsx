@@ -1,5 +1,6 @@
 "use client";
 
+import { legacyProgramPushSummary } from '@/lib/programNotificationsClient';
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { beregnEloForKampe } from "@/lib/beregnElo";
@@ -444,12 +445,14 @@ export default function EventLayout() {
         }))
       );
 
-      await (supabase.from("event_sets") as any).delete().eq("event_dato", eventDato);
+      if (!rows.length) throw new Error("Ingen kampe at publicere.");
+      const { error: deleteError } = await (supabase.from("event_sets") as any).delete().eq("event_dato", eventDato);
+      if (deleteError) throw deleteError;
 
       const { error } = await (supabase.from("event_sets") as any).insert(rows);
       if (error) throw error;
 
-      alert("📢 Eventplan publiceret – spillerne kan nu se deres kampe!");
+      alert("📢 Eventplan publiceret – spillerne kan nu se deres kampe!" + await legacyProgramPushSummary(eventDato));
     } catch (e: any) {
       alert("❌ Kunne ikke publicere planen: " + (e?.message ?? "ukendt fejl"));
     } finally {

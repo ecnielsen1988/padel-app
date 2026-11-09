@@ -1,5 +1,6 @@
 "use client";
 
+import { programPushSummary } from "@/lib/programNotificationsClient";
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
@@ -1168,7 +1169,7 @@ useEffect(() => {
         setEvent(json.data as EventRow);
       }
 
-      alert(next ? "Program publiceret og gemt i event_result ✔️" : "Event sat tilbage til planned.");
+      alert(next ? "Program publiceret og gemt i event_result ✔️" + programPushSummary(json.push) : "Event sat tilbage til planned.");
     } catch (e: any) {
       console.error(e);
       alert("Kunne ikke publicere programmet: " + (e?.message ?? e));
