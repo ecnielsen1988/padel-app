@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 
+const testCompletedKey = 'padel.push-test-completed';
+
 function decodeKey(key: string) {
   const raw = atob(key.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - key.length % 4) % 4));
   return Uint8Array.from(raw, (c) => c.charCodeAt(0));
@@ -19,6 +21,12 @@ export default function NotificationsCard() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [testCompleted, setTestCompleted] = useState(false);
+
+  useEffect(() => {
+    try { setTestCompleted(localStorage.getItem(testCompletedKey) === 'true'); }
+    catch { /* The test still works if browser storage is unavailable. */ }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -85,6 +93,8 @@ export default function NotificationsCard() {
         user_id: user.id, endpoint: sub.endpoint, p256dh: keys.p256dh, auth: keys.auth,
       }, { onConflict: 'endpoint' });
       if (error) throw new Error('Kunne ikke gemme notifikationer. Prøv igen.');
+      setTestCompleted(false);
+      try { localStorage.removeItem(testCompletedKey); } catch { /* Storage is optional. */ }
       setRegistered(true); setNotice('Notifikationer er aktiveret på denne enhed. Prøv testknappen.');
     } catch (error) { setError(error instanceof Error ? error.message : 'Kunne ikke aktivere notifikationer.'); }
     finally { setBusy(false); }
@@ -115,6 +125,8 @@ export default function NotificationsCard() {
       const response = await fetch('/api/push/test', { method: 'POST' });
       const result = await response.json();
       if (!response.ok || !result.ok) throw new Error(result.error || 'Testen kunne ikke sendes.');
+      setTestCompleted(true);
+      try { localStorage.setItem(testCompletedKey, 'true'); } catch { /* Storage is optional. */ }
       setNotice('Testen er sendt. Kontrollér, at notifikationen vises på din enhed.');
     } catch (error) { setError(error instanceof Error ? error.message : 'Testen kunne ikke sendes.'); }
     finally { setBusy(false); }
@@ -133,7 +145,7 @@ export default function NotificationsCard() {
       {!loading && supported && !needsInstall && permission !== 'denied' && configured && (
         <div className="mt-3 flex flex-wrap gap-2">
           {registered ? <>
-            <button disabled={busy} onClick={test} className="rounded-xl bg-pink-600 px-3 py-2 text-sm text-white disabled:opacity-50">Send testnotifikation</button>
+            {!testCompleted && <button disabled={busy} onClick={test} className="rounded-xl bg-pink-600 px-3 py-2 text-sm text-white disabled:opacity-50">Send testnotifikation</button>}
             <button disabled={busy} onClick={disable} className="rounded-xl border border-pink-300 px-3 py-2 text-sm disabled:opacity-50">Deaktivér på denne enhed</button>
           </> : <button disabled={busy} onClick={enable} className="rounded-xl bg-pink-600 px-3 py-2 text-sm text-white disabled:opacity-50">{busy ? 'Aktiverer…' : 'Aktivér notifikationer'}</button>}
         </div>
