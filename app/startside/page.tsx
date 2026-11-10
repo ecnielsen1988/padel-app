@@ -637,10 +637,10 @@ export default function StartSide() {
 
   const primaryActions = [
     {
-      href: "/newscore",
-      icon: "➕",
-      title: "Indtast resultat",
-      subtitle: "Registrer nye sæt",
+      href: "/kampe",
+      icon: "🎾",
+      title: "Mine kampe",
+      subtitle: "Opret kamp eller indberet resultat",
     },
     {
       href: "/resultater",

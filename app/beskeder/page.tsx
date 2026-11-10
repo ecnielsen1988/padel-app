@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
 import { Message, sendDirectMessage } from '@/lib/messages';
 
+import { matchRequest, type PlayerMatch } from '@/lib/playerMatches';
 import { InboxView, type Thread } from './InboxView';
 
 type ProfileNameRow = { visningsnavn: string | null };
@@ -194,6 +195,23 @@ export default function BeskederThreadView() {
     };
   }, [meId]);
 
+  const [matchThreads, setMatchThreads] = useState<PlayerMatch[]>([]);
+  useEffect(() => {
+    if (!meId) { setMatchThreads([]); return; }
+    let cancelled = false;
+    const refresh = () => {
+      if (document.visibilityState === 'visible') {
+        void matchRequest<{ matches: PlayerMatch[] }>().then(data => {
+          if (!cancelled) setMatchThreads(data.matches);
+        }).catch(() => {});
+      }
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 20000);
+    window.addEventListener('focus', refresh);
+    return () => { cancelled = true; window.clearInterval(timer); window.removeEventListener('focus', refresh); };
+  }, [meId]);
+
   // Afledte: tråde
   const threads = useMemo<Thread[]>(() => {
     if (!meId) return [];
@@ -371,6 +389,7 @@ export default function BeskederThreadView() {
     <InboxView
       meId={meId}
       threads={threads}
+      matchThreads={matchThreads}
       selectedThread={selectedThread}
       messages={selectedMessages}
       view={view}

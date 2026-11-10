@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useLayoutEffect, useRef, useState } from 'react';
 import type { Message } from '@/lib/messages';
+import { matchDate, type PlayerMatch } from '@/lib/playerMatches';
 
 export type Thread = {
   counterpartId: string;
@@ -45,6 +46,7 @@ const control = 'w-full rounded-xl border border-[#e6dee5] bg-white px-3 py-2.5 
 export function InboxView(props: {
   meId: string;
   threads: Thread[];
+  matchThreads?: PlayerMatch[];
   selectedThread: Thread | null;
   messages: Message[];
   view: 'list' | 'thread';
@@ -124,7 +126,19 @@ export function InboxView(props: {
                     </button>
                   </li>;
                 })}
-              </ul> : <p className="px-5 py-8 text-sm text-[#716b79] dark:text-[#b9b1c3]">{needle ? 'Ingen samtaler matcher din søgning.' : 'Her kommer dine samtaler. Tryk på Ny besked for at skrive til en spiller.'}</p>}
+              </ul> : <p className="px-5 py-8 text-sm text-[#716b79] dark:text-[#b9b1c3]">{needle ? 'Ingen samtaler matcher din søgning.' : props.matchThreads?.length ? 'Ingen private samtaler endnu.' : 'Her kommer dine samtaler. Tryk på Ny besked for at skrive til en spiller.'}</p>}
+              {!!props.matchThreads?.length && <div className="border-t border-[#ece5ef] px-3 py-3 dark:border-white/10">
+                <h2 className="px-2 pb-1 text-xs font-bold uppercase tracking-wide text-[#716b79] dark:text-[#b9b1c3]">Kamptråde</h2>
+                {props.matchThreads.filter(match => match.players.some(player => player.name.toLocaleLowerCase('da-DK').includes(needle)))
+                  .map(match => <Link key={match.id} href={`/kampe/${match.id}#samtale`} className="flex items-center gap-3 rounded-xl p-2 hover:bg-[#f7f3f8] dark:hover:bg-white/5">
+                    <Avatar name="Kamp" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-extrabold">{matchDate(match.date)} · {match.start_time.slice(0,5)}</span>
+                      <span className="block truncate text-sm text-[#716b79] dark:text-[#b9b1c3]">{match.last_message?.body ?? match.players.map(player => player.name).join(', ')}</span>
+                    </span>
+                    {match.unread > 0 && <span aria-label={`${match.unread} ulæste`} className="rounded-full bg-[#bc135d] px-2 py-0.5 text-xs font-bold text-white">{match.unread}</span>}
+                  </Link>)}
+              </div>}
               {props.hasOlder && <button type="button" onClick={props.onLoadOlder} disabled={props.loadingOlder} className="mx-4 mb-4 rounded-lg px-2 py-2 text-sm font-bold text-[#a30e4e] dark:text-pink-300">{props.loadingOlder ? 'Henter…' : 'Hent ældre beskeder'}</button>}
             </div>
           </aside>
@@ -168,7 +182,9 @@ export function InboxView(props: {
   );
 }
 
-function MessageTimeline({ messages, meId, onDelete, visible }: { messages: Message[]; meId: string; onDelete: (message: Message) => void; visible: boolean }) {
+export function MessageTimeline<T extends Pick<Message, 'id' | 'sender_id' | 'body' | 'created_at'>>({ messages, meId, onDelete, visible, senderName }: {
+  messages: T[]; meId: string; onDelete?: (message: T) => void; visible: boolean; senderName?: (id: string) => string;
+}) {
   const scroll = useRef<HTMLDivElement>(null);
   const previous = useRef<{ first?: string; last?: string; height: number } | null>(null);
   const nearBottom = useRef(true);
@@ -201,8 +217,9 @@ function MessageTimeline({ messages, meId, onDelete, visible }: { messages: Mess
           return <div key={message.id}>
             {newDay && <div className="my-3 flex items-center gap-3 text-xs font-bold text-[#716b79] dark:text-[#b9b1c3]"><span className="h-px flex-1 bg-[#e8dfea] dark:bg-white/10" />{dateLabel}<span className="h-px flex-1 bg-[#e8dfea] dark:bg-white/10" /></div>}
             <div className={`flex items-end gap-1 ${mine ? 'justify-end' : 'justify-start'}`}>
-              {mine && <button type="button" onClick={() => onDelete(message)} aria-label="Slet besked for begge" className="mb-1 grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[#716b79] hover:bg-pink-100 hover:text-red-800 dark:text-[#b9b1c3] dark:hover:bg-white/10"><Icon name="trash" className="h-4 w-4" /></button>}
+              {mine && onDelete && <button type="button" onClick={() => onDelete(message)} aria-label="Slet besked for begge" className="mb-1 grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[#716b79] hover:bg-pink-100 hover:text-red-800 dark:text-[#b9b1c3] dark:hover:bg-white/10"><Icon name="trash" className="h-4 w-4" /></button>}
               <div className={`min-w-0 max-w-[85%] rounded-2xl px-3.5 py-2 md:max-w-[75%] ${mine ? 'rounded-br-md bg-[#bc135d] text-white' : 'rounded-bl-md border border-[#e8dfea] bg-white dark:border-white/10 dark:bg-[#2a273e]'}`}>
+                {!mine && senderName && <p className="mb-1 text-xs font-bold">{senderName(message.sender_id)}</p>}
                 <p className="whitespace-pre-wrap text-[15px] leading-relaxed [overflow-wrap:anywhere]">{message.body}</p>
                 <time className={`mt-1 block text-right text-[11px] ${mine ? 'text-pink-100' : 'text-[#716b79] dark:text-[#b9b1c3]'}`} dateTime={message.created_at}>{clock.format(date)}</time>
               </div>
@@ -228,7 +245,7 @@ function SendButton({ busy, disabled }: { busy: boolean; disabled: boolean }) {
   return <button type="submit" disabled={busy || disabled} className={primary}><Icon name="send" className="h-4 w-4" />{busy ? 'Sender…' : 'Send'}</button>;
 }
 
-function ReplyComposer({ text, onChange, onSend }: { text: string; onChange: (value: string) => void; onSend: (value: string) => Promise<boolean> }) {
+export function ReplyComposer({ text, onChange, onSend }: { text: string; onChange: (value: string) => void; onSend: (value: string) => Promise<boolean> }) {
   const [busy, setBusy] = useState(false);
   const sending = useRef(false);
   return <form className="flex shrink-0 items-start gap-2 border-t border-[#ece5ef] px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] dark:border-white/10 md:px-6" onSubmit={async event => {

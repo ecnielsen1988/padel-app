@@ -67,34 +67,30 @@ Supabase. Koden alene bekræfter ikke leveringen på en telefon.
 
 Automatiske checks uden eksterne kald: `node scripts/test-messaging.mjs`.
 
-## Næste trin: fælles samtaler og udfordringer
+## Næste trin: makkerliga
 
-Den eksisterende `beskeder`-tabel har én modtager pr. række. Den er fortsat
-kilden til private beskeder i denne ændring. Firepersoners samtaler og
-kampaftaler er **ikke implementeret endnu**. Undgå at lave fire kopier af en
-privat besked for at simulere en fælles samtale.
-
-Næste databaseændring bør indføre:
-
-- `conversations`: id, type (private/challenge/league_match), oprettelsestid.
-- `conversation_participants`: conversation_id, user_id, invitation_status,
-  last_read_at. Hver deltagers læst-status gemmes separat.
-- `conversation_messages`: id, conversation_id, sender_id, body, created_at.
-- `challenges`: conversation_id, de fire spillere/hold, kampstatus og den
-  bekræftede aftale om tidspunkt og sted. Deltageraccept gemmes separat.
-
-Alle fire inviteres til samme samtale. Kun deltagere får adgang og push.
-Invitationer skal accepteres, før kampen kan markeres aftalt. Kampdetaljer
-og status gemmes separat fra fritekst; kampresultater bruger den eksisterende
-indberetning. Pushfunktionen kan genbruges fra serveren for hver deltager.
-
-Private beskeder skal migreres til den nye struktur i en transaktion med
-stabile gamle besked-id'er, så historikken og læst-status bevares. Først efter
-verificeret migration skiftes brugerfladen; undgå permanent parallel skrivning
-til begge modeller. Serverens afsenderkontrol og fejlkontrakt kan genbruges.
+Private beskeder bruger fortsat `beskeder`. En spilleroprettet kamp har sin
+egen tråd med fire deltagere, adskilt fra kampens aftale og resultater.
 
 Almindelige udfordringskampe følger almindelige pointregler. Makkerligaen
 kører i tre måneder med herre, dame og mix, som udgangspunkt seks hold pr.
 pulje. Seedning fastlåses ved fristen ud fra parrets samlede ranglistepoint.
 Makkerligaens resultater skal give dobbelte ranglistepoint som events.
 Pointændringen og makkerligaen indgår ikke i denne leverance.
+
+## Spilleroprettede kampe
+
+Før udrulning: kør `database/player_matches.sql` i Supabase SQL Editor. Filen
+opretter kamp, gruppetråd og læsestatus. Adgang håndhæves i serverens databasefunktioner.
+Efter udrulning er **Mine kampe** indgangen på forsiden. Det gamle resultatflow
+findes stadig under **Indberet en spillet kamp uden aftale**.
+
+Kampen og trådens første besked gemmes sammen. Alle fire deltagere kan ændre
+dato, tid, sted og bane, indtil resultatet er indberettet. Aftaleændringer
+noteres i tråden. Resultatet bruger de fire deltagere fra aftalen; der kan
+vælges makker pr. sæt, hvis spillerne har roteret. Det tæller som en almindelig
+ranglistekamp. En gentaget indberetning af samme aftale gemmer ikke flere sæt.
+
+Test databasen lokalt med `node scripts/test-player-matches.mjs` og PGlite;
+se kommandoerne øverst i testfilen. Test API og push med
+`node scripts/test-messaging.mjs`.
