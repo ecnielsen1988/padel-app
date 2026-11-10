@@ -156,13 +156,23 @@ console.log('Messaging checks passed: authentication, validation, sender identit
 
 // Program recipients are derived from the saved lineup, never the caller.
 const programCalls = [];
+const thursday = load('../lib/thursdayProgram.ts');
+let storedThursdaySets = null;
+let failThursdaySave = false;
 let savedStatus = 'planned';
 let failPublication = false;
 const programDb = {
   from(table) {
-    let patch, guarded = false;
+    let patch, guarded = false, projection;
     const query = {
-      select() { return this; },
+      select(value) { projection = value; return this; },
+      order() { return this; },
+      async upsert(rows) {
+        assert.equal(table, "event_result");
+        if (failThursdaySave) return { error: { message: "Write failed" } };
+        storedThursdaySets = rows;
+        return { error: null };
+      },
       eq() { return this; },
       or() { guarded = true; return this; },
       update(value) { patch = value; return this; },
@@ -182,6 +192,7 @@ const programDb = {
       then(resolve) {
         assert.ok(['event_result', 'event_sets'].includes(table));
         const modern = table === 'event_result';
+        if (modern && projection === '*') return resolve({ data: storedThursdaySets ?? [] });
         resolve({ data: modern
           ? [{ holdA1: 'A', holdA2: 'B' }, { holdA1: 'A', holdB2: 'Dobbelt' }]
           : [{ holda1: 'A', holda2: 'B' }, { holda1: 'A', holdb2: 'Dobbelt' }] });
@@ -200,6 +211,7 @@ const programPush = load('../lib/programPush.ts', {
 });
 const programOverrides = {
   '@/lib/programPush': programPush,
+  '@/lib/thursdayProgram': thursday,
   '@/lib/supabaseServiceRole': serviceOverride,
   '@/lib/messagingAuth': auth,
 };
@@ -242,4 +254,27 @@ const patchPartner = body => partnerAdmin.PATCH(new Request('http://localhost/ap
 assert.deepEqual((await (await patchPartner({ status: 'published' })).json()).push, { sent: 1, failed: 0 });
 assert.equal((await (await patchPartner({ rulesText: 'Nye regler' })).json()).push, undefined);
 assert.equal(programCalls.length, 6);
-console.log('Program push checks passed.');
+// Thursday publication must store the program before changing status, and
+// cannot replace the saved program on an already published event.
+const publishThursday = rows => eventAdmin.PATCH(new Request('http://localhost/api/event-admin', {
+  method: 'PATCH', body: JSON.stringify({ eventId: 'event-1', status: 'published', thursdayProgram: rows }),
+}));
+const thursdayDraft = { event_id: 'other-event', group_index: 0, set_index: 0,
+  start_time: '17:00', end_time: '18:30', court_label: 'CC', holdA1: 'A', holdA2: 'B', holdB1: 'C', holdB2: 'D' };
+savedStatus = 'planned';
+assert.equal((await publishThursday([{ ...thursdayDraft, end_time: '18:3' }])).status, 400);
+assert.equal(storedThursdaySets, null);
+failThursdaySave = true;
+assert.equal((await publishThursday([thursdayDraft])).status, 500);
+assert.equal(savedStatus, 'planned');
+assert.equal(programCalls.length, 6);
+failThursdaySave = false;
+const publishedThursday = await (await publishThursday([thursdayDraft])).json();
+assert.equal(publishedThursday.data.status, 'published');
+assert.equal(publishedThursday.program[0].event_id, 'event-1');
+assert.equal(publishedThursday.program[0].end_time, '18:30:00');
+assert.deepEqual(thursday.thursdaySetNames(thursday.savedThursdayGroups(publishedThursday.program)[0].sets[0]), ['A', 'B', 'C', 'D']);
+const reopened = await (await publishThursday([{ ...thursdayDraft, end_time: '18:03', holdA1: 'Other' }])).json();
+assert.deepEqual(reopened.program, publishedThursday.program);
+assert.equal(programCalls.length, 8);
+console.log('Program push and Thursday publication checks passed.');

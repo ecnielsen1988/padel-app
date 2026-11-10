@@ -1,7 +1,9 @@
 "use client";
 
+import ProgramTimeInput from "@/app/components/ProgramTimeInput";
+import { queueThursdayWrite, savedThursdayGroups, thursdaySetNames, waitForThursdayWrites } from "@/lib/thursdayProgram";
 import { programPushSummary } from "@/lib/programNotificationsClient";
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { Fragment, useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { beregnEloForKampe } from "@/lib/beregnElo";
@@ -46,10 +48,7 @@ type EventResultInsert = {
   tiebreak: boolean;
 };
 
-type EventResultMeta = Pick<
-  EventResultInsert,
-  "group_index" | "court_label" | "start_time" | "end_time"
-> & { updated_at: string };
+
 
 type NewResultInsert = {
   date: string;
@@ -118,6 +117,23 @@ const ROTATIONS = [
   ],
 ] as const;
 
+type ThursdayMatch = {
+  gi: number;
+  court: string | number;
+  players: EventPlayer[];
+  saved?: ReturnType<typeof savedThursdayGroups>[number];
+};
+
+function playersForSet(match: ThursdayMatch | undefined, setIndex: number) {
+  if (match?.saved) {
+    const set = match.saved.sets[setIndex];
+    return (set ? thursdaySetNames(set) : [null, null, null, null])
+      .map(name => name ? { visningsnavn: name } : undefined);
+  }
+  const rotation = ROTATIONS[setIndex % ROTATIONS.length];
+  return rotation.flat().map(index => match?.players[index]);
+}
+
 const erFærdigtSæt = (a: number, b: number) => {
   const max = Math.max(a, b),
     min = Math.min(a, b);
@@ -162,42 +178,6 @@ function courtOrderFor(loc: EventRow["location"], groups: number): (string | num
 }
 
 /* ====== DB helpers: event_result ====== */
-async function loadEventResultsToState(
-  eventId: string,
-  setScores: React.Dispatch<React.SetStateAction<Record<string, Score>>>,
-  setRounds: React.Dispatch<React.SetStateAction<Record<number, number>>>
-) {
-  const { data, error } = await supabase
-    .from("event_result")
-    .select("*")
-    .eq("event_id", eventId)
-    .order("group_index")
-    .order("set_index");
-
-  if (error || !data) return;
-
-  const scores: Record<string, Score> = {};
-  const rounds: Record<number, number> = {};
-
-  (data as EventResultInsert[]).forEach((r) => {
-    scores[`${r.group_index}-${r.set_index}`] = {
-      a: r.scoreA ?? 0,
-      b: r.scoreB ?? 0,
-    };
-    rounds[r.group_index] = Math.max(rounds[r.group_index] ?? 0, r.set_index + 1);
-  });
-
-  setScores(scores);
-  setRounds((prev) => {
-    const c = { ...prev };
-    Object.entries(rounds).forEach(([gi, cnt]) => {
-      const g = Number(gi);
-      c[g] = Math.max(Number(cnt), c[g] ?? 3);
-    });
-    return c;
-  });
-}
-
 function buildPlannedEventResultRows(params: {
   eventId: string;
   plan: Array<{ gi: number; court: string | number; players: { visningsnavn?: string | null }[] }>;
@@ -241,26 +221,6 @@ function buildPlannedEventResultRows(params: {
   return rows;
 }
 
-async function ensureProgramPersistedToEventResult(params: {
-  eventId: string;
-  plan: Array<{ gi: number; court: string | number; players: { visningsnavn?: string | null }[] }>;
-  roundsPerCourt: Record<number, number>;
-  courtsOrder: (string | number)[];
-  matchTimes: Record<number, { start: string; end: string }>;
-}) {
-  const rows = buildPlannedEventResultRows(params);
-  if (!rows.length) return;
-
-  const CHUNK = 500;
-  for (let i = 0; i < rows.length; i += CHUNK) {
-    const slice = rows.slice(i, i + CHUNK);
-    const { error } = await (supabase.from("event_result") as any).upsert(slice, {
-      onConflict: "event_id,group_index,set_index",
-    });
-    if (error) throw error;
-  }
-}
-
 async function upsertEventResultRow(p: {
   eventId: string;
   gi: number;
@@ -276,34 +236,35 @@ async function upsertEventResultRow(p: {
   scoreB?: number;
   tiebreak?: boolean;
 }) {
-  const { data: auth } = await supabase.auth.getUser();
-  const updated_by: string | null = auth?.user?.id ?? null;
-
-  const payload: EventResultInsert = {
+  const payload = {
     event_id: p.eventId,
     group_index: p.gi,
     set_index: p.si,
-    court_label: p.courtLabel != null ? String(p.courtLabel) : null,
-    start_time: hhmmToDb(p.start),
-    end_time: hhmmToDb(p.end),
-    holdA1: p.a1 ?? null,
-    holdA2: p.a2 ?? null,
-    holdB1: p.b1 ?? null,
-    holdB2: p.b2 ?? null,
-    scoreA: p.scoreA ?? 0,
-    scoreB: p.scoreB ?? 0,
-    tiebreak: p.tiebreak ?? false,
+    ...(p.courtLabel !== undefined ? { court_label: String(p.courtLabel) } : {}),
+    ...(p.start !== undefined ? { start_time: hhmmToDb(p.start) } : {}),
+    ...(p.end !== undefined ? { end_time: hhmmToDb(p.end) } : {}),
+    ...(p.a1 !== undefined ? { holdA1: p.a1 || null } : {}),
+    ...(p.a2 !== undefined ? { holdA2: p.a2 || null } : {}),
+    ...(p.b1 !== undefined ? { holdB1: p.b1 || null } : {}),
+    ...(p.b2 !== undefined ? { holdB2: p.b2 || null } : {}),
+    ...(p.scoreA !== undefined ? { scoreA: p.scoreA } : {}),
+    ...(p.scoreB !== undefined ? { scoreB: p.scoreB } : {}),
+    ...(p.tiebreak !== undefined ? { tiebreak: p.tiebreak } : {}),
   };
 
-  // updated_by er ikke i payload, men beholdt som evt. fremtidig audit.
-  const eventResultTbl = supabase.from("event_result") as any;
-  const { error } = await eventResultTbl.upsert([payload], {
-    onConflict: "event_id,group_index,set_index",
-  });
-
-  if (error) {
-    console.error("upsertEventResultRow", error);
-    alert("Kunne ikke gemme sæt i event_result: " + error.message);
+  try {
+    await queueThursdayWrite(p.eventId, async () => {
+      const { data: current, error: statusError } = await supabase.from("events")
+        .select("status").eq("id", p.eventId).maybeSingle<{ status: string }>();
+      if (statusError || !current) throw new Error("Kunne ikke kontrollere programmets status.");
+      if (current.status === "published") throw new Error("Programmet er låst. Genindlæs siden før du ændrer det.");
+      const { error } = await (supabase.from("event_result") as any).upsert([payload], {
+        onConflict: "event_id,group_index,set_index",
+      });
+      if (error) throw error;
+    });
+  } catch (error: any) {
+    alert("Kunne ikke gemme sættet: " + error.message);
   }
 }
 
@@ -382,6 +343,11 @@ export default function EventAdminTorsdagClient({ eventId }: { eventId: string }
   >([]);
 
   const locked = event?.status === "published";
+  const [savedRows, setSavedRows] = useState<EventResultInsert[]>([]);
+  const [programLoading, setProgramLoading] = useState(true);
+  const [programLoadError, setProgramLoadError] = useState("");
+  const [publishing, setPublishing] = useState(false);
+  const savedGroups = useMemo(() => savedThursdayGroups(savedRows), [savedRows]);
 
   
 
@@ -413,7 +379,7 @@ useEffect(() => {
 
   const persistEventMeta = useCallback(
     async (metaPatch: { playerOrder?: string[]; matchOrder?: number[] }) => {
-      if (!event?.id) return;
+      if (!event?.id || locked || publishing) return;
 
       const parsed = parseEventRulesText(event.rules_text);
       const nextRulesText = buildEventRulesText(parsed.visibleRulesText, {
@@ -426,6 +392,7 @@ useEffect(() => {
         .from("events")
         .update({ rules_text: nextRulesText })
         .eq("id", event.id)
+        .or("status.is.null,status.neq.published")
         .select("*")
         .maybeSingle();
 
@@ -434,9 +401,9 @@ useEffect(() => {
         return;
       }
 
-      if (data) setEvent(data as EventRow);
+      if (data) setEvent(prev => prev?.id === event.id ? { ...prev, rules_text: data.rules_text } : prev);
     },
-    [event]
+    [event, locked, publishing]
   );
 
 
@@ -462,24 +429,14 @@ useEffect(() => {
 
   /* --- Load players (event_players) --- */
   useEffect(() => {
-    if (!eventId) return;
+    if (!event?.id) return;
     void loadPlayers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [eventId, eloMap]);
+  }, [event?.id, eloMap]);
 
   async function loadPlayers() {
   setLoadingPlayers(true);
   try {
-    // 1) Slå aktive profile-IDs op
-    const { data: act, error: actErr } = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("active", true);
-
-    if (actErr) console.warn("profiles active error:", actErr.message);
-    const activeIds = new Set((act ?? []).map((r: any) => r.id));
-
-    // 2) Hent event_players og filtrér på aktive IDs
     const { data: ep, error: epErr } = await supabase
       .from("event_players")
       .select("user_id, visningsnavn")
@@ -489,7 +446,6 @@ useEffect(() => {
     if (epErr) console.warn("event_players error:", epErr.message);
 
     const filtered = (ep ?? [])
-      .filter((x: any) => activeIds.has(x.user_id))
       .map((x: any) => {
         const vn = (x.visningsnavn || "").trim();
         return {
@@ -526,15 +482,33 @@ useEffect(() => {
 
 
 
-  /* --- DB scorer/sæt ved event skift --- */
   useEffect(() => {
     if (!eventId) return;
-    setCourtsOrder([]);
-    setMatchTimes({});
-    setScores({});
-    setRoundsPerCourt({});
-    setGroupOrder([]);
-    void loadEventResultsToState(eventId, setScores, setRoundsPerCourt);
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { data, error } = await supabase.from("event_result").select("*")
+          .eq("event_id", eventId).order("group_index").order("set_index");
+        if (error) throw error;
+        if (cancelled) return;
+        const rows = (data ?? []) as EventResultInsert[];
+        const saved = savedThursdayGroups(rows);
+        setSavedRows(rows);
+        setScores(Object.fromEntries(rows.map(row => [
+          `${row.group_index}-${row.set_index}`, { a: row.scoreA ?? 0, b: row.scoreB ?? 0 },
+        ])));
+        setRoundsPerCourt(Object.fromEntries(saved.map(group => [group.gi, group.rounds])));
+        setMatchTimes(Object.fromEntries(saved.map(group => [group.gi, { start: group.start, end: group.end }])));
+        const courts: (string | number)[] = [];
+        saved.forEach(group => { courts[group.gi] = group.court; });
+        setCourtsOrder(courts);
+      } catch {
+        if (!cancelled) setProgramLoadError("Det gemte program kunne ikke hentes. Genindlæs siden og prøv igen.");
+      } finally {
+        if (!cancelled) setProgramLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
   }, [eventId]);
 
   /* --- hjælpefindere --- */
@@ -546,7 +520,7 @@ useEffect(() => {
   /* --- spillere add/remove/swap (respekter locked) --- */
   async function addPlayer(uid: string, nameFromList?: string | null) {
     if (!eventId) return;
-    if (locked) {
+    if (locked || publishing) {
       alert("Programmet er offentliggjort – spillere kan ikke ændres.");
       return;
     }
@@ -573,7 +547,7 @@ useEffect(() => {
 
   async function removePlayer(uid: string) {
     if (!eventId) return;
-    if (locked) {
+    if (locked || publishing) {
       alert("Programmet er offentliggjort – spillere kan ikke ændres.");
       return;
     }
@@ -588,7 +562,7 @@ useEffect(() => {
 
   async function replacePlayerAt(index: number, np: Profile & { elo?: number }) {
     if (!eventId) return;
-    if (locked) {
+    if (locked || publishing) {
       alert("Programmet er offentliggjort – spillere kan ikke ændres.");
       return;
     }
@@ -652,7 +626,7 @@ useEffect(() => {
   }, [search, allProfiles, orderIds, eloMap]);
 
   function movePlayerUp(uid: string) {
-    if (locked) {
+    if (locked || publishing) {
       alert("Programmet er offentliggjort – spillere kan ikke ændres.");
       return;
     }
@@ -675,7 +649,7 @@ useEffect(() => {
 
   /* --- init courts/rounds/groupOrder --- */
   useEffect(() => {
-    if (!event) return;
+    if (!event || locked || programLoading || groups.length === 0) return;
 
     setCourtsOrder((prev) => {
       const need = groups.length;
@@ -696,11 +670,7 @@ useEffect(() => {
     setRoundsPerCourt((prev) => {
       const n = { ...prev };
       for (let gi = 0; gi < groups.length; gi++) if (!n[gi] || n[gi] < 1) n[gi] = 3;
-      Object.keys(n)
-        .map(Number)
-        .forEach((gi) => {
-          if (gi >= groups.length) delete n[gi];
-        });
+
       return n;
     });
 
@@ -719,18 +689,22 @@ useEffect(() => {
 
       return Array.from({ length: len }, (_, i) => i);
     });
-  }, [event, groups.length]);
+  }, [event, groups.length, locked, programLoading]);
 
   /* --------- basePlan + display-plan (Gilleleje) --------- */
-  const basePlan = useMemo(
-    () =>
-      groupOrder.map((gIndex, pos) => ({
-        gi: pos,
-        court: courtsOrder[pos] ?? pos + 1,
-        players: groups[gIndex] ?? [],
-      })),
-    [groups, courtsOrder, groupOrder]
-  );
+  const basePlan = useMemo<ThursdayMatch[]>(() => {
+    if (locked) return savedGroups.map(group => ({
+      gi: group.gi,
+      court: group.court,
+      players: [],
+      saved: group,
+    }));
+    return groupOrder.map((gIndex, pos) => ({
+      gi: pos,
+      court: courtsOrder[pos] ?? pos + 1,
+      players: groups[gIndex] ?? [],
+    }));
+  }, [locked, savedGroups, groups, courtsOrder, groupOrder]);
 
   const plan = useMemo(() => {
     if (!event || event.location !== "Gilleleje") return basePlan;
@@ -752,85 +726,30 @@ useEffect(() => {
 
   /* --- default tider --- */
   useEffect(() => {
-    if (!event) return;
+    if (!event || locked || programLoading || groups.length === 0) return;
     setMatchTimes((prev) => {
       const next = { ...prev };
       const tor = isTorsdag(event.name);
       for (let gi = 0; gi < basePlan.length; gi++) {
-        if (!next[gi])
-          next[gi] = tor
+        const defaults = tor
             ? thursdayTime(gi)
             : {
                 start: (event.start_time || "17:00").slice(0, 5),
                 end: (event.end_time || addMinutes((event.start_time || "17:00").slice(0, 5), 100)).slice(0, 5),
               };
+        next[gi] = {
+          start: next[gi]?.start || defaults.start,
+          end: next[gi]?.end || defaults.end,
+        };
       }
-      Object.keys(next)
-        .map(Number)
-        .forEach((gi) => {
-          if (gi >= basePlan.length) delete next[gi];
-        });
+
       return next;
     });
-  }, [event, basePlan.length]);
-
-  /* --- load court/time meta fra DB (seneste pr. group_index) --- */
-  useEffect(() => {
-    if (!event?.id || basePlan.length === 0) return;
-    (async () => {
-      const { data, error } = await supabase
-        .from("event_result")
-        .select("group_index, court_label, start_time, end_time, updated_at")
-        .eq("event_id", event.id)
-        .order("updated_at", { ascending: false });
-
-      if (error || !data?.length) return;
-
-      const seen = new Set<number>();
-      const courtByGroup: Record<number, string | number> = {};
-      const timeByGroup: Record<number, { start: string; end: string }> = {};
-
-      for (const r of data as EventResultMeta[]) {
-        const gi = Number(r.group_index);
-        if (!Number.isFinite(gi) || seen.has(gi)) continue;
-        seen.add(gi);
-
-        if (r.court_label) courtByGroup[gi] = r.court_label;
-
-        const s = r.start_time ? r.start_time.slice(0, 5) : undefined;
-        const e = r.end_time ? r.end_time.slice(0, 5) : undefined;
-        if (s || e) {
-          const prev = matchTimes[gi] ?? { start: "", end: "" };
-          timeByGroup[gi] = { start: s ?? prev.start, end: e ?? prev.end };
-        }
-      }
-
-      if (Object.keys(courtByGroup).length) {
-        setCourtsOrder((prev) => {
-          const next = [...prev];
-          for (let gi = 0; gi < basePlan.length; gi++) {
-            if (courtByGroup[gi] != null) next[gi] = courtByGroup[gi];
-          }
-          return next;
-        });
-      }
-
-      if (Object.keys(timeByGroup).length) {
-        setMatchTimes((prev) => {
-          const next = { ...prev };
-          for (let gi = 0; gi < basePlan.length; gi++) {
-            if (timeByGroup[gi]) next[gi] = timeByGroup[gi];
-          }
-          return next;
-        });
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [event?.id, basePlan.length]);
+  }, [event, basePlan.length, locked, programLoading, groups.length]);
 
   /* --- UI helpers --- */
   function setCourtLabel(gi: number, value: string) {
-    if (!event?.id) return;
+    if (!event?.id || locked || publishing) return;
     setCourtsOrder((prev) => {
       const next = [...prev];
       next[gi] = (value || "").trim() || gi + 1;
@@ -843,13 +762,11 @@ useEffect(() => {
         gi,
         si,
         courtLabel: value,
-        start: matchTimes[gi]?.start,
-        end: matchTimes[gi]?.end,
       });
   }
 
   function moveCourtUp(gi: number) {
-    if (!event?.id || gi <= 0) return;
+    if (!event?.id || locked || publishing || gi <= 0) return;
 
     const nextGroup = (() => {
       const n = [...groupOrder];
@@ -895,6 +812,7 @@ useEffect(() => {
   }
 
   function addRoundForMatch(gi: number) {
+    if (locked || publishing) return;
     setRoundsPerCourt((prev) => {
       const next = (prev[gi] ?? 3) + 1;
       void upsertEventResultRow({
@@ -915,32 +833,27 @@ useEffect(() => {
     })();
     const key = `${gi}-${si}`;
 
-    setScores((s) => {
-      const prev = s[key] ?? { a: 0, b: 0 };
-      const next = { ...prev, [side]: n };
-
-      const rot = ROTATIONS[si % ROTATIONS.length];
-      const g = basePlan[gi] || plan.find((x) => x.gi === gi);
-      void upsertEventResultRow({
-        eventId: event?.id ?? "",
-        gi,
-        si,
-        courtLabel: courtsOrder[gi],
-        start: matchTimes[gi]?.start,
-        end: matchTimes[gi]?.end,
-        a1: g?.players[rot[0][0]]?.visningsnavn || "",
-        a2: g?.players[rot[0][1]]?.visningsnavn || "",
-        b1: g?.players[rot[1][0]]?.visningsnavn || "",
-        b2: g?.players[rot[1][1]]?.visningsnavn || "",
-        scoreA: next.a,
-        scoreB: next.b,
-        tiebreak: false,
-      });
-      return { ...s, [key]: next };
+    if (!event || publishing) return;
+    setScores(prev => ({ ...prev, [key]: { ...(prev[key] ?? { a: 0, b: 0 }), [side]: n } }));
+    if (locked) {
+      void queueThursdayWrite(event.id, async () => {
+        const { error } = await (supabase.from("event_result") as any)
+          .update(side === "a" ? { scoreA: n } : { scoreB: n })
+          .eq("event_id", event.id).eq("group_index", gi).eq("set_index", si);
+        if (error) throw error;
+      }).catch(error => alert("Kunne ikke gemme resultatet: " + error.message));
+      return;
+    }
+    const [a1, a2, b1, b2] = playersForSet(basePlan.find(match => match.gi === gi), si);
+    void upsertEventResultRow({
+      eventId: event.id, gi, si,
+      a1: a1?.visningsnavn ?? undefined, a2: a2?.visningsnavn ?? undefined, b1: b1?.visningsnavn ?? undefined, b2: b2?.visningsnavn ?? undefined,
+      ...(side === "a" ? { scoreA: n } : { scoreB: n }),
     });
   }
 
   function resetEmptyExtraSets() {
+    if (locked || publishing) return;
     setRoundsPerCourt((prev) => {
       const next = { ...prev };
       for (let gi = 0; gi < basePlan.length; gi++) {
@@ -976,14 +889,12 @@ useEffect(() => {
 
   const dayDiffSorted = useMemo(() => {
     const sets: any[] = [];
-    basePlan.forEach((g, gi) => {
-      const r = roundsPerCourt[gi] ?? 3;
+    basePlan.forEach((g) => {
+      const gi = g.gi;
+      const r = basePlan.find(match => match.gi === gi)?.saved?.rounds ?? roundsPerCourt[gi] ?? 3;
       for (let si = 0; si < r; si++) {
-        const rot = ROTATIONS[si % ROTATIONS.length];
-        const a1 = g.players[rot[0][0]]?.visningsnavn || "?";
-        const a2 = g.players[rot[0][1]]?.visningsnavn || "?";
-        const b1 = g.players[rot[1][0]]?.visningsnavn || "?";
-        const b2 = g.players[rot[1][1]]?.visningsnavn || "?";
+        if (g.saved && !g.saved.sets[si]) continue;
+        const [a1, a2, b1, b2] = playersForSet(g, si).map(player => player?.visningsnavn || "?");
         const sc = scores[`${gi}-${si}`] ?? { a: 0, b: 0 };
         const done = sc.a !== 0 || sc.b !== 0 ? erFærdigtSæt(sc.a, sc.b) : false;
         sets.push({
@@ -1027,29 +938,29 @@ useEffect(() => {
 
   /* --- Publicer program toggle (og sikr event_result) --- */
   async function setProgramPublished(next: boolean) {
-    if (!event) return;
+    if (!event || publishing || programLoading || programLoadError) return;
 
+    setPublishing(true);
     try {
-      if (next) {
-        if (!plan.length) {
-          alert("Ingen kampe at publicere. Tilføj spillere først.");
-          return;
-        }
-        await ensureProgramPersistedToEventResult({
-          eventId: event.id,
-          plan,
-          roundsPerCourt,
-          courtsOrder,
-          matchTimes,
-        });
+      if (next && !basePlan.length) {
+        alert("Ingen kampe at publicere. Tilføj spillere først.");
+        return;
       }
+      const program = next ? buildPlannedEventResultRows({
+        eventId: event.id, plan: basePlan, roundsPerCourt, courtsOrder, matchTimes,
+      }).map(row => {
+        const score = scores[`${row.group_index}-${row.set_index}`];
+        return { ...row, scoreA: score?.a ?? 0, scoreB: score?.b ?? 0 };
+      }) : undefined;
 
+      await waitForThursdayWrites(event.id);
       const res = await fetch("/api/event-admin", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           eventId: event.id,
           status: next ? "published" : "planned",
+          thursdayProgram: program,
         }),
       });
 
@@ -1059,6 +970,7 @@ useEffect(() => {
       }
 
       if (json?.data) {
+        if (next && Array.isArray(json.program)) setSavedRows(json.program);
         setEvent(json.data as EventRow);
       }
 
@@ -1066,6 +978,8 @@ useEffect(() => {
     } catch (e: any) {
       console.error(e);
       alert("Kunne ikke publicere programmet: " + (e?.message ?? e));
+    } finally {
+      setPublishing(false);
     }
   }
 
@@ -1082,8 +996,8 @@ useEffect(() => {
     const startKampId = await getNextKampId();
 
     const giHasData: boolean[] = [];
-    basePlan.forEach((_, gi) => {
-      const r = roundsPerCourt[gi] ?? 3;
+    basePlan.forEach(({ gi }) => {
+      const r = basePlan.find(match => match.gi === gi)?.saved?.rounds ?? roundsPerCourt[gi] ?? 3;
       for (let si = 0; si < r; si++) {
         const sc = scores[`${gi}-${si}`] ?? { a: 0, b: 0 };
         if (sc.a !== 0 || sc.b !== 0) {
@@ -1095,19 +1009,17 @@ useEffect(() => {
 
     let nextId = startKampId;
     const kampidByGi: Record<number, number> = {};
-    basePlan.forEach((_, gi) => {
+    basePlan.forEach(({ gi }) => {
       if (giHasData[gi]) kampidByGi[gi] = nextId++;
     });
 
     const rows: NewResultInsert[] = [];
-    basePlan.forEach((g, gi) => {
-      const r = roundsPerCourt[gi] ?? 3;
+    basePlan.forEach((g) => {
+      const gi = g.gi;
+      const r = basePlan.find(match => match.gi === gi)?.saved?.rounds ?? roundsPerCourt[gi] ?? 3;
       for (let si = 0; si < r; si++) {
-        const rot = ROTATIONS[si % ROTATIONS.length];
-        const a1 = g.players[rot[0][0]]?.visningsnavn || "";
-        const a2 = g.players[rot[0][1]]?.visningsnavn || "";
-        const b1 = g.players[rot[1][0]]?.visningsnavn || "";
-        const b2 = g.players[rot[1][1]]?.visningsnavn || "";
+        if (g.saved && !g.saved.sets[si]) continue;
+        const [a1, a2, b1, b2] = playersForSet(g, si).map(player => player?.visningsnavn || "");
         const sc = scores[`${gi}-${si}`] ?? { a: 0, b: 0 };
 
         if (sc.a === 0 && sc.b === 0) continue;
@@ -1243,6 +1155,7 @@ useEffect(() => {
 
         <button
           type="button"
+          disabled={locked || publishing}
           onClick={() => setShowEdit(true)}
           className="px-3 py-1 rounded-md border text-sm"
           style={{ backgroundColor: "rgba(11,107,58,0.08)", borderColor: GREEN, color: GREEN }}
@@ -1254,7 +1167,7 @@ useEffect(() => {
           className="text-sm flex items-center gap-2 px-2 py-1 rounded-md border bg-white dark:bg-zinc-900"
           style={{ borderColor: GREEN }}
         >
-          <input type="checkbox" checked={locked} onChange={(e) => void setProgramPublished(e.target.checked)} />
+          <input type="checkbox" checked={locked} disabled={publishing || programLoading || !!programLoadError || (!locked && loadingPlayers)} onChange={(e) => void setProgramPublished(e.target.checked)} />
           <span>Programmet offentliggøres</span>
         </label>
       </div>
@@ -1493,11 +1406,12 @@ useEffect(() => {
           className="md:col-span-7 border rounded-xl p-3 bg-white/80 dark:bg-zinc-900/60"
           style={{ borderColor: GREEN }}
         >
-          {!plan.length ? (
+          {programLoading ? <p>Henter gemt program…</p> : programLoadError ? <p role="alert">{programLoadError}</p> : locked && !plan.length ? <p role="alert">Det udgivne program har ingen gemte kampe. Lås op for at oprette programmet igen.</p> : !plan.length ? (
             <div className="text-sm opacity-70">Tilføj spillere for at generere kampe.</div>
           ) : (
             <CenterMatches
               plan={plan}
+              publishing={publishing}
               courtsOrder={courtsOrder}
               setCourtLabel={setCourtLabel}
               matchTimes={matchTimes}
@@ -1606,8 +1520,10 @@ function CenterMatches({
   eloMap,
   event,
   courtSuggestions,
+  publishing,
 }: {
-  plan: Array<{ gi: number; court: string | number; players: EventPlayer[] }>;
+  publishing: boolean;
+  plan: ThursdayMatch[];
   courtsOrder: (string | number)[];
   setCourtLabel: (gi: number, value: string) => void;
   matchTimes: Record<number, { start: string; end: string }>;
@@ -1652,9 +1568,9 @@ function CenterMatches({
       {plan.map((g, index) => {
         const gi = g.gi;
         const kampNr = index + 1;
-        const runder = roundsPerCourt[gi] ?? 3;
+        const runder = g.saved?.rounds ?? roundsPerCourt[gi] ?? 3;
         const mt =
-          matchTimes[gi] ?? {
+          (g.saved ? { start: g.saved.start, end: g.saved.end } : matchTimes[gi]) ?? {
             start: (event.start_time || "17:00").slice(0, 5),
             end: (event.end_time || "18:30").slice(0, 5),
           };
@@ -1676,9 +1592,11 @@ function CenterMatches({
                   <select
                     className="border rounded px-2 py-1 text-sm bg-white dark:bg-zinc-900"
                     style={{ borderColor: GREEN }}
-                    value={String(courtsOrder[gi] ?? "")}
+                    value={String(g.saved ? g.court : courtsOrder[gi] ?? "")}
+                    disabled={locked || publishing}
                     onChange={(e) => setCourtLabel(gi, e.target.value)}
                   >
+                    {g.saved && !courtSuggestions.includes(String(g.court)) && <option value={g.court}>{g.court}</option>}
                     {courtSuggestions.map((c) => (
                       <option key={c} value={c}>
                         {c}
@@ -1687,54 +1605,28 @@ function CenterMatches({
                   </select>
                 </label>
                 <label className="text-sm flex items-center gap-1">
-                  <input
-                    type="time"
-                    name="start"
-                    value={mt.start}
-                    onChange={(e) => {
-                      const nv = e.target.value;
-                      setMatchTimes((p) => ({ ...p, [gi]: { ...mt, start: nv } }));
-                      for (let i = 0; i < runder; i++)
-                        upsertEventResultRow({
-                          eventId: event.id,
-                          gi,
-                          si: i,
-                          courtLabel: courtsOrder[gi],
-                          start: nv,
-                          end: matchTimes[gi]?.end ?? mt.end,
-                        });
-                    }}
-                    className="border rounded px-2 py-1 text-sm bg-white dark:bg-zinc-900"
-                    style={{ borderColor: GREEN }}
-                    title="Start"
-                  />
-                  –
-                  <input
-                    type="time"
-                    name="end"
-                    value={mt.end}
-                    onChange={(e) => {
-                      const nv = e.target.value;
-                      setMatchTimes((p) => ({ ...p, [gi]: { ...mt, end: nv } }));
-                      for (let i = 0; i < runder; i++)
-                        upsertEventResultRow({
-                          eventId: event.id,
-                          gi,
-                          si: i,
-                          courtLabel: courtsOrder[gi],
-                          start: matchTimes[gi]?.start ?? mt.start,
-                          end: nv,
-                        });
-                    }}
-                    className="border rounded px-2 py-1 text-sm bg-white dark:bg-zinc-900"
-                    style={{ borderColor: GREEN }}
-                    title="Slut"
-                  />
+                  {(["start", "end"] as const).map((field, index) => (
+                    <Fragment key={field}>
+                      {index > 0 && "–"}
+                      <ProgramTimeInput
+                        label={field === "start" ? "Starttid" : "Sluttid"}
+                        value={mt[field]}
+                        disabled={locked || publishing}
+                        onCommit={(value) => {
+                          setMatchTimes(prev => ({ ...prev, [gi]: { ...mt, ...prev[gi], [field]: value } }));
+                          for (let si = 0; si < runder; si++) {
+                            void upsertEventResultRow({ eventId: event.id, gi, si, [field]: value });
+                          }
+                        }}
+                      />
+                    </Fragment>
+                  ))}
                 </label>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
+                  disabled={locked || publishing}
                   onClick={() => addRoundForMatch(gi)}
                   className="text-xs px-2 py-1 rounded border bg-white/80 dark:bg-zinc-900"
                   style={{ borderColor: GREEN }}
@@ -1744,6 +1636,7 @@ function CenterMatches({
                 </button>
                 <button
                   type="button"
+                  disabled={locked || publishing}
                   onClick={() => moveCourtUp(gi)}
                   className="text-xs px-2 py-1 rounded border bg-white/80 dark:bg-zinc-900"
                   style={{ borderColor: GREEN }}
@@ -1757,27 +1650,21 @@ function CenterMatches({
             {/* Sætlinjer */}
             <div className="px-3 py-2 space-y-1">
               {Array.from({ length: runder }).map((_, si) => {
-                const rot = ROTATIONS[si % ROTATIONS.length];
-                const a1 = g.players[rot[0][0]];
-                const a2 = g.players[rot[0][1]];
-                const b1 = g.players[rot[1][0]];
-                const b2 = g.players[rot[1][1]];
+                if (g.saved && !g.saved.sets[si]) return null;
+                const [a1, a2, b1, b2] = playersForSet(g, si);
                 const key = setKey(gi, si);
                 const sc = scoreOf(scores[key]);
 
                 // Forventning
                 const prevSets: any[] = [];
                 for (let gg = 0; gg <= gi; gg++) {
-                  const rMax = roundsPerCourt[gg] ?? 3;
+                  const match = plan.find(x => x.gi === gg);
+                  if (!match) continue;
+                  const rMax = match.saved?.rounds ?? roundsPerCourt[gg] ?? 3;
                   const lastSi = gg === gi ? si - 1 : rMax - 1;
-                  if (lastSi < 0) continue;
-                  const players = (plan.find((x) => x.gi === gg)?.players) ?? [];
                   for (let s = 0; s <= lastSi; s++) {
-                    const r = ROTATIONS[s % ROTATIONS.length];
-                    const A1 = players[r[0][0]]?.visningsnavn || "?";
-                    const A2 = players[r[0][1]]?.visningsnavn || "?";
-                    const B1 = players[r[1][0]]?.visningsnavn || "?";
-                    const B2 = players[r[1][1]]?.visningsnavn || "?";
+                    if (match.saved && !match.saved.sets[s]) continue;
+                    const [A1, A2, B1, B2] = playersForSet(match, s).map(player => player?.visningsnavn || "?");
                     const SS = scoreOf(scores[setKey(gg, s)]);
                     const done = SS.a !== 0 || SS.b !== 0 ? erFærdigtSæt(SS.a, SS.b) : false;
                     prevSets.push({
@@ -1937,22 +1824,18 @@ function EditModal({
           </label>
           <label className="text-sm">
             Start
-            <input
-              type="time"
-              className="mt-1 w-full border rounded px-2 py-1 bg-white dark:bg-zinc-900"
-              style={{ borderColor: GREEN }}
+            <ProgramTimeInput
+              label="Starttid"
               value={(draft.start_time ?? "").slice(0, 5)}
-              onChange={(e) => setDraft({ ...draft, start_time: e.target.value + ":00" })}
+              onCommit={value => setDraft(prev => ({ ...prev, start_time: value + ":00" }))}
             />
           </label>
           <label className="text-sm">
             Slut
-            <input
-              type="time"
-              className="mt-1 w-full border rounded px-2 py-1 bg-white dark:bg-zinc-900"
-              style={{ borderColor: GREEN }}
+            <ProgramTimeInput
+              label="Sluttid"
               value={(draft.end_time ?? "").slice(0, 5)}
-              onChange={(e) => setDraft({ ...draft, end_time: e.target.value + ":00" })}
+              onCommit={value => setDraft(prev => ({ ...prev, end_time: value + ":00" }))}
             />
           </label>
           <label className="text-sm">

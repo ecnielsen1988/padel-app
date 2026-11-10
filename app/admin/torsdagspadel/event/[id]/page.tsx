@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic';
 import EventAdminTorsdagClient from './EventAdminTorsdagClient';
 
-export default function Page({ params }: any) {
-  return <EventAdminTorsdagClient eventId={params.id as string} />;
+export default async function Page({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  return <EventAdminTorsdagClient key={id} eventId={id} />;
 }
-
