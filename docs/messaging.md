@@ -94,3 +94,8 @@ ranglistekamp. En gentaget indberetning af samme aftale gemmer ikke flere sæt.
 Test databasen lokalt med `node scripts/test-player-matches.mjs` og PGlite;
 se kommandoerne øverst i testfilen. Test API og push med
 `node scripts/test-messaging.mjs`.
+
+Kør derefter `database/player_match_booking.sql` for faste valg af sted og
+bane, hele klokkeslæt og bookingstatus. En kamp starter åben. En af de fire
+spillere kan bekræfte, at banen er booket, og alle har accepteret aftalen.
+Ændringer i dato, tid, sted eller bane gør kampen åben igen.

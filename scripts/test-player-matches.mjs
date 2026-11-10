@@ -27,6 +27,9 @@ try {
   const sql = await readFile(new URL('../database/player_matches.sql', import.meta.url), 'utf8');
   await db.exec(sql);
   await db.exec(sql); // migration is safe to rerun
+  const booking = await readFile(new URL('../database/player_match_booking.sql', import.meta.url), 'utf8');
+  await db.exec(booking);
+  await db.exec(booking);
   const call = async (actor, action, id, input) => (await db.query(
     'select public.player_match_action($1, $2, $3, $4) as result',
     [actor, action, id, JSON.stringify(input)],
@@ -34,7 +37,7 @@ try {
   const list = async (actor, id = null) => (await db.query(
     'select public.player_matches_for($1, $2) as result', [actor, id],
   )).rows[0].result;
-  const details = { date: '2020-11-10', time: '18:30', location: 'Padelhuset', court: '2' };
+  const details = { date: '2020-11-10', time: '18:00', location: 'Helsinge', court: '2' };
 
   await db.exec('set role authenticated');
   await assert.rejects(list(one), { code: '42501' });
@@ -43,6 +46,9 @@ try {
 
   await assert.rejects(call(one, 'create', null, { ...details, players: [one, two, two, three] }), { code: '22023' });
   await assert.rejects(call(stranger, 'create', null, { ...details, players: ids.slice(0,4) }), { code: '22023' });
+  for (const invalid of [{ time: '18:30' }, { location: 'Hillerød' }, { court: '5' }, { location: 'Gilleleje', court: 'Center Court' }]) {
+    await assert.rejects(call(one, 'create', null, { ...details, ...invalid, players: ids.slice(0,4) }), { code: '22023' });
+  }
   const created = await call(one, 'create', null, { ...details, players: ids.slice(0,4) });
   assert.deepEqual(created.players, [one, two, three, four]);
   assert.equal((await list(two))[0].unread, 1);
@@ -50,14 +56,24 @@ try {
   await assert.rejects(call(stranger, 'message', created.id, { body: 'Hej' }), { code: 'P0002' });
   const before = (await list(two, created.id))[0];
   assert.equal(before.messages.length, 1);
-  assert.match(before.messages[0].body, /18:30/);
+  assert.match(before.messages[0].body, /18:00/);
   await call(two, 'read', created.id, { through: before.last_message.created_at });
   assert.equal((await list(two))[0].unread, 0);
   const sent = await call(three, 'message', created.id, { body: 'Hej!\nJeg tager bolde med.' });
   assert.equal(sent.note, 'Hej!\nJeg tager bolde med.');
   assert.equal((await list(two))[0].unread, 1);
+  assert.equal((await list(one, created.id))[0].confirmed_at, null);
+  await assert.rejects(call(stranger, 'confirm', created.id, { revision: 1 }), { code: 'P0002' });
+  const confirmed = await call(two, 'confirm', created.id, { revision: 1 });
+  assert.match(confirmed.note, /Banen er booket/);
+  assert.ok((await list(one, created.id))[0].confirmed_at);
+  assert.equal((await call(three, 'confirm', created.id, { revision: 1 })).note, undefined);
+  await call(two, 'update', created.id, { ...details, revision: 1 });
+  assert.ok((await list(one, created.id))[0].confirmed_at);
   const updated = await call(four, 'update', created.id, { ...details, time: '19:00', revision: 1 });
-  assert.match(updated.note, /19:00/);
+  assert.match(updated.note, /19:00.*bekræftes igen/);
+  assert.equal((await list(one, created.id))[0].confirmed_at, null);
+  await assert.rejects(call(two, 'confirm', created.id, { revision: 1 }), { code: '40001' });
   assert.equal((await list(one, created.id))[0].start_time, '19:00:00');
   await assert.rejects(call(two, 'update', created.id, { ...details, revision: 1 }), { code: '40001' });
   await assert.rejects(call(two, 'result', created.id, { revision: 2, sets: [{ a: 6, b: 4, partner: 2 }, { a: 9, b: 0, partner: 2 }] }), { code: '22023' });

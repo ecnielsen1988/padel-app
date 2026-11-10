@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import Select from 'react-select';
 import { MessageTimeline, ReplyComposer } from '../beskeder/InboxView';
 import { supabase } from '@/lib/supabaseClient';
-import { danishNow, matchDate, matchRequest, MatchRequestError, type MatchDetails, type MatchSet, type PlayerMatch } from '@/lib/playerMatches';
+import { courtsForMatch, danishNow, matchCourtLabel, matchCourts, matchDate, matchHourOptions, matchRequest, MatchRequestError, type MatchDetails, type MatchSet, type PlayerMatch } from '@/lib/playerMatches';
 
 type Player = { id: string; name: string };
 type Mode = 'overview' | 'edit' | 'result';
@@ -14,6 +14,7 @@ const panel = 'rounded-2xl border border-[#e9dfe9] bg-white p-4 sm:p-6 dark:bord
 const input = 'mt-1.5 w-full rounded-xl border border-[#dfd5e1] bg-white px-3 py-2.5 text-base dark:border-white/20 dark:bg-[#29263c]';
 const primary = 'inline-flex items-center justify-center rounded-xl bg-[#bc135d] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#a30e4e] disabled:opacity-50';
 const secondary = 'inline-flex items-center justify-center rounded-xl border border-[#e9dfe9] px-4 py-2.5 text-sm font-bold hover:bg-pink-50 dark:border-white/20 dark:hover:bg-white/10';
+const hours = matchHourOptions();
 const emptySet = (): MatchSet => ({ a: 0, b: 0, partner: 2 });
 
 export default function MatchHub({ matchId }: { matchId?: string }) {
@@ -29,7 +30,10 @@ export default function MatchHub({ matchId }: { matchId?: string }) {
   const [loadError, setLoadError] = useState('');
   const [mode, setMode] = useState<Mode>('overview');
   const [creating, setCreating] = useState(false);
-  const [details, setDetails] = useState<MatchDetails>(() => ({ ...danishNow(), location: '', court: '' }));
+  const [details, setDetails] = useState<MatchDetails>(() => {
+    const next = danishNow(new Date(Date.now() + 3600000));
+    return { date: next.date, time: next.time.slice(0, 2) + ':00', location: '', court: '' };
+  });
   const [revision, setRevision] = useState(1);
   const [sets, setSets] = useState<MatchSet[]>([emptySet()]);
   const [reply, setReply] = useState('');
@@ -115,7 +119,7 @@ export default function MatchHub({ matchId }: { matchId?: string }) {
   }, [matchId, last, match?.unread, showChat]);
 
   function change(field: keyof MatchDetails, value: string) {
-    setDetails(prev => ({ ...prev, [field]: value }));
+    setDetails(prev => ({ ...prev, [field]: value, ...(field === 'location' && prev.location !== value ? { court: '' } : {}) }));
   }
 
   async function save(event: FormEvent) {
@@ -133,6 +137,18 @@ export default function MatchHub({ matchId }: { matchId?: string }) {
         : { action: 'update', id: matchId, revision, ...details });
       setMode('overview');
       await refresh().catch(() => setLoadError('Gemningen lykkedes, men den nye aftale kunne ikke hentes endnu.'));
+    } catch (error) {
+      setError((error as Error).message);
+      void refresh().catch(() => {});
+    } finally { saving.current = false; setBusy(false); }
+  }
+
+  async function confirmBooking(item: PlayerMatch) {
+    if (saving.current || !window.confirm('Er banen booket, og har alle fire spillere sagt ja til aftalen?')) return;
+    saving.current = true; setBusy(true); setError('');
+    try {
+      await matchRequest('', { action: 'confirm', id: item.id, revision: item.revision });
+      await refresh().catch(() => setLoadError('Kampen er bekræftet, men aftalen kunne ikke hentes endnu.'));
     } catch (error) {
       setError((error as Error).message);
       void refresh().catch(() => {});
@@ -188,16 +204,22 @@ export default function MatchHub({ matchId }: { matchId?: string }) {
         {matches.map(item => <Link href={`/kampe/${item.id}`} className={panel + ' block hover:border-pink-400'} key={item.id}>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="font-extrabold">{matchDate(item.date)} kl. {item.start_time.slice(0, 5)}</h2>
-            <span className="rounded-full bg-[#f7e3ee] px-2.5 py-1 text-xs font-bold text-[#96245b]">{item.result_kampid ? 'Indberettet' : item.unread ? `${item.unread} ulæste` : 'Aftalt'}</span>
+            <div className="flex items-center gap-2">
+              <MatchStatus match={item} />
+              {item.unread > 0 && <span className="text-xs font-bold text-pink-700 dark:text-pink-300">{item.unread} ulæste</span>}
+            </div>
           </div>
-          <p className="mt-1 text-sm">{item.location} · Bane {item.court}</p>
+          <p className="mt-1 text-sm">{item.location} · {matchCourtLabel(item.court)}</p>
           <p className="mt-2 text-sm opacity-75">{item.players.map(p => p.name).join(', ')}</p>
         </Link>)}
       </> : match && <>
         <section className={panel + ' space-y-4'}>
-          <div>
-            <h2 className="text-xl font-extrabold">{matchDate(match.date)} kl. {match.start_time.slice(0,5)}</h2>
-            <p>{match.location} · Bane {match.court}</p>
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h2 className="text-xl font-extrabold">{matchDate(match.date)} kl. {match.start_time.slice(0,5)}</h2>
+              <p>{match.location} · {matchCourtLabel(match.court)}</p>
+            </div>
+            <MatchStatus match={match} />
           </div>
           <div className="grid gap-2 sm:grid-cols-2">
             {[0, 2].map((start, index) => <div key={start} className="rounded-xl bg-[#f7f3f8] p-3 dark:bg-[#29263c]">
@@ -208,8 +230,16 @@ export default function MatchHub({ matchId }: { matchId?: string }) {
           <div className="flex flex-wrap gap-2">
             <a className={primary} href="#samtale" onClick={() => setShowChat(true)}>💬 Beskeder til alle fire{match.unread && !showChat ? ` (${match.unread})` : ''}</a>
             {!match.result_kampid && <button type="button" className={secondary} onClick={() => {
-              setError(''); setRevision(match.revision); setDetails({ date: match.date, time: match.start_time.slice(0,5), location: match.location, court: match.court }); setMode('edit');
+              setError(''); setRevision(match.revision);
+              const court = match.court.replace(/^Bane\s+/i, '');
+              setDetails({
+                date: match.date, time: hours.includes(match.start_time.slice(0, 5)) ? match.start_time.slice(0, 5) : '',
+                location: courtsForMatch(match.location).length ? match.location : '',
+                court: courtsForMatch(match.location).includes(court) ? court : '',
+              });
+              setMode('edit');
             }}>Ændr aftale</button>}
+            {!match.result_kampid && !match.confirmed_at && <button type="button" className={secondary} disabled={busy} onClick={() => void confirmBooking(match)}>Bekræft booking</button>}
             {!match.result_kampid && matchStarted && <button type="button" className={secondary} onClick={() => { setError(''); setRevision(match.revision); setMode('result'); }}>Indtast resultat</button>}
           </div>
           {match.result_kampid ? <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300">Resultat indberettet · {match.result_sets?.map(s => `${s.a}–${s.b}`).join(', ')}</p>
@@ -217,7 +247,10 @@ export default function MatchHub({ matchId }: { matchId?: string }) {
         </section>
         {mode !== 'overview' && !match.result_kampid && <form ref={actionPanel} className={panel + ' space-y-4'} onSubmit={save}>
           <h2 className="text-lg font-extrabold">{mode === 'edit' ? 'Ændr kampaftalen' : 'Indtast sæt'}</h2>
-          {mode === 'edit' ? <DetailsFields value={details} change={change} disabled={busy} /> : <>
+          {mode === 'edit' ? <>
+            {match.confirmed_at && <p className="text-sm opacity-75">Hvis du ændrer aftalen, skal bookingen bekræftes igen.</p>}
+            <DetailsFields value={details} change={change} disabled={busy} />
+          </> : <>
             <p className="text-sm opacity-75">De fire spillere er valgt. Du kan vælge makker pr. sæt, hvis I har roteret.</p>
             {sets.map((set, index) => {
               const update = (patch: Partial<MatchSet>) => setSets(prev => prev.map((s, i) => i === index ? { ...s, ...patch } : s));
@@ -255,11 +288,34 @@ export default function MatchHub({ matchId }: { matchId?: string }) {
   </main>;
 }
 
+function MatchStatus({ match }: { match: PlayerMatch }) {
+  const confirmed = !!match.confirmed_at;
+  return <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${confirmed || match.result_kampid ? 'bg-emerald-100 text-emerald-900' : 'bg-amber-100 text-amber-950'}`}>
+    {match.result_kampid ? 'Indberettet' : confirmed ? 'Bekræftet' : 'Åben'}
+  </span>;
+}
+
 function DetailsFields({ value, change, disabled }: { value: MatchDetails; change: (field: keyof MatchDetails, value: string) => void; disabled: boolean }) {
+  const courts = courtsForMatch(value.location);
   return <div className="grid gap-3 sm:grid-cols-2">
     <label className="text-sm font-bold">Dato<input className={input} type="date" required disabled={disabled} value={value.date} onChange={e => change('date', e.target.value)} /></label>
-    <label className="text-sm font-bold">Tidspunkt<input className={input} type="time" required disabled={disabled} value={value.time} onChange={e => change('time', e.target.value)} /></label>
-    <label className="text-sm font-bold">Sted<input className={input} placeholder="Fx Padelhuset Helsinge" required maxLength={100} disabled={disabled} value={value.location} onChange={e => change('location', e.target.value)} /></label>
-    <label className="text-sm font-bold">Bane<input className={input} placeholder="Fx 2 eller Center Court" required maxLength={50} disabled={disabled} value={value.court} onChange={e => change('court', e.target.value)} /></label>
+    <label className="text-sm font-bold">Tidspunkt
+      <select className={input} required disabled={disabled} value={value.time} onChange={e => change('time', e.target.value)}>
+        <option value="">Vælg tidspunkt</option>
+        {hours.map(hour => <option key={hour} value={hour}>{hour}</option>)}
+      </select>
+    </label>
+    <label className="text-sm font-bold">Sted
+      <select className={input} required disabled={disabled} value={value.location} onChange={e => change('location', e.target.value)}>
+        <option value="">Vælg sted</option>
+        {Object.keys(matchCourts).map(location => <option key={location}>{location}</option>)}
+      </select>
+    </label>
+    <label className="text-sm font-bold">Bane
+      <select className={input} required disabled={disabled || !courts.length} value={value.court} onChange={e => change('court', e.target.value)}>
+        <option value="">{courts.length ? 'Vælg bane' : 'Vælg sted først'}</option>
+        {courts.map(court => <option key={court} value={court}>{matchCourtLabel(court)}</option>)}
+      </select>
+    </label>
   </div>;
 }

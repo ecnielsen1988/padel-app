@@ -1,6 +1,6 @@
 import { revalidateTag } from 'next/cache';
 import { messagingAuth, messagingReply as reply } from '@/lib/messagingAuth';
-import { isMatchId } from '@/lib/playerMatches';
+import { courtsForMatch, isMatchId } from '@/lib/playerMatches';
 import { supabaseServiceRole } from '@/lib/supabaseServiceRole';
 import { sendPush } from '@/lib/pushServer';
 
@@ -32,15 +32,14 @@ export async function POST(request: Request) {
     const access = await messagingAuth();
     if (access.response) return access.response;
     const body = await request.json().catch(() => null);
-    if (!body || !['create', 'update', 'message', 'result', 'read'].includes(body.action) ||
+    if (!body || !['create', 'update', 'message', 'result', 'read', 'confirm'].includes(body.action) ||
       (body.action !== 'create' && !isMatchId(body.id))) return reply({ error: 'Ugyldig kamphandling.' }, 400);
     let input: Record<string, unknown> = {};
     if (body.action === 'create' || body.action === 'update') {
       if (typeof body.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(body.date) ||
-        typeof body.time !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(body.time) ||
-        typeof body.location !== 'string' || !body.location.trim() || body.location.trim().length > 100 ||
-        typeof body.court !== 'string' || !body.court.trim() || body.court.trim().length > 50) {
-        return reply({ error: 'Vælg en gyldig dato, tid, sted og bane.' }, 400);
+        typeof body.time !== 'string' || !/^([01]\d|2[0-3]):00$/.test(body.time) ||
+        typeof body.location !== 'string' || typeof body.court !== 'string' || !courtsForMatch(body.location).includes(body.court)) {
+        return reply({ error: 'Vælg dato, et helt klokkeslæt, sted og bane.' }, 400);
       }
       input = { date: body.date, time: body.time, location: body.location.trim(), court: body.court.trim() };
     }
@@ -51,7 +50,7 @@ export async function POST(request: Request) {
       }
       input.players = body.players;
     }
-    if (body.action === 'update' || body.action === 'result') {
+    if (body.action === 'update' || body.action === 'result' || body.action === 'confirm') {
       if (!Number.isSafeInteger(body.revision) || body.revision < 1) return reply({ error: 'Hent aftalen igen, før du gemmer.' }, 400);
       input.revision = body.revision;
     }
@@ -84,7 +83,7 @@ export async function POST(request: Request) {
     }
     if (data?.note && Array.isArray(data.players)) {
       const title = body.action === 'create' ? 'Ny kampaftale 🎾' : body.action === 'update' ? 'Kampaftalen er ændret'
-        : body.action === 'result' ? 'Kampresultat indberettet' : 'Ny besked i din kamp';
+        : body.action === 'confirm' ? 'Kampen er bekræftet' : body.action === 'result' ? 'Kampresultat indberettet' : 'Ny besked i din kamp';
       await Promise.allSettled(data.players.filter((id: string) => id !== access.user.id).map((id: string) =>
         sendPush(id, { title, body: data.note.slice(0, 180), url: `/kampe/${data.id}#samtale` })));
     }

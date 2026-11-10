@@ -304,12 +304,16 @@ const matchApi = load('../app/api/kampe/route.ts', {
   '@/lib/pushServer': { async sendPush(id, payload) { matchPush.push({ id, url: payload.url }); } },
 });
 const matchPost = (body) => matchApi.POST(new Request('http://localhost/api/kampe', { method: 'POST', body: JSON.stringify(body) }));
-const createMatch = { action: 'create', players: matchPlayers, date: '2026-11-10', time: '18:30', location: 'Padelhuset', court: '2' };
+const createMatch = { action: 'create', players: matchPlayers, date: '2026-11-10', time: '18:00', location: 'Helsinge', court: '2' };
 authenticated = false;
 assert.equal((await matchPost(createMatch)).status, 401);
 assert.equal(matchRpc.length, 0);
 authenticated = true;
 assert.equal((await matchPost({ ...createMatch, players: [me, other, other, matchPlayers[2]] })).status, 400);
+assert.equal(matchRpc.length, 0);
+for (const invalid of [{ time: '18:30' }, { court: '5' }, { location: 'Gilleleje', court: 'Center Court' }]) {
+  assert.equal((await matchPost({ ...createMatch, ...invalid })).status, 400);
+}
 assert.equal(matchRpc.length, 0);
 assert.equal((await matchPost({ ...createMatch, p_actor: other })).status, 200);
 assert.equal(matchRpc[0].args.p_actor, me);
