@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import Select from 'react-select';
 import { MessageTimeline, ReplyComposer } from '../beskeder/InboxView';
 import { supabase } from '@/lib/supabaseClient';
-import { courtsForMatch, danishNow, matchCourtLabel, matchCourts, matchDate, matchHourOptions, matchRequest, MatchRequestError, type MatchDetails, type MatchSet, type PlayerMatch } from '@/lib/playerMatches';
+import { compareMatchTime, courtsForMatch, danishNow, encodeMatchSet, swapMatchPlayer, matchCourtLabel, matchCourts, matchDate, matchHourOptions, matchRequest, MatchRequestError, type MatchDetails, type MatchSetDraft, type PlayerMatch } from '@/lib/playerMatches';
 
 type Player = { id: string; name: string };
 type Mode = 'overview' | 'edit' | 'result';
@@ -15,7 +15,7 @@ const input = 'mt-1.5 w-full rounded-xl border border-[#dfd5e1] bg-white px-3 py
 const primary = 'inline-flex items-center justify-center rounded-xl bg-[#bc135d] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#a30e4e] disabled:opacity-50';
 const secondary = 'inline-flex items-center justify-center rounded-xl border border-[#e9dfe9] px-4 py-2.5 text-sm font-bold hover:bg-pink-50 dark:border-white/20 dark:hover:bg-white/10';
 const hours = matchHourOptions();
-const emptySet = (): MatchSet => ({ a: 0, b: 0, partner: 2 });
+const emptySet = (): MatchSetDraft => ({ a: 0, b: 0, order: [1, 2, 3, 4] });
 
 export default function MatchHub({ matchId }: { matchId?: string }) {
   const router = useRouter();
@@ -35,7 +35,7 @@ export default function MatchHub({ matchId }: { matchId?: string }) {
     return { date: next.date, time: next.time.slice(0, 2) + ':00', location: '', court: '' };
   });
   const [revision, setRevision] = useState(1);
-  const [sets, setSets] = useState<MatchSet[]>([emptySet()]);
+  const [sets, setSets] = useState<MatchSetDraft[]>([emptySet()]);
   const [reply, setReply] = useState('');
   const [showChat, setShowChat] = useState(false);
   const lastRead = useRef('');
@@ -56,6 +56,7 @@ export default function MatchHub({ matchId }: { matchId?: string }) {
       if (request !== currentRequest.current) return;
       showLogin.current = error instanceof MatchRequestError && error.status === 401;
       if (showLogin.current) { setMatches([]); setMeId(''); }
+      if (error instanceof MatchRequestError && error.status === 404) setMatches([]);
       throw error;
     }
   }, [matchId]);
@@ -132,9 +133,12 @@ export default function MatchHub({ matchId }: { matchId?: string }) {
         router.push(`/kampe/${result.id}`);
         return;
       }
-      await matchRequest('', mode === 'result'
-        ? { action: 'result', id: matchId, revision, sets: sets.filter(s => s.a || s.b) }
-        : { action: 'update', id: matchId, revision, ...details });
+      if (mode === 'result') {
+        await matchRequest('', { action: 'result', id: matchId, revision, sets: sets.filter(s => s.a || s.b).map(encodeMatchSet) });
+        router.replace('/mine');
+        return;
+      }
+      await matchRequest('', { action: 'update', id: matchId, revision, ...details });
       setMode('overview');
       await refresh().catch(() => setLoadError('Gemningen lykkedes, men den nye aftale kunne ikke hentes endnu.'));
     } catch (error) {
@@ -155,6 +159,20 @@ export default function MatchHub({ matchId }: { matchId?: string }) {
     } finally { saving.current = false; setBusy(false); }
   }
 
+  async function deleteMatch(item: PlayerMatch) {
+    if (saving.current || !window.confirm('Slet kampen og dens beskedtråd for alle fire spillere? Det kan ikke fortrydes.')) return;
+    saving.current = true; setBusy(true); setError('');
+    try {
+      await matchRequest('', { action: 'delete', id: item.id, revision: item.revision });
+      currentRequest.current++;
+      setMatches([]);
+      router.replace('/kampe');
+    } catch (error) {
+      setError((error as Error).message);
+      void refresh().catch(() => {});
+    } finally { saving.current = false; setBusy(false); }
+  }
+
   async function send(text: string) {
     if (!matchId) return false;
     setError('');
@@ -165,6 +183,7 @@ export default function MatchHub({ matchId }: { matchId?: string }) {
     } catch (error) { setError((error as Error).message); return false; }
   }
 
+  const pendingMatches = matches.filter(item => item.result_kampid === null).sort(compareMatchTime);
   const now = danishNow();
   const matchStarted = match ? `${match.date}T${match.start_time.slice(0,5)}` <= `${now.date}T${now.time}` : false;
 
@@ -180,6 +199,7 @@ export default function MatchHub({ matchId }: { matchId?: string }) {
       {loading ? <p>Henter kampe…</p> : !matchId ? <>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => { setError(''); setCreating(!creating); }} className={primary} disabled={!meId}>{creating ? 'Luk oprettelse' : '+ Opret kamp'}</button>
+          <Link className={secondary} href="/mine">Egne resultater</Link>
           <Link className={secondary} href="/newscore">Indberet en spillet kamp uden aftale</Link>
         </div>
         {creating && <form onSubmit={save} className={panel + ' space-y-4'}>
@@ -200,8 +220,8 @@ export default function MatchHub({ matchId }: { matchId?: string }) {
           <DetailsFields value={details} change={change} disabled={busy} />
           <button type="submit" className={primary} disabled={busy || slots.some(slot => !slot) || !slots.includes(meId)}>{busy ? 'Opretter…' : 'Opret kamp og tråd'}</button>
         </form>}
-        {matches.length === 0 && !loadError && <p className={panel}>Du har ingen kampaftaler endnu.</p>}
-        {matches.map(item => <Link href={`/kampe/${item.id}`} className={panel + ' block hover:border-pink-400'} key={item.id}>
+        {pendingMatches.length === 0 && !loadError && <p className={panel}>Du har ingen kampe, der afventer et resultat.</p>}
+        {pendingMatches.map(item => <Link href={`/kampe/${item.id}`} className={panel + ' block hover:border-pink-400'} key={item.id}>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="font-extrabold">{matchDate(item.date)} kl. {item.start_time.slice(0, 5)}</h2>
             <div className="flex items-center gap-2">
@@ -241,6 +261,7 @@ export default function MatchHub({ matchId }: { matchId?: string }) {
             }}>Ændr aftale</button>}
             {!match.result_kampid && !match.confirmed_at && <button type="button" className={secondary} disabled={busy} onClick={() => void confirmBooking(match)}>Bekræft booking</button>}
             {!match.result_kampid && matchStarted && <button type="button" className={secondary} onClick={() => { setError(''); setRevision(match.revision); setMode('result'); }}>Indtast resultat</button>}
+            {!match.result_kampid && <button type="button" className={secondary + ' text-red-700 dark:text-red-300'} disabled={busy} onClick={() => void deleteMatch(match)}>Slet kamp</button>}
           </div>
           {match.result_kampid ? <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300">Resultat indberettet · {match.result_sets?.map(s => `${s.a}–${s.b}`).join(', ')}</p>
             : !matchStarted && <p className="text-sm opacity-75">Du kan indberette resultatet efter det aftalte starttidspunkt.</p>}
@@ -251,22 +272,37 @@ export default function MatchHub({ matchId }: { matchId?: string }) {
             {match.confirmed_at && <p className="text-sm opacity-75">Hvis du ændrer aftalen, skal bookingen bekræftes igen.</p>}
             <DetailsFields value={details} change={change} disabled={busy} />
           </> : <>
-            <p className="text-sm opacity-75">De fire spillere er valgt. Du kan vælge makker pr. sæt, hvis I har roteret.</p>
+            <p className="text-sm opacity-75">Vælg et andet navn på en plads for at bytte de to spillere.</p>
             {sets.map((set, index) => {
-              const update = (patch: Partial<MatchSet>) => setSets(prev => prev.map((s, i) => i === index ? { ...s, ...patch } : s));
-              return <fieldset key={index} className="space-y-2 rounded-xl border border-[#e9dfe9] p-3 dark:border-white/10">
+              const update = (edit: (current: MatchSetDraft) => MatchSetDraft) =>
+                setSets(prev => prev.map((current, i) => i === index ? edit(current) : current));
+              return <fieldset key={index} className="space-y-3 rounded-xl border border-[#e9dfe9] p-3 dark:border-white/10">
                 <legend className="px-2 text-sm font-bold">Sæt {index + 1}</legend>
-                <label className="block text-sm font-bold">Makker til {match.players[0]?.name}
-                  <select className={input} value={set.partner} disabled={busy} onChange={e => update({ partner: Number(e.target.value) })}>
-                    {match.players.slice(1).map((p, i) => <option key={p.id} value={i + 2}>{p.name}</option>)}
-                  </select>
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {(['a', 'b'] as const).map(side => <label key={side} className="text-sm font-bold">Hold {side.toUpperCase()}
-                    <select className={input} value={set[side]} disabled={busy} onChange={e => update({ [side]: Number(e.target.value) })}>
-                      {Array.from({length: 8}, (_, value) => <option key={value}>{value}</option>)}
-                    </select>
-                  </label>)}
+                <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 sm:gap-3">
+                  {(['a', 'b'] as const).map((side, team) => {
+                    const label = `Hold ${side.toUpperCase()}`;
+                    return <div key={side} className={`min-w-0 space-y-2 ${team === 0 ? 'col-start-1' : 'col-start-3'} row-start-1`}>
+                      <h3 className="text-sm font-bold">{label}</h3>
+                      {[0, 1].map(i => {
+                        const slot = team * 2 + i;
+                        return <select key={slot} aria-label={`Sæt ${index + 1}, ${label}, spiller ${i + 1}`} className={input + ' m-0 min-w-0 truncate px-2'} value={set.order[slot]} disabled={busy}
+                          onChange={e => {
+                            const player = Number(e.target.value);
+                            update(current => ({ ...current, order: swapMatchPlayer(current.order, slot, player) }));
+                          }}>
+                          {match.players.map((p, player) => <option key={p.id} value={player + 1}>{p.name}</option>)}
+                        </select>;
+                      })}
+                      <select aria-label={`Sæt ${index + 1}, ${label}, score`} className={input + ' m-0 text-center font-bold'} value={set[side]} disabled={busy}
+                        onChange={e => {
+                          const score = Number(e.target.value);
+                          update(current => ({ ...current, [side]: score }));
+                        }}>
+                        {Array.from({length: 8}, (_, value) => <option key={value}>{value}</option>)}
+                      </select>
+                    </div>;
+                  })}
+                  <span className="col-start-2 row-start-1 text-xs font-bold opacity-75">mod</span>
                 </div>
                 {sets.length > 1 && <button className="text-sm font-bold text-[#a30e4e] dark:text-pink-300" type="button" disabled={busy} onClick={() => setSets(prev => prev.filter((_, i) => i !== index))}>Fjern sæt</button>}
               </fieldset>;

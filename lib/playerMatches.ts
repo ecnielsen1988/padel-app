@@ -2,6 +2,7 @@ export type MatchMessage = { id: string; sender_id: string; body: string; create
 export type MatchSet = { a: number; b: number; partner: number };
 export type PlayerMatch = {
   id: string;
+  created_by: string;
   date: string;
   start_time: string;
   location: string;
@@ -60,4 +61,25 @@ export function matchCourtLabel(court: string) {
 
 export function matchHourOptions() {
   return Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`);
+}
+
+export type MatchSetDraft = { a: number; b: number; order: number[] };
+
+export function swapMatchPlayer(order: number[], slot: number, player: number) {
+  const other = order.indexOf(player);
+  if (other < 0 || other === slot) return order;
+  const next = [...order];
+  [next[slot], next[other]] = [next[other], next[slot]];
+  return next;
+}
+
+export function encodeMatchSet({ a, b, order }: MatchSetDraft): MatchSet {
+  // The stored format names the team containing player 1 as team A.
+  const first = order.indexOf(1);
+  const partner = order[first ^ 1];
+  return first < 2 ? { a, b, partner } : { a: b, b: a, partner };
+}
+
+export function compareMatchTime(a: Pick<PlayerMatch, 'date' | 'start_time' | 'id'>, b: Pick<PlayerMatch, 'date' | 'start_time' | 'id'>) {
+  return a.date.localeCompare(b.date) || a.start_time.localeCompare(b.start_time) || a.id.localeCompare(b.id);
 }

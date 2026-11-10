@@ -99,3 +99,12 @@ Kør derefter `database/player_match_booking.sql` for faste valg af sted og
 bane, hele klokkeslæt og bookingstatus. En kamp starter åben. En af de fire
 spillere kan bekræfte, at banen er booket, og alle har accepteret aftalen.
 Ændringer i dato, tid, sted eller bane gør kampen åben igen.
+
+Kør `database/player_match_delete.sql` før udgivelse af slettefunktionen.
+Alle fire deltagere kan slette en kamp og dens tråd, så længe resultatet ikke er
+indberettet. De øvrige deltagere får en pushbesked, hvis de har slået push til.
+Kampoversigten er sorteret efter dato og starttid. Ved indtastning af et sæt
+bytter valg af et andet navn de to spilleres pladser.
+
+Indberettede kampe skjules i **Mine kampe**. En vellykket indberetning
+åbner **Egne resultater** direkte. Kamptråden er stadig tilgængelig under Beskeder.

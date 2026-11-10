@@ -32,7 +32,7 @@ export async function POST(request: Request) {
     const access = await messagingAuth();
     if (access.response) return access.response;
     const body = await request.json().catch(() => null);
-    if (!body || !['create', 'update', 'message', 'result', 'read', 'confirm'].includes(body.action) ||
+    if (!body || !['create', 'update', 'message', 'result', 'read', 'confirm', 'delete'].includes(body.action) ||
       (body.action !== 'create' && !isMatchId(body.id))) return reply({ error: 'Ugyldig kamphandling.' }, 400);
     let input: Record<string, unknown> = {};
     if (body.action === 'create' || body.action === 'update') {
@@ -50,7 +50,7 @@ export async function POST(request: Request) {
       }
       input.players = body.players;
     }
-    if (body.action === 'update' || body.action === 'result' || body.action === 'confirm') {
+    if (body.action === 'update' || body.action === 'result' || body.action === 'confirm' || body.action === 'delete') {
       if (!Number.isSafeInteger(body.revision) || body.revision < 1) return reply({ error: 'Hent aftalen igen, før du gemmer.' }, 400);
       input.revision = body.revision;
     }
@@ -73,9 +73,12 @@ export async function POST(request: Request) {
       input.sets = body.sets.map(({ a, b, partner }: any) => ({ a, b, partner }));
     }
 
-    const { data, error } = await (supabaseServiceRole as any).rpc('player_match_action', {
-      p_actor: access.user.id, p_action: body.action, p_id: body.action === 'create' ? null : body.id, p_input: input,
-    });
+    const db = supabaseServiceRole as any;
+    const { data, error } = body.action === 'delete'
+      ? await db.rpc('delete_player_match', { p_actor: access.user.id, p_id: body.id, p_revision: input.revision })
+      : await db.rpc('player_match_action', {
+        p_actor: access.user.id, p_action: body.action, p_id: body.action === 'create' ? null : body.id, p_input: input,
+      });
     if (error) return failure(error);
     if (body.action === 'result') {
       try { for (const tag of ['rangliste', 'ranking-overview', 'results-feed']) revalidateTag(tag); }
@@ -83,9 +86,9 @@ export async function POST(request: Request) {
     }
     if (data?.note && Array.isArray(data.players)) {
       const title = body.action === 'create' ? 'Ny kampaftale 🎾' : body.action === 'update' ? 'Kampaftalen er ændret'
-        : body.action === 'confirm' ? 'Kampen er bekræftet' : body.action === 'result' ? 'Kampresultat indberettet' : 'Ny besked i din kamp';
+        : body.action === 'delete' ? 'Kampen er slettet' : body.action === 'confirm' ? 'Kampen er bekræftet' : body.action === 'result' ? 'Kampresultat indberettet' : 'Ny besked i din kamp';
       await Promise.allSettled(data.players.filter((id: string) => id !== access.user.id).map((id: string) =>
-        sendPush(id, { title, body: data.note.slice(0, 180), url: `/kampe/${data.id}#samtale` })));
+        sendPush(id, { title, body: data.note.slice(0, 180), url: body.action === 'delete' ? '/kampe' : `/kampe/${data.id}#samtale` })));
     }
     return reply({ id: data.id, resultKampid: data.result_kampid });
   } catch { return failure({}); }

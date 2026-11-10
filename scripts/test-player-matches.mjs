@@ -30,6 +30,10 @@ try {
   const booking = await readFile(new URL('../database/player_match_booking.sql', import.meta.url), 'utf8');
   await db.exec(booking);
   await db.exec(booking);
+  await db.exec(await readFile(new URL('../database/player_match_delete.sql', import.meta.url), 'utf8'));
+  const remove = async (actor, id, revision) => (await db.query(
+    'select public.delete_player_match($1, $2, $3) as result', [actor, id, revision],
+  )).rows[0].result;
   const call = async (actor, action, id, input) => (await db.query(
     'select public.player_match_action($1, $2, $3, $4) as result',
     [actor, action, id, JSON.stringify(input)],
@@ -41,6 +45,7 @@ try {
 
   await db.exec('set role authenticated');
   await assert.rejects(list(one), { code: '42501' });
+  await assert.rejects(remove(one, one, 1), { code: '42501' });
   await assert.rejects(db.query('select * from public.player_matches'), { code: '42501' });
   await db.exec('set role service_role');
 
@@ -86,7 +91,17 @@ try {
 
   const future = await call(one, 'create', null, { ...details, date: '2099-11-10', players: ids.slice(0,4) });
   await assert.rejects(call(two, 'result', future.id, { revision: 1, sets: [{ a: 6, b: 4, partner: 2 }] }), { code: '22023' });
+  await assert.rejects(remove(stranger, future.id, 1), { code: 'P0002' });
+  await assert.rejects(remove(one, future.id, 2), { code: '40001' });
+  await assert.rejects(remove(two, created.id, 2), { code: '40001' });
+  const futureMatch = (await list(two, future.id))[0];
+  await call(two, 'read', future.id, { through: futureMatch.last_message.created_at });
+  assert.deepEqual((await remove(two, future.id, 1)).players, ids.slice(0, 4));
+  assert.deepEqual(await list(two, future.id), []);
   await db.exec('reset role');
+  for (const table of ['player_match_messages', 'player_match_reads']) {
+    assert.equal((await db.query(`select 1 from ${table} where match_id = $1`, [future.id])).rows.length, 0);
+  }
   const { rows } = await db.query('select "holdA2", "scoreA", "scoreB", event, kampid from newresults order by id');
   assert.deepEqual(rows, [
     { holdA2: 'Spiller 2', scoreA: 6, scoreB: 4, event: false, kampid: result.result_kampid },

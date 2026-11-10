@@ -323,3 +323,25 @@ matchDbError = { code: 'P0002', message: 'Kampen blev ikke fundet.' };
 assert.equal((await matchPost({ action: 'message', id: other, body: 'Hej' })).status, 404);
 assert.equal(matchPush.length, 3);
 console.log('Match API checks passed: login, input validation, server actor and participant-only push.');
+
+
+const matchTools = load('../lib/playerMatches.ts');
+const initialOrder = [1, 2, 3, 4];
+const swappedOrder = matchTools.swapMatchPlayer(initialOrder, 0, 3);
+assert.deepEqual(swappedOrder, [3, 2, 1, 4]);
+assert.deepEqual(initialOrder, [1, 2, 3, 4]);
+assert.deepEqual(matchTools.encodeMatchSet({ order: swappedOrder, a: 6, b: 3 }), { a: 3, b: 6, partner: 4 });
+assert.deepEqual(matchTools.encodeMatchSet({ order: [1, 3, 2, 4], a: 6, b: 3 }), { a: 6, b: 3, partner: 3 });
+assert.deepEqual([
+  { id: 'c', date: '2026-11-12', start_time: '12:00:00' },
+  { id: 'b', date: '2026-11-10', start_time: '20:00:00' },
+  { id: 'a', date: '2026-11-10', start_time: '18:00:00' },
+].sort(matchTools.compareMatchTime).map(x => x.id), ['a', 'b', 'c']);
+
+matchDbError = null;
+assert.equal((await matchPost({ action: 'delete', id: other, revision: 1 })).status, 200);
+assert.deepEqual(matchRpc.at(-1), {
+  name: 'delete_player_match', args: { p_actor: me, p_id: other, p_revision: 1 },
+});
+assert.ok(matchPush.slice(-3).every(entry => entry.url === '/kampe'));
+console.log('Match editing and deletion checks passed.');
