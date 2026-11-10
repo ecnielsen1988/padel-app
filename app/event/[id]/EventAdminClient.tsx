@@ -1256,6 +1256,10 @@ useEffect(() => {
         throw new Error(json?.error ?? "Ukendt fejl ved publicering.");
       }
 
+      if (json?.data?.status !== (next ? "published" : "planned")) {
+        throw new Error("Serveren bekræftede ikke, at programmets status blev ændret.");
+      }
+
       if (json?.data) {
         setEvent(json.data as EventRow);
       }
@@ -1800,7 +1804,7 @@ useEffect(() => {
               if (error) { alert(error); return; }
             }
             const cleanPatch = Object.fromEntries(
-              Object.entries(patch).filter(([_, v]) => v !== undefined)
+              Object.entries(patch).filter(([key, value]) => key !== "status" && key !== "id" && value !== undefined)
             );
 
             const eventsTbl = supabase.from("events") as any;
@@ -1810,7 +1814,11 @@ useEffect(() => {
               .select("*")
               .maybeSingle();
 
-            if (!error && data) setEvent(data);
+            if (error || !data) {
+              alert("Kunne ikke gemme eventet: " + (error?.message ?? "Eventet blev ikke fundet."));
+              return;
+            }
+            setEvent(data);
             setShowEdit(false);
           }}
           onResetEmptySets={resetEmptyExtraSets}

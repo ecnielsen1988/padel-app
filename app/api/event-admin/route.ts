@@ -26,6 +26,12 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: "Ugyldig status." }, { status: 400 });
     }
 
+    const events = () => supabaseServiceRole.from("events") as any;
+    const readEvent = () => events().select("*").eq("id", eventId).maybeSingle();
+    const { data: current, error: readError } = await readEvent();
+    if (readError) throw readError;
+    if (!current) return NextResponse.json({ error: "Eventet blev ikke fundet." }, { status: 404 });
+
     let program: ReturnType<typeof parseThursdayPublication> | undefined;
     if (status === "published" && body.thursdayProgram !== undefined) {
       try {
@@ -34,14 +40,11 @@ export async function PATCH(req: Request) {
         return NextResponse.json({ error: (error as Error).message }, { status: 400 });
       }
 
-      const current = await supabaseServiceRole.from("events").select("*").eq("id", eventId).maybeSingle<{ status: string | null }>();
-      if (current.error) throw current.error;
-      if (!current.data) return NextResponse.json({ error: "Eventet blev ikke fundet." }, { status: 404 });
       const sets = supabaseServiceRole.from("event_result") as any;
       const saved = await sets.select("*").eq("event_id", eventId).order("group_index").order("set_index");
       if (saved.error) throw saved.error;
-      if (current.data.status === "published") {
-        return NextResponse.json({ data: current.data, program: saved.data });
+      if (current.status === "published") {
+        return NextResponse.json({ data: current, program: saved.data });
       }
 
       const key = (row: { group_index: number; set_index: number }) => `${row.group_index}-${row.set_index}`;
@@ -76,26 +79,30 @@ export async function PATCH(req: Request) {
       }
     }
 
-    const update = (supabaseServiceRole.from("events") as any).update({ status }).eq("id", eventId);
-    // Only the request that changes the status to published may send push.
-    if (status === "published") update.or("status.is.null,status.neq.published");
-    let { data: updatedEvent, error: updateError } = await update.select("*").maybeSingle();
-    const newlyPublished = status === "published" && !!updatedEvent && !updateError;
-    if (status === "published" && !updatedEvent && !updateError) {
-      const existing = await supabaseServiceRole.from("events").select("*").eq("id", eventId).maybeSingle();
-      updatedEvent = existing.data;
-      updateError = existing.error;
+    let changed = false;
+    if (current.status !== status) {
+      const update = events().update({ status }).eq("id", eventId);
+      const matching = current.status == null ? update.is("status", null) : update.eq("status", current.status);
+      const { data: written, error: writeError } = await matching.select("id").maybeSingle();
+      if (writeError) throw writeError;
+      changed = !!written;
     }
 
-    if (updateError) {
-      return NextResponse.json({ error: updateError.message }, { status: 500 });
-    }
-
+    const { data: updatedEvent, error: confirmError } = await readEvent();
+    if (confirmError) throw confirmError;
     if (!updatedEvent) {
       return NextResponse.json({ error: "Eventet blev ikke fundet." }, { status: 404 });
     }
 
-    const push = newlyPublished ? await notifyProgram({ eventId }) : undefined;
+    if (updatedEvent.status !== status) {
+      return NextResponse.json({
+        error: status === "published"
+          ? "Kampene er gemt, men eventet står stadig som kladde i databasen. Programmet er ikke offentliggjort."
+          : "Databasen bekræftede ikke, at programmet blev låst op.",
+      }, { status: 409 });
+    }
+
+    const push = changed && status === "published" ? await notifyProgram({ eventId }) : undefined;
     return NextResponse.json({ data: updatedEvent, program, push }, { headers: { "Cache-Control": "no-store" } });
   } catch (error: any) {
     return NextResponse.json(

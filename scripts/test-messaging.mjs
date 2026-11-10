@@ -161,9 +161,10 @@ let storedThursdaySets = null;
 let failThursdaySave = false;
 let savedStatus = 'planned';
 let failPublication = false;
+let statusWriteIgnored = false;
 const programDb = {
   from(table) {
-    let patch, guarded = false, projection;
+    let patch, guarded = false, projection, expectedStatus;
     const query = {
       select(value) { projection = value; return this; },
       order() { return this; },
@@ -173,13 +174,15 @@ const programDb = {
         storedThursdaySets = rows;
         return { error: null };
       },
-      eq() { return this; },
+      eq(column, value) { if (column === 'status') expectedStatus = value; return this; },
+      is(column, value) { return this.eq(column, value); },
       or() { guarded = true; return this; },
       update(value) { patch = value; return this; },
       async maybeSingle() {
         if (failPublication) return { data: null, error: { message: 'DB failed' } };
         if (patch && guarded && savedStatus === 'published') return { data: null, error: null };
-        if (patch?.status) savedStatus = patch.status;
+        if (patch && expectedStatus !== undefined && savedStatus !== expectedStatus) return { data: null, error: null };
+        if (patch?.status && !statusWriteIgnored) savedStatus = patch.status;
         return { data: { id: 'event-1', status: savedStatus }, error: null };
       },
       async in(_field, names) {
@@ -269,6 +272,13 @@ assert.equal((await publishThursday([thursdayDraft])).status, 500);
 assert.equal(savedStatus, 'planned');
 assert.equal(programCalls.length, 6);
 failThursdaySave = false;
+statusWriteIgnored = true;
+const ignoredWrite = await publishThursday([thursdayDraft]);
+assert.equal(ignoredWrite.status, 409);
+assert.match((await ignoredWrite.json()).error, /stadig som kladde/);
+assert.equal(savedStatus, 'planned');
+assert.equal(programCalls.length, 6);
+statusWriteIgnored = false;
 const publishedThursday = await (await publishThursday([thursdayDraft])).json();
 assert.equal(publishedThursday.data.status, 'published');
 assert.equal(publishedThursday.program[0].event_id, 'event-1');

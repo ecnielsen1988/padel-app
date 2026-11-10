@@ -969,6 +969,10 @@ useEffect(() => {
         throw new Error(json?.error ?? "Ukendt fejl ved publicering.");
       }
 
+      if (json?.data?.status !== (next ? "published" : "planned")) {
+        throw new Error("Serveren bekræftede ikke, at programmets status blev ændret.");
+      }
+
       if (json?.data) {
         if (next && Array.isArray(json.program)) setSavedRows(json.program);
         setEvent(json.data as EventRow);
@@ -1471,7 +1475,7 @@ useEffect(() => {
           event={event}
           onClose={() => setShowEdit(false)}
           onSave={async (patch) => {
-            const cleanPatch = Object.fromEntries(Object.entries(patch).filter(([_, v]) => v !== undefined));
+            const cleanPatch = Object.fromEntries(Object.entries(patch).filter(([key, value]) => key !== "status" && key !== "id" && value !== undefined));
             const eventsTbl = supabase.from("events") as any;
             const { data, error } = await eventsTbl
               .update(cleanPatch)
@@ -1479,7 +1483,11 @@ useEffect(() => {
               .select("*")
               .maybeSingle();
 
-            if (!error && data) setEvent(data);
+            if (error || !data) {
+              alert("Kunne ikke gemme eventet: " + (error?.message ?? "Eventet blev ikke fundet."));
+              return;
+            }
+            setEvent(data);
             setShowEdit(false);
           }}
           onResetEmptySets={resetEmptyExtraSets}
