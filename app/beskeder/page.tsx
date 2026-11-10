@@ -6,12 +6,7 @@ import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
 import { Message, sendDirectMessage } from '@/lib/messages';
 
-type Thread = {
-  counterpartId: string;
-  counterpartName: string;
-  lastMessage: Message;
-  unread: number;
-};
+import { InboxView, type Thread } from './InboxView';
 
 type ProfileNameRow = { visningsnavn: string | null };
 
@@ -240,7 +235,7 @@ export default function BeskederThreadView() {
 
   const selectedThread = threads.find((t) => t.counterpartId === selectedThreadId) || null;
 
-  // Beskeder for valgt tråd — NYESTE FØRST (descending)
+  // Læs samtalen kronologisk med de nyeste beskeder ved skrivefeltet.
   const selectedMessages = useMemo(() => {
     if (!selectedThreadId) return [];
     return messages
@@ -251,13 +246,13 @@ export default function BeskederThreadView() {
       )
       .sort(
         (a, b) =>
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
       );
   }, [messages, meId, selectedThreadId]);
 
   // Markér valgt tråd som læst (alle ulæste indgående)
   useEffect(() => {
-    if (!meId || !selectedThreadId || !visible || (!desktop && view !== 'thread')) return;
+    if (!meId || !selectedThreadId || !visible || composerOpen || (!desktop && view !== 'thread')) return;
     const idsToMark = selectedMessages
       .filter((m) => m.recipient_id === meId && !m.read_at)
       .map((m) => m.id);
@@ -273,7 +268,7 @@ export default function BeskederThreadView() {
       } else setError('Kunne ikke markere beskeder som læst.');
     })().catch(() => setError('Kunne ikke markere beskeder som læst.'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedThreadId, meId, selectedMessages, visible, desktop, view]);
+  }, [selectedThreadId, meId, selectedMessages, visible, desktop, view, composerOpen]);
 
   // === Composer helpers ===
   async function sendMessageByName(name: string, body: string): Promise<boolean> {
@@ -315,12 +310,6 @@ export default function BeskederThreadView() {
       setError('Beskeden blev ikke sendt. Prøv igen.');
     } finally { sendingRef.current = false; setSending(false); }
   }
-
-  // Scroll til top af tråden ved nye beskeder (fordi nyeste ligger øverst)
-  const threadScrollRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    threadScrollRef.current?.scrollTo({ top: 0 });
-  }, [selectedThreadId, selectedMessages.length]);
 
   // Hard delete (afsender altid)
   function canHardDelete(m: Message) {
@@ -378,261 +367,36 @@ export default function BeskederThreadView() {
     );
   }
 
-  // Render
   return (
-    <main className="min-h-screen py-6 sm:py-8 px-4 sm:px-6 md:px-10 bg-white dark:bg-[#1e1e1e] text-gray-900 dark:text-white">
-      <div className="mx-auto max-w-5xl">
-        {error && <p role="alert" className="mb-4 rounded-xl bg-red-50 p-3 text-red-700">{error}</p>}
-        {notice && <p role="status" className="mb-4 rounded-xl bg-amber-50 p-3 text-amber-900">{notice}</p>}
-      </div>
-      <div className="mx-auto max-w-5xl grid grid-cols-1 md:grid-cols-[340px_1fr] gap-4 md:gap-6">
-        {/* Thread list */}
-        <section className={`${view === 'thread' ? 'hidden md:block' : ''}`}>
-          <div className="mb-3 flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-pink-600">💬 Samtaler</h1>
-            <button
-              onClick={() => setComposerOpen((v) => !v)}
-              className="px-3 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-500 text-black font-semibold shadow"
-            >
-              ✍️ Ny
-            </button>
-          </div>
-
-          {composerOpen && (
-            <div className="mb-3 rounded-2xl p-3 bg-white dark:bg-[#2a2a2a] shadow">
-              <div className="space-y-2">
-                <div>
-                  <label htmlFor="message-recipient" className="block text-sm mb-1">Modtager (visningsnavn)</label>
-                  <input
-                    id="message-recipient"
-                    list="alle-spillere"
-                    disabled={sending}
-                    value={recipientName}
-                    onChange={(e) => setRecipientName(e.target.value)}
-                    className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white/80 dark:bg-[#1e1e1e] p-2.5 outline-none focus:ring-2 focus:ring-pink-500"
-                    placeholder="Skriv eller vælg…"
-                  />
-                  <datalist id="alle-spillere">
-                    {allNames.map((n) => (
-                      <option key={n} value={n} />
-                    ))}
-                  </datalist>
-                </div>
-                <div>
-                  <label htmlFor="new-message-body" className="block text-sm mb-1">Besked</label>
-                  <textarea
-                    id="new-message-body"
-                    disabled={sending}
-                    value={composerBody}
-                    onChange={(e) => setComposerBody(e.target.value)}
-                    placeholder="Hej! Skal vi tage en kamp? 😊  (Shift+Enter = linjeskift, Enter = send)"
-                    rows={3}
-                    className="w-full resize-y rounded-xl border border-gray-300 dark:border-gray-700 bg-white/80 dark:bg-[#1e1e1e] p-2.5 outline-none focus:ring-2 focus:ring-pink-500"
-                    maxLength={5000}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                        e.preventDefault(); void sendNewMessage();
-                      }
-                    }}
-                  />
-                </div>
-                <div className="flex justify-end gap-2">
-                  <button
-                    onClick={() => setComposerOpen(false)}
-                    className="px-4 py-2 rounded-xl border border-gray-300 dark:border-gray-700"
-                  >
-                    Luk
-                  </button>
-                  <button
-                    onClick={sendNewMessage}
-                    disabled={sending || !recipientName.trim() || !composerBody.trim()}
-                    className="px-4 py-2 rounded-xl bg-pink-600 hover:bg-pink-700 text-white disabled:opacity-60"
-                  >
-                    {sending ? 'Sender…' : 'Send'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {threads.length === 0 ? (
-            <p className="text-center text-gray-500 dark:text-gray-400">Ingen samtaler endnu.</p>
-          ) : (
-            <ul className="space-y-2">
-              {threads.map((t) => {
-                const active = t.counterpartId === selectedThreadId;
-                return (
-                  <li key={t.counterpartId}>
-                    <button
-                      onClick={() => {
-                        setSelectedThreadId(t.counterpartId);
-                        setView('thread');
-                      }}
-                      className={`w-full text-left rounded-2xl p-3 shadow transition ${
-                        active
-                          ? 'bg-pink-100 dark:bg-pink-900/30'
-                          : 'bg-white dark:bg-[#2a2a2a] hover:bg-gray-50 dark:hover:bg-[#333]'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold truncate">{t.counterpartName}</span>
-                            {t.unread > 0 && (
-                              <span className="text-[10px] font-bold uppercase bg-red-600 text-white px-2 py-0.5 rounded-full">
-                                {t.unread}
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-sm text-gray-600 dark:text-gray-300 truncate">
-                            {t.lastMessage.body}
-                          </p>
-                        </div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400 shrink-0">
-                          {new Date(t.lastMessage.created_at).toLocaleString('da-DK')}
-                        </div>
-                      </div>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </section>
-
-        {/* Thread panel */}
-        <section className={`${view === 'list' ? 'hidden md:block' : ''}`}>
-          {!selectedThread ? (
-            <div className="h-full rounded-2xl p-6 bg-white dark:bg-[#2a2a2a] shadow flex items-center justify-center text-gray-500">
-              Vælg en samtale i listen
-            </div>
-          ) : (
-            <div className="h-[75dvh] max-h-[760px] min-h-[360px] rounded-2xl bg-white dark:bg-[#2a2a2a] shadow flex flex-col">
-              {/* Header */}
-              <div className="flex items-center justify-between gap-2 p-3 border-b border-gray-200 dark:border-gray-700">
-                <div className="flex items-center gap-2">
-                  <button
-                    aria-label="Tilbage til samtaler"
-                    className="md:hidden px-2 py-1 rounded border border-gray-300 dark:border-gray-700"
-                    onClick={() => setView('list')}
-                  >
-                    ←
-                  </button>
-                  <h2 className="font-semibold">
-                    Samtale med <span className="text-pink-600">{selectedThread.counterpartName}</span>
-                  </h2>
-                </div>
-              </div>
-
-              {/* Messages (NYESTE ØVERST) */}
-              <div
-                ref={threadScrollRef}
-                className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-2"
-              >
-                {selectedMessages.map((m) => {
-                  const mine = m.sender_id === meId;
-                  return (
-                    <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-                      <div
-                        className={`max-w-[80%] rounded-2xl px-3 py-2 shadow ${
-                          mine
-                            ? 'bg-pink-600 text-white'
-                            : 'bg-gray-100 dark:bg-[#3a3a3a] text-gray-900 dark:text-white'
-                        }`}
-                      >
-                        <div className="text-sm whitespace-pre-wrap">{m.body}</div>
-                        <div
-                          className={`mt-1 text-[11px] opacity-80 ${
-                            mine ? 'text-white' : 'text-gray-600 dark:text-gray-300'
-                          }`}
-                        >
-                          {new Date(m.created_at).toLocaleString('da-DK')}
-                          {m.sender_id !== meId && !m.read_at ? ' · Ulæst' : ''}
-                        </div>
-                      </div>
-                      {mine && (
-                        <button
-                          title="Slet besked for alle"
-                          aria-label="Slet besked"
-                          onClick={() => hardDeleteEverywhere(m)}
-                          className="ml-1 self-center p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20"
-                        >
-                          🗑
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Composer (multilinje) */}
-              <div className="p-3 border-t border-gray-200 dark:border-gray-700">
-                <ThreadComposer
-                  key={selectedThread.counterpartId}
-                  text={threadDrafts[selectedThread.counterpartId] ?? ''}
-                  onTextChange={(text) => setThreadDrafts((prev) => ({ ...prev, [selectedThread.counterpartId]: text }))}
-                  onSend={async (text) =>
-                    sendMessageTo(
-                      selectedThread.counterpartId,
-                      text
-                    )
-                  }
-                />
-              </div>
-            </div>
-          )}
-        </section>
-        {hasOlder && <button onClick={loadOlder} disabled={loadingOlder} className="rounded-xl border p-2 text-sm md:col-span-2">{loadingOlder ? 'Henter…' : 'Hent ældre beskeder'}</button>}
-      </div>
-    </main>
+    <InboxView
+      meId={meId}
+      threads={threads}
+      selectedThread={selectedThread}
+      messages={selectedMessages}
+      view={view}
+      onOpenThread={id => { setSelectedThreadId(id); setComposerOpen(false); setView('thread'); }}
+      onBack={() => setView('list')}
+      composing={composerOpen}
+      onCompose={() => setComposerOpen(true)}
+      onCloseCompose={() => setComposerOpen(false)}
+      names={[...new Set(allNames)]}
+      recipient={recipientName}
+      onRecipient={setRecipientName}
+      newBody={composerBody}
+      onNewBody={setComposerBody}
+      sending={sending}
+      onSendNew={sendNewMessage}
+      reply={threadDrafts[selectedThreadId ?? ''] ?? ''}
+      onReply={text => {
+        if (selectedThreadId) setThreadDrafts(prev => ({ ...prev, [selectedThreadId]: text }));
+      }}
+      onSendReply={text => selectedThreadId ? sendMessageTo(selectedThreadId, text) : Promise.resolve(false)}
+      onDelete={hardDeleteEverywhere}
+      hasOlder={hasOlder}
+      loadingOlder={loadingOlder}
+      onLoadOlder={loadOlder}
+      error={error}
+      notice={notice}
+    />
   );
 }
-
-function ThreadComposer({ onSend, text, onTextChange }: { onSend: (text: string) => Promise<boolean>; text: string; onTextChange: (text: string) => void }) {
-  const [busy, setBusy] = useState(false);
-  const busyRef = useRef(false);
-
-  async function handleSend() {
-    const msg = text.trim();
-    if (!msg || busyRef.current) return;
-    busyRef.current = true; setBusy(true);
-    try {
-      if (await onSend(msg)) onTextChange('');
-    } finally {
-      busyRef.current = false; setBusy(false);
-    }
-  }
-
-  return (
-    <div className="flex items-end gap-2">
-      <div className="flex-1">
-        <textarea
-          aria-label="Svar i samtalen"
-          disabled={busy}
-          value={text}
-          onChange={(e) => onTextChange(e.target.value)}
-          placeholder="Skriv en besked…  (Shift+Enter = linjeskift, Enter = send)"
-          rows={1}
-          className="w-full resize-y rounded-xl border border-gray-300 dark:border-gray-700 bg-white/80 dark:bg-[#1e1e1e] p-2.5 outline-none focus:ring-2 focus:ring-pink-500"
-          maxLength={5000}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault(); void handleSend();
-            }
-          }}
-        />
-        <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
-          Enter: send &nbsp;•&nbsp; Shift+Enter: linjeskift
-        </p>
-      </div>
-      <button
-        onClick={handleSend}
-        disabled={busy || !text.trim()}
-        className="px-4 py-2 rounded-xl bg-pink-600 hover:bg-pink-700 text-white disabled:opacity-60"
-      >
-        {busy ? 'Sender…' : 'Send'}
-      </button>
-    </div>
-  );
-}
-
