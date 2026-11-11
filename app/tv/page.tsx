@@ -37,6 +37,7 @@ type RankingSlide = {
 type MediaSlide = TvSlide & { kind: "media"; duration: number };
 
 const SIGNUP_URL = "https://padelhuset-app.netlify.app/signup";
+const TV_VERSION = process.env.NEXT_PUBLIC_TV_VERSION;
 const POINTS = new Intl.NumberFormat("da-DK", { maximumFractionDigits: 0 });
 const MONTHLY_POINTS = new Intl.NumberFormat("da-DK", {
   maximumFractionDigits: 1,
@@ -242,8 +243,18 @@ export default function TvPage() {
       try {
         const response = await fetch("/api/tv/ugeprogram", { signal: controller.signal });
         if (!response.ok) return;
-        const { program }: { program: WeekSession[] } = await response.json();
-        if (!controller.signal.aborted) setWeekProgram(program);
+        const { program, version }: { program: WeekSession[]; version?: string } = await response.json();
+        if (controller.signal.aborted) return;
+        setWeekProgram(program);
+
+        if (TV_VERSION && version && version !== TV_VERSION) {
+          const url = new URL(window.location.href);
+          // Try a fresh URL once per deployment if an edge still serves old HTML.
+          if (url.searchParams.get("tv-version") !== version) {
+            url.searchParams.set("tv-version", version);
+            window.location.replace(url.toString());
+          }
+        }
       } catch {
         // Keep the last schedule visible if the TV loses its connection.
       } finally {

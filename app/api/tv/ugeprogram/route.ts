@@ -12,7 +12,10 @@ function reply(body: unknown, status = 200) {
 
 export async function GET() {
   try {
-    return reply({ program: await readWeekProgram() });
+    return reply({
+      program: await readWeekProgram(),
+      version: process.env.NEXT_PUBLIC_TV_VERSION,
+    });
   } catch (error) {
     console.error("Kunne ikke hente TV-ugeprogrammet:", error);
     return reply({ error: "Kunne ikke hente ugeprogrammet." }, 500);

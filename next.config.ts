@@ -1,7 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Lad den være tom eller tilføj config efter behov
+  env: {
+    NEXT_PUBLIC_TV_VERSION: process.env.COMMIT_REF ?? "",
+  },
 };
 
 export default nextConfig;
