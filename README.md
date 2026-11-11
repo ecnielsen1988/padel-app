@@ -33,6 +33,11 @@ Uafsluttede sæt ved kl. 20 indberettes efter de eksisterende eventregler.
 
 Kontrollér Royal-regler og score-API uden databaseadgang med `node scripts/test-royal.mjs`.
 
+### Makkerrangliste
+
+Tilmelding til Åben, Mix og Kvinder findes på `/makkerrangliste`.
+Se [opsætning af Supabase og firmaets MobilePay](docs/partner-tournaments.md).
+
 First, run the development server:
 
 ```bash

@@ -654,6 +654,16 @@ export default function StartSide() {
       title: "Ranglister",
       subtitle: "Toplister og form",
     },
+    ...(erAdmin
+      ? [
+          {
+            href: "/makkerrangliste",
+            icon: "🤝",
+            title: "Makkerliga",
+            subtitle: "Tilmeld dit par",
+          },
+        ]
+      : []),
     {
       href: "/kommende",
       icon: "📅",

@@ -4,6 +4,11 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 
+function afterLogin() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('makkerrangliste') === '1' ? '/makkerrangliste' : '/startside';
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
@@ -11,11 +16,10 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
-  // Allerede logget ind? -> send til /startside
   useEffect(() => {
     (async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      if (session) router.replace('/startside');
+      if (session) router.replace(afterLogin());
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -34,7 +38,7 @@ export default function LoginPage() {
 
     setMsg('✅ Du er nu logget ind');
     router.refresh();            // vigtigt: få SSR-sider til at se sessionen
-    router.replace('/startside'); // altid til /startside (ingen ?next)
+    router.replace(afterLogin());
   }
 
   async function handleForgotPassword() {
