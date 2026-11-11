@@ -10,6 +10,8 @@ spillerprofil. Mix og Kvinder bruger profilernes registrerede køn.
    Supabase SQL Editor i det miljø, hvor tilmeldingen skal bruges. Kør derefter
    [tilmelding pr. række](../database/partner_tournaments_per_division.sql) og
    [opsætningen af Makkerliga 2027 Vinter](../database/partner_tournaments_winter_2027.sql).
+   Kør til sidst [puljer og kampe](../database/partner_league.sql).
+   Puljeændringen bruger de eksisterende funktioner til kamptråde og booking.
 2. Brug firmaets salgsenhed med [Integreret betaling (ePayment)](https://vippsmobilepay.com/da-DK/online/payment-integration).
    Brug en test-salgsenhed og en separat testdatabase til prøvebetalinger.
 3. Registrér én webhook via [Vipps MobilePay Webhooks API](https://developer.vippsmobilepay.com/docs/APIs/webhooks-api/api-guide/)
@@ -40,3 +42,16 @@ spillerprofil. Mix og Kvinder bruger profilernes registrerede køn.
   En ny tilmelding i samme række skal blive afvist. En anden række har egne pladser.
 - Afbryd en betaling eller lad den udløbe. Begge spillere skal kunne tilmelde
   sig igen, mens fristen stadig er åben.
+
+## Admin, puljer og kampe
+
+- Se tilmeldte par og betalingsstatus under **Admin → Makkerliga**.
+- Efter tilmeldingsfristen kan admin danne og offentliggøre puljerne.
+  Appen bruger de betalte pars samlede Elo på tidspunktet for offentliggørelsen.
+  Hvert par møder de andre par i sin pulje én gang.
+- Fra **Puljer og stillinger** åbner deltagerne deres kamptråd med alle fire
+  spillere. Når tiden er aftalt og banen booket, kan en deltager bekræfte
+  bookingen. Ved ændringer skal den bekræftes igen.
+- Bekræftede kampe vises i [den offentlige kalender](https://padelhuset-app.netlify.app/makkerrangliste/kalender).
+  Indberet resultatet fra kampaftalen. Appen opdaterer puljestillingen og bruger
+  samme dobbelte Elo-vægt som for eventkampe.

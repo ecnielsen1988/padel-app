@@ -434,6 +434,7 @@ export default function KommendeKampePage() {
                 Kommende Events
               </h1>
               <Link href="/royal" className="mt-2 inline-block text-sm font-semibold underline">👑 Rangliste Padel Royal · Mandag 18–20</Link>
+              <Link href="/makkerrangliste/kalender" className="mt-2 block text-sm font-semibold underline">Makkerligaens kampkalender</Link>
             </div>
 
             <Link

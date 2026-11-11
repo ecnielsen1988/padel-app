@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useLayoutEffect, useRef, useState } from 'react';
 import type { Message } from '@/lib/messages';
-import { matchDate, type PlayerMatch } from '@/lib/playerMatches';
+import { matchTimeLabel, type PlayerMatch } from '@/lib/playerMatches';
 
 export type Thread = {
   counterpartId: string;
@@ -133,7 +133,7 @@ export function InboxView(props: {
                   .map(match => <Link key={match.id} href={`/kampe/${match.id}#samtale`} className="flex items-center gap-3 rounded-xl p-2 hover:bg-[#f7f3f8] dark:hover:bg-white/5">
                     <Avatar name="Kamp" />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-extrabold">{matchDate(match.date)} · {match.start_time.slice(0,5)}</span>
+                      <span className="block truncate text-sm font-extrabold">{match.league_pool_id ? "Makkerliga · " : ""}{matchTimeLabel(match)}</span>
                       <span className="block truncate text-sm text-[#716b79] dark:text-[#b9b1c3]">{match.last_message?.body ?? match.players.map(player => player.name).join(', ')}</span>
                     </span>
                     {match.unread > 0 && <span aria-label={`${match.unread} ulæste`} className="rounded-full bg-[#bc135d] px-2 py-0.5 text-xs font-bold text-white">{match.unread}</span>}

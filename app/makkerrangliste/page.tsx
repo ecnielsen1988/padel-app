@@ -19,6 +19,10 @@ export default function PartnerTournamentPage() {
           title={WINTER_2027.name}
           action={<Link href="/makkerrangliste/reglement" className="padel-secondary-button inline-flex">Læs reglementet</Link>}
         />
+        <nav aria-label="Makkerliga" className="flex flex-wrap gap-2">
+          <Link href="/makkerrangliste/puljer" className="padel-secondary-button inline-flex">Puljer og stillinger</Link>
+          <Link href="/makkerrangliste/kalender" className="padel-secondary-button inline-flex">Bekræftede kampe</Link>
+        </nav>
         <section className="padel-surface space-y-4">
           <h2 className="text-xl font-bold">Derfor skal I med</h2>
           <ul className="list-disc space-y-2 pl-5 marker:text-[var(--brand-strong)]">

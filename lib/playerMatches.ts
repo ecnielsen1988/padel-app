@@ -3,10 +3,11 @@ export type MatchSet = { a: number; b: number; partner: number };
 export type PlayerMatch = {
   id: string;
   created_by: string;
-  date: string;
-  start_time: string;
-  location: string;
-  court: string;
+  date: string | null;
+  start_time: string | null;
+  location: string | null;
+  court: string | null;
+  league_pool_id?: string | null;
   revision: number;
   confirmed_at: string | null;
   players: { id: string; name: string }[];
@@ -46,6 +47,10 @@ export function danishNow(date = new Date()) {
   return { date: `${part('year')}-${part('month')}-${part('day')}`, time: `${part('hour')}:${part('minute')}` };
 }
 
+export function matchTimeLabel(match: Pick<PlayerMatch, 'date' | 'start_time'>) {
+  return match.date && match.start_time ? `${matchDate(match.date)} kl. ${match.start_time.slice(0, 5)}` : 'Tidspunkt afventer';
+}
+
 export const matchCourts = {
   Helsinge: ['Center Court', '1', '2', '3'],
   Gilleleje: ['1', '2', '3', '5', '6'],
@@ -81,5 +86,5 @@ export function encodeMatchSet({ a, b, order }: MatchSetDraft): MatchSet {
 }
 
 export function compareMatchTime(a: Pick<PlayerMatch, 'date' | 'start_time' | 'id'>, b: Pick<PlayerMatch, 'date' | 'start_time' | 'id'>) {
-  return a.date.localeCompare(b.date) || a.start_time.localeCompare(b.start_time) || a.id.localeCompare(b.id);
+  return (a.date ?? '9999-12-31').localeCompare(b.date ?? '9999-12-31') || (a.start_time ?? '').localeCompare(b.start_time ?? '') || a.id.localeCompare(b.id);
 }

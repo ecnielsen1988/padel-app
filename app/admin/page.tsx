@@ -71,6 +71,10 @@ export default function AdminHomePage() {
       <h1 className="text-3xl font-bold mb-8 text-center">⛳ Admin</h1>
 
       <div className="grid gap-4">
+        <Link href="/admin/makkerliga" className="block rounded-xl bg-pink-600 px-5 py-3 text-center font-semibold text-white hover:bg-pink-700">
+          Makkerliga · Tilmeldinger og puljer
+        </Link>
+
         <Link
           href="/admin/tv"
           className="block bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
