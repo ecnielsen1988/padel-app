@@ -41,14 +41,14 @@ function eligibility(division: PartnerDivision, player?: string | null, partner?
   return true;
 }
 
-function DivisionOptions({ selected, onSelect, showWomen = false }: {
+function DivisionOptions({ selected, onSelect, available }: {
   selected: PartnerDivision;
   onSelect: (value: PartnerDivision) => void;
-  showWomen?: boolean;
+  available: PartnerDivision[];
 }) {
   return (
-    <div className={`grid gap-3 ${showWomen ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
-      {divisions.filter(([id]) => showWomen || id !== "women").map(([id, division]) => {
+    <div className={`grid gap-3 ${available.length === 3 ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
+      {divisions.filter(([id]) => available.includes(id)).map(([id, division]) => {
         const style = `block rounded-2xl border px-4 py-4 ${selected === id
           ? "border-[var(--brand)] bg-[var(--surface-strong)]"
           : "border-[var(--border)]"}`;
@@ -83,7 +83,7 @@ export function TournamentSignup() {
         setData(current);
         const id = new URLSearchParams(window.location.search).get("betaling");
         if (!id || !UUID_PATTERN.test(id) || !current?.paymentAvailable) return;
-        if (current.registration?.id === id && current.registration.status === "paid") return;
+        if (current.registrations.some((entry) => entry.id === id && entry.status === "paid")) return;
         setBusy(true);
         try {
           let result: Awaited<ReturnType<typeof submit>> | undefined;
@@ -149,22 +149,21 @@ export function TournamentSignup() {
   }
   if (!data) return <p role="status">Indlæser tilmelding …</p>;
 
-  const entry = data.registration;
   const player = data.players.find((item) => item.id === data.userId);
   const showWomen = isWoman(player?.koen);
-  const selectedDivision = division === "women" && !showWomen ? "open" : division;
-  const occupied = new Set(data.occupiedPlayers);
+  const available = divisions.map(([id]) => id).filter((id) =>
+    (id !== "women" || showWomen) && !data.registrations.some((entry) => entry.division === id));
+  const selectedDivision = available.includes(division) ? division : available[0];
+  const occupied = new Set(selectedDivision ? data.occupiedPlayers[selectedDivision] : []);
   const options = data.players
     .filter((item) => item.id !== data.userId && !occupied.has(item.id) &&
-      eligibility(selectedDivision, player?.koen, item.koen))
+      selectedDivision && eligibility(selectedDivision, player?.koen, item.koen))
     .map((item) => ({ value: item.id, label: item.visningsnavn }));
   const selectedPartner = options.find((option) => option.value === partnerId) ?? null;
-  const otherPlayerId = entry?.payer_id === data.userId ? entry.partner_id : entry?.payer_id;
-  const partnerName = data.players.find((item) => item.id === otherPlayerId)?.visningsnavn;
 
   function register(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!data?.paymentAvailable || !selectedPartner) return;
+    if (!data?.paymentAvailable || !selectedPartner || !selectedDivision) return;
     void act({ action: "register", partnerId: selectedPartner.value, division: selectedDivision });
   }
 
@@ -172,37 +171,42 @@ export function TournamentSignup() {
     <>
       {data.testPayments && <StatusPill tone="warning">MobilePay-testmiljø</StatusPill>}
       {message && <p role={message.error ? "alert" : "status"} className={message.error ? "font-semibold text-[var(--brand-strong)]" : ""}>{message.text}</p>}
-      {entry ? (
-        <div className="space-y-3 rounded-2xl border border-[var(--border)] p-4">
-          <StatusPill tone={entry.status === "paid" ? "success" : "warning"}>
-            {entry.status === "paid" ? "Tilmeldt og betalt" : "Afventer betaling"}
-          </StatusPill>
-          <dl className="flex flex-wrap gap-x-8 gap-y-2">
-            <div>
-              <dt className="text-sm text-[var(--muted)]">Din makker</dt>
-              <dd className="font-semibold">{partnerName ?? "Spillerprofil"}</dd>
-            </div>
-            <div>
-              <dt className="text-sm text-[var(--muted)]">Jeres række</dt>
-              <dd className="font-semibold">{PARTNER_DIVISIONS[entry.division].name}</dd>
-            </div>
-          </dl>
-          {entry.status === "pending" && (
-            <div className="flex flex-wrap gap-2">
-              {entry.payer_id === data.userId ? (
-                <button type="button" className={button} disabled={busy || !data.paymentAvailable}
-                  onClick={() => void act({ action: "resume", id: entry.id })}>Fortsæt til MobilePay</button>
-              ) : <p className="w-full text-sm">Din makker står for betalingen.</p>}
-              <button type="button" className="padel-secondary-button inline-flex disabled:opacity-50" disabled={busy || !data.paymentAvailable}
-                onClick={() => void act({ action: "status", id: entry.id })}>Tjek betaling</button>
-            </div>
-          )}
-        </div>
-      ) : data.open ? (
+      {data.registrations.map((entry) => {
+        const otherPlayerId = entry.payer_id === data.userId ? entry.partner_id : entry.payer_id;
+        const partnerName = data.players.find((item) => item.id === otherPlayerId)?.visningsnavn;
+        return (
+          <div key={entry.id} className="space-y-3 rounded-2xl border border-[var(--border)] p-4">
+            <StatusPill tone={entry.status === "paid" ? "success" : "warning"}>
+              {entry.status === "paid" ? "Tilmeldt og betalt" : "Afventer betaling"}
+            </StatusPill>
+            <dl className="flex flex-wrap gap-x-8 gap-y-2">
+              <div>
+                <dt className="text-sm text-[var(--muted)]">Din makker</dt>
+                <dd className="font-semibold">{partnerName ?? "Spillerprofil"}</dd>
+              </div>
+              <div>
+                <dt className="text-sm text-[var(--muted)]">Jeres række</dt>
+                <dd className="font-semibold">{PARTNER_DIVISIONS[entry.division].name}</dd>
+              </div>
+            </dl>
+            {entry.status === "pending" && (
+              <div className="flex flex-wrap gap-2">
+                {entry.payer_id === data.userId ? (
+                  <button type="button" className={button} disabled={busy || !data.paymentAvailable}
+                    onClick={() => void act({ action: "resume", id: entry.id })}>Fortsæt til MobilePay</button>
+                ) : <p className="w-full text-sm">Din makker står for betalingen.</p>}
+                <button type="button" className="padel-secondary-button inline-flex disabled:opacity-50" disabled={busy || !data.paymentAvailable}
+                  onClick={() => void act({ action: "status", id: entry.id })}>Tjek betaling</button>
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {data.open && selectedDivision ? (
         <form onSubmit={register} className="space-y-5">
           <fieldset className="space-y-2" disabled={busy}>
             <legend className="text-sm font-semibold">Række</legend>
-            <DivisionOptions showWomen={showWomen} selected={selectedDivision}
+            <DivisionOptions available={available} selected={selectedDivision}
               onSelect={(value) => { setDivision(value); setPartnerId(""); }} />
           </fieldset>
           <div className="space-y-1.5">
@@ -232,8 +236,8 @@ export function TournamentSignup() {
             {busy ? "Vent et øjeblik …" : "Betal 200 kr. med MobilePay"}
           </button>
         </form>
-      ) : <p>Tilmeldingen er lukket.</p>}
-      {!data.paymentAvailable && entry?.status !== "paid" && (data.open || entry) && (
+      ) : !data.open && <p>Tilmeldingen er lukket.</p>}
+      {!data.paymentAvailable && ((data.open && selectedDivision) || data.registrations.some((entry) => entry.status === "pending")) && (
         <p role="status" className="text-sm">{data.preview ? "Forhåndsvisning. Tilmeldingen åbner senere." : "MobilePay er endnu ikke tilgængelig."}</p>
       )}
     </>

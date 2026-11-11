@@ -8,6 +8,7 @@ spillerprofil. Mix og Kvinder bruger profilernes registrerede køn.
 
 1. Kør [databaseændringen](../database/partner_tournaments.sql) én gang i
    Supabase SQL Editor i det miljø, hvor tilmeldingen skal bruges. Kør derefter
+   [tilmelding pr. række](../database/partner_tournaments_per_division.sql) og
    [opsætningen af Makkerliga 2027 Vinter](../database/partner_tournaments_winter_2027.sql).
 2. Brug firmaets salgsenhed med [Integreret betaling (ePayment)](https://vippsmobilepay.com/da-DK/online/payment-integration).
    Brug en test-salgsenhed og en separat testdatabase til prøvebetalinger.
@@ -35,7 +36,7 @@ spillerprofil. Mix og Kvinder bruger profilernes registrerede køn.
 - Tilmeld to testspillere. Bekræft i MobilePay, at beløbet er **200 DKK** til
   den valgte salgsenhed. Når beløbet er trukket, skal begge konti se
   **Tilmeldt og betalt** i appen. Kontrollér også betalingen i erhvervsportalen.
-- Prøv at tilmelde en af spillerne igen i en anden række i samme turnering.
-  En ny tilmelding skal blive afvist. En anden turnering har egne pladser.
+- Prøv at tilmelde en af spillerne igen i samme række.
+  En ny tilmelding i samme række skal blive afvist. En anden række har egne pladser.
 - Afbryd en betaling eller lad den udløbe. Begge spillere skal kunne tilmelde
   sig igen, mens fristen stadig er åben.

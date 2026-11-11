@@ -57,19 +57,23 @@ export async function GET() {
       if (profile?.rolle !== "admin") return messagingReply({ error: "Tilmeldingen åbner senere." }, 403);
       return messagingReply({
         userId, preview: true, open: WINTER_2027.closes_on >= copenhagenDate(),
-        paymentAvailable: false, testPayments: false, registration: null, occupiedPlayers: [],
+        paymentAvailable: false, testPayments: false, registrations: [], occupiedPlayers: { open: [], mix: [], women: [] },
         players: await playerDirectory(),
       } satisfies TournamentSignupData);
     }
 
     const [players, entries] = await Promise.all([playerDirectory(), tournamentEntries()]);
+    const occupiedPlayers: TournamentSignupData["occupiedPlayers"] = { open: [], mix: [], women: [] };
+    for (const entry of entries) {
+      occupiedPlayers[entry.division].push(entry.payer_id, entry.partner_id);
+    }
     const config = paymentConfig();
     return messagingReply({
       userId, open: tournament.closes_on >= copenhagenDate(),
       paymentAvailable: Boolean(config), testPayments: config?.mode === "test",
       players,
-      registration: entries.find((entry) => entry.payer_id === userId || entry.partner_id === userId) ?? null,
-      occupiedPlayers: entries.flatMap((entry) => [entry.payer_id, entry.partner_id]),
+      registrations: entries.filter((entry) => entry.payer_id === userId || entry.partner_id === userId),
+      occupiedPlayers,
     } satisfies TournamentSignupData);
   } catch (error) {
     console.error("Partner tournament signup", error);

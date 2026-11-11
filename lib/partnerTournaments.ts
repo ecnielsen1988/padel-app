@@ -5,6 +5,7 @@ export const WINTER_2027 = {
   name: "Makkerliga 2027 Vinter",
   closes_on: "2026-12-04",
   program_on: "2026-12-07",
+  last_match_on: "2027-02-07",
   play_date: "2027-02-13",
 } as const;
 
@@ -31,8 +32,8 @@ export type TournamentSignupData = {
   open: boolean;
   paymentAvailable: boolean;
   testPayments: boolean;
-  registration: PartnerRegistration | null;
-  occupiedPlayers: string[];
+  registrations: PartnerRegistration[];
+  occupiedPlayers: Record<PartnerDivision, string[]>;
   players: { id: string; visningsnavn: string; koen: string | null }[];
 };
 
