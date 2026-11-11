@@ -8,7 +8,8 @@ spillerprofil. Mix og Kvinder bruger profilernes registrerede køn.
 ## Sæt Supabase og MobilePay op
 
 1. Kør [databaseændringen](../database/partner_tournaments.sql) én gang i
-   Supabase SQL Editor i det miljø, hvor tilmeldingen skal bruges.
+   Supabase SQL Editor i det miljø, hvor tilmeldingen skal bruges. Kør derefter
+   [opsætningen af Makkerliga 2027 Vinter](../database/partner_tournaments_winter_2027.sql).
 2. Brug firmaets salgsenhed med [Integreret betaling (ePayment)](https://vippsmobilepay.com/da-DK/online/payment-integration).
    Brug en test-salgsenhed og en separat testdatabase til prøvebetalinger.
 3. Registrér én webhook via [Vipps MobilePay Webhooks API](https://developer.vippsmobilepay.com/docs/APIs/webhooks-api/api-guide/)

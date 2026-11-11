@@ -4,7 +4,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { StatusPill } from "../components/ui";
 import {
-  PARTNER_DIVISIONS, UUID_PATTERN, type PartnerDivision,
+  isWoman, PARTNER_DIVISIONS, tournamentDateLabel, UUID_PATTERN, type PartnerDivision,
   type PartnerRegistration, type TournamentSignupData,
 } from "@/lib/partnerTournaments";
 
@@ -12,12 +12,6 @@ const api = "/api/makkerrangliste";
 const divisions = Object.entries(PARTNER_DIVISIONS) as [PartnerDivision, typeof PARTNER_DIVISIONS[PartnerDivision]][];
 const field = "w-full rounded-xl border border-[var(--border)] bg-[var(--surface-strong)] px-3 py-2.5";
 const button = "padel-primary-button inline-flex disabled:cursor-not-allowed disabled:opacity-50";
-
-function dateLabel(value: string) {
-  return new Intl.DateTimeFormat("da-DK", {
-    dateStyle: "long", timeZone: "Europe/Copenhagen",
-  }).format(new Date(`${value}T12:00:00Z`));
-}
 
 async function loadSignup() {
   const response = await fetch(api, { cache: "no-store" });
@@ -46,13 +40,14 @@ function eligibility(division: PartnerDivision, player?: string | null, partner?
   return true;
 }
 
-function DivisionOptions({ selected, onSelect }: {
+function DivisionOptions({ selected, onSelect, showWomen = false }: {
   selected?: PartnerDivision;
   onSelect?: (value: PartnerDivision) => void;
+  showWomen?: boolean;
 }) {
   return (
-    <div className="grid gap-3 sm:grid-cols-3">
-      {divisions.map(([id, division]) => {
+    <div className={`grid gap-3 ${showWomen ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
+      {divisions.filter(([id]) => showWomen || id !== "women").map(([id, division]) => {
         const style = `block rounded-2xl border px-4 py-4 ${selected === id
           ? "border-[var(--brand)] bg-[var(--surface-strong)]"
           : "border-[var(--border)]"}`;
@@ -172,15 +167,22 @@ export function TournamentSignup() {
   const tournament = data.tournaments.find((item) => item.id === tournamentId) ?? data.tournaments[0];
   const entry = data.registrations.find((item) => item.tournament_id === tournament?.id);
   const player = data.players.find((item) => item.id === data.userId);
-  const partners = data.players.filter((item) => item.id !== data.userId && eligibility(division, player?.koen, item.koen));
-  const otherPlayerId = entry?.payer_id === data.userId ? entry?.partner_id : entry?.payer_id;
-  const partnerName = data.players.find((item) => item.id === otherPlayerId)?.visningsnavn;
+  const showWomen = isWoman(player?.koen);
+  const selectedDivision = division === "women" && !showWomen ? "open" : division;
+  const occupied = new Set(tournament ? data.occupiedPlayers[tournament.id] : []);
+  const partners = data.players.filter((item) => item.id !== data.userId &&
+    !occupied.has(item.id) && eligibility(selectedDivision, player?.koen, item.koen));
+  const selectedPartner = partners.some((item) => item.id === partnerId) ? partnerId : "";
+  const pairs = data.confirmedPairs.filter((pair) => pair.tournament_id === tournament?.id);
+  const names = new Map(data.players.map((item) => [item.id, item.visningsnavn]));
+  const pairNames = (pair: Pick<PartnerRegistration, "payer_id" | "partner_id">) =>
+    `${names.get(pair.payer_id) ?? "Spiller"} & ${names.get(pair.partner_id) ?? "Spiller"}`;
 
   function register(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!tournament || !partnerId || !data?.paymentAvailable) return;
+    if (!tournament || !selectedPartner || !data?.paymentAvailable) return;
     setTournamentId(tournament.id);
-    void act({ action: "register", tournamentId: tournament.id, partnerId, division });
+    void act({ action: "register", tournamentId: tournament.id, partnerId: selectedPartner, division: selectedDivision });
   }
 
   function createTournament(event: FormEvent<HTMLFormElement>) {
@@ -203,7 +205,7 @@ export function TournamentSignup() {
         {!tournament ? (
           <>
             <p>Der er ingen åbne turneringer lige nu.</p>
-            <DivisionOptions />
+            <DivisionOptions showWomen={showWomen} />
           </>
         ) : (
           <>
@@ -215,16 +217,17 @@ export function TournamentSignup() {
                 setDivision("open");
                 setMessage(undefined);
               }}>
-                {data.tournaments.map((item) => <option key={item.id} value={item.id}>{item.name} · {dateLabel(item.play_date)}</option>)}
+                {data.tournaments.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
               </select>
             </label>
-            <p className="text-sm text-[var(--muted)]">Tilmeldingsfrist {dateLabel(tournament.closes_on)}</p>
+            <p className="text-sm text-[var(--muted)]">Tilmeldingsfrist {tournamentDateLabel(tournament.closes_on)}</p>
             {entry ? (
               <div className="space-y-3 rounded-2xl border border-[var(--border)] p-4">
                 <StatusPill tone={entry.status === "paid" ? "success" : "warning"}>
                   {entry.status === "paid" ? "Tilmeldt og betalt" : "Afventer betaling"}
                 </StatusPill>
-                <p>{PARTNER_DIVISIONS[entry.division].name}{partnerName && ` med ${partnerName}`}</p>
+                <p className="font-semibold">{pairNames(entry)}</p>
+                <p>{PARTNER_DIVISIONS[entry.division].name}</p>
                 {entry.status === "pending" && (
                   <div className="flex flex-wrap gap-2">
                     {entry.payer_id === data.userId ? (
@@ -240,16 +243,17 @@ export function TournamentSignup() {
               <form onSubmit={register} className="space-y-5">
                 <fieldset className="space-y-2" disabled={busy}>
                   <legend className="text-sm font-semibold">Række</legend>
-                  <DivisionOptions selected={division} onSelect={(value) => { setDivision(value); setPartnerId(""); }} />
+                  <DivisionOptions showWomen={showWomen} selected={selectedDivision}
+                    onSelect={(value) => { setDivision(value); setPartnerId(""); }} />
                 </fieldset>
                 <label className="block space-y-1.5">
                   <span className="text-sm font-semibold">Makker</span>
-                  <select className={field} value={partnerId} onChange={(event) => setPartnerId(event.target.value)} required disabled={busy || !partners.length}>
+                  <select className={field} value={selectedPartner} onChange={(event) => setPartnerId(event.target.value)} required disabled={busy || !partners.length}>
                     <option value="">{partners.length ? "Vælg din makker" : "Ingen makkere tilgængelige i denne række"}</option>
                     {partners.map((item) => <option key={item.id} value={item.id}>{item.visningsnavn}</option>)}
                   </select>
                 </label>
-                <button type="submit" className={button} disabled={busy || !partnerId || !data.paymentAvailable}>
+                <button type="submit" className={button} disabled={busy || !selectedPartner || !data.paymentAvailable}>
                   {busy ? "Vent et øjeblik …" : "Betal 200 kr. med MobilePay"}
                 </button>
               </form>
@@ -258,6 +262,30 @@ export function TournamentSignup() {
           </>
         )}
       </section>
+      {tournament && (
+        <section className="padel-surface space-y-4">
+          <h2 className="text-xl font-bold">Tilmeldte par</h2>
+          <div className={`grid gap-3 ${showWomen ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
+            {divisions.filter(([id]) => showWomen || id !== "women").map(([id, info]) => {
+              const divisionPairs = pairs.filter((pair) => pair.division === id);
+              return (
+                <div key={id} className="rounded-xl border border-[var(--border)] p-3">
+                  <h3 className="font-semibold">{info.name}</h3>
+                  {divisionPairs.length ? (
+                    <ul className="mt-2 space-y-2 text-sm">
+                      {divisionPairs.map((pair) => (
+                        <li key={pair.payer_id} className={entry?.payer_id === pair.payer_id ? "font-bold" : undefined}>
+                          {pairNames(pair)}{entry?.payer_id === pair.payer_id && " (jeres par)"}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : <p className="mt-2 text-sm text-[var(--muted)]">Ingen tilmeldte par endnu.</p>}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
       {data.admin && !data.preview && (
         <section className="padel-surface space-y-4">
           <h2 className="text-xl font-bold">Opret en turnering</h2>

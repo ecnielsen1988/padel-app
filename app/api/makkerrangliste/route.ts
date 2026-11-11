@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { messagingAuth, messagingReply } from "@/lib/messagingAuth";
 import { paymentConfig, syncPartnerPayment } from "@/lib/partnerPayments";
-import { copenhagenDate, PARTNER_DIVISIONS, UUID_PATTERN, type PartnerRegistration, type PartnerTournament, type TournamentSignupData } from "@/lib/partnerTournaments";
+import { copenhagenDate, isWoman, PARTNER_DIVISIONS, UUID_PATTERN, WINTER_2027, type PartnerRegistration, type PartnerTournament, type TournamentSignupData } from "@/lib/partnerTournaments";
 import { supabaseServiceRole } from "@/lib/supabaseServiceRole";
 
 const db = supabaseServiceRole as SupabaseClient;
@@ -25,27 +25,54 @@ async function playerDirectory() {
   }
 }
 
-function adminPreview(userId: string, today: string) {
-  const playDate = new Date(today);
-  playDate.setUTCDate(playDate.getUTCDate() + 14);
+async function tournamentEntries(tournamentIds: string[]) {
+  const entries: PartnerRegistration[] = [];
+  if (!tournamentIds.length) return entries;
+  const pageSize = 500;
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await db.from("partner_registrations").select(entryColumns)
+      .in("tournament_id", tournamentIds).in("status", ["pending", "paid"])
+      .order("id").range(offset, offset + pageSize - 1)
+      .overrideTypes<PartnerRegistration[], { merge: false }>();
+    if (error) throw error;
+    entries.push(...data);
+    if (data.length < pageSize) return entries;
+  }
+}
+
+function registrationOverview(entries: PartnerRegistration[], showWomen: boolean) {
+  const occupiedPlayers: TournamentSignupData["occupiedPlayers"] = {};
+  const confirmedPairs: TournamentSignupData["confirmedPairs"] = [];
+  for (const { tournament_id, payer_id, partner_id, division, status } of entries) {
+    (occupiedPlayers[tournament_id] ??= []).push(payer_id, partner_id);
+    if (status === "paid" && (showWomen || division !== "women")) {
+      confirmedPairs.push({ tournament_id, payer_id, partner_id, division });
+    }
+  }
+  return { occupiedPlayers, confirmedPairs };
+}
+
+function adminPreview(userId: string, gender: string | null, today: string) {
+  const { id, name, closes_on, play_date } = WINTER_2027;
+  const examplePair: PartnerRegistration = {
+    id: "example-pair", tournament_id: id, payer_id: "preview-3", partner_id: "preview-4",
+    division: "open", status: "paid",
+  };
   return {
     userId,
     admin: true,
     preview: true,
     paymentAvailable: false,
     testPayments: false,
-    tournaments: [{
-      id: "preview",
-      name: "Eksempelturnering",
-      play_date: playDate.toISOString().slice(0, 10),
-      closes_on: today,
-      open: true,
-    }],
+    tournaments: [{ id, name, closes_on, play_date, open: closes_on >= today }],
     registrations: [],
+    ...registrationOverview([examplePair], isWoman(gender)),
     players: [
-      { id: userId, visningsnavn: "Eksempelspiller", koen: "kvinde" },
+      { id: userId, visningsnavn: "Eksempelspiller", koen: gender },
       { id: "preview-1", visningsnavn: "Eksempelmakker 1", koen: "kvinde" },
       { id: "preview-2", visningsnavn: "Eksempelmakker 2", koen: "mand" },
+      { id: "preview-3", visningsnavn: "Eksempelspiller 3", koen: "mand" },
+      { id: "preview-4", visningsnavn: "Eksempelspiller 4", koen: "kvinde" },
     ],
   } satisfies TournamentSignupData;
 }
@@ -58,7 +85,7 @@ export async function GET() {
   try {
     const [{ data: profile, error: profileError }, { data: entries, error: entryError }] =
       await Promise.all([
-        access.db.from("profiles").select("rolle").eq("id", userId).maybeSingle(),
+        access.db.from("profiles").select("rolle, koen").eq("id", userId).maybeSingle(),
         db.from("partner_registrations").select(entryColumns)
           .or(`payer_id.eq.${userId},partner_id.eq.${userId}`).neq("status", "cancelled")
           .overrideTypes<PartnerRegistration[], { merge: false }>(),
@@ -68,7 +95,7 @@ export async function GET() {
     const today = copenhagenDate();
     if (entryError?.code === "42P01" || entryError?.code === "PGRST205") {
       return admin
-        ? messagingReply(adminPreview(userId, today))
+        ? messagingReply(adminPreview(userId, profile?.koen ?? null, today))
         : messagingReply({ error: "Tilmeldingen åbner senere." }, 403);
     }
     if (entryError) throw entryError;
@@ -81,12 +108,16 @@ export async function GET() {
     }
     const { data: tournaments, error } = await query.overrideTypes<Omit<PartnerTournament, "open">[], { merge: false }>();
     if (error) throw error;
-    const players = await playerDirectory();
+    const [players, activeEntries] = await Promise.all([
+      playerDirectory(),
+      tournamentEntries(tournaments.map((tournament) => tournament.id)),
+    ]);
 
     const config = paymentConfig();
     return messagingReply({
       userId, admin, paymentAvailable: Boolean(config), testPayments: config?.mode === "test",
       players, registrations: entries,
+      ...registrationOverview(activeEntries, isWoman(profile?.koen)),
       tournaments: tournaments.map((tournament) => ({ ...tournament, open: tournament.closes_on >= today })),
     });
   } catch (error) {
