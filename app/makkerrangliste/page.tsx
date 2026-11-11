@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
 import { tournamentDateLabel, WINTER_2027 } from "@/lib/partnerTournaments";
 import { PageHeader, PageShell } from "../components/ui";
+import { RegisteredTeamCount } from "./registered-team-count";
 import { TournamentSignup } from "./signup";
 
 export const metadata: Metadata = { title: "Makkerliga" };
@@ -14,22 +16,19 @@ export default function PartnerTournamentPage() {
           ← Til forsiden
         </Link>
         <PageHeader
-          eyebrow="Turneringstilmelding"
           title={WINTER_2027.name}
-          description="Find din makker, og spil jer til den store sæsonfinale. Der er præmier i alle rækker!"
-          action={<div className="rounded-2xl border border-[var(--border)] px-5 py-3">
-            <p className="text-2xl font-bold">200 kr.</p>
-            <p className="text-sm text-[var(--muted)]">pr. par med MobilePay</p>
-          </div>}
+          action={<Link href="/makkerrangliste/reglement" className="padel-secondary-button inline-flex">Læs reglementet</Link>}
         />
         <section className="padel-surface space-y-4">
-          <h2 className="text-xl font-bold">Tætte kampe hele vinteren</h2>
-          <p>
-            I møder par på jeres eget niveau, så der er noget at spille om fra første bold.
-            Vi bruger ranglisten til at sætte puljerne med så vidt muligt seks par i hver.
-            Hver pulje får sin egen sæsonfinale.
-          </p>
-          <p>Vælg jeres række, og meld jer til som par. Hver spiller kan deltage én gang i sæsonen.</p>
+          <h2 className="text-xl font-bold">Derfor skal I med</h2>
+          <ul className="list-disc space-y-2 pl-5 marker:text-[var(--brand-strong)]">
+            <li><strong>Spil jer til den store sæsonfinale.</strong> Hver pulje har sin egen finale.</li>
+            <li><strong>Spil om præmier.</strong> Der er præmier i alle rækker.</li>
+            <li><strong>Få tætte kampe hele vinteren.</strong> Vi bruger ranglisten til at lave jævnbyrdige puljer med så vidt muligt seks par i hver.</li>
+          </ul>
+        </section>
+        <section className="padel-surface space-y-5">
+          <h2 className="text-xl font-bold">Tilmelding</h2>
           <dl className="grid gap-3 sm:grid-cols-3">
             {[
               ["Tilmeldingsfrist", WINTER_2027.closes_on],
@@ -42,8 +41,14 @@ export default function PartnerTournamentPage() {
               </div>
             ))}
           </dl>
+          <TournamentSignup />
         </section>
-        <TournamentSignup />
+        <section className="padel-surface space-y-2">
+          <h2 className="text-xl font-bold">Tilmeldte hold</h2>
+          <Suspense fallback={<p role="status" className="text-sm text-[var(--muted)]">Henter antal …</p>}>
+            <RegisteredTeamCount />
+          </Suspense>
+        </section>
       </div>
     </PageShell>
   );

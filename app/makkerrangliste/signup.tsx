@@ -2,6 +2,7 @@
 
 import { type FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import Select from "react-select";
 import { StatusPill } from "../components/ui";
 import {
@@ -41,8 +42,8 @@ function eligibility(division: PartnerDivision, player?: string | null, partner?
 }
 
 function DivisionOptions({ selected, onSelect, showWomen = false }: {
-  selected?: PartnerDivision;
-  onSelect?: (value: PartnerDivision) => void;
+  selected: PartnerDivision;
+  onSelect: (value: PartnerDivision) => void;
   showWomen?: boolean;
 }) {
   return (
@@ -51,23 +52,21 @@ function DivisionOptions({ selected, onSelect, showWomen = false }: {
         const style = `block rounded-2xl border px-4 py-4 ${selected === id
           ? "border-[var(--brand)] bg-[var(--surface-strong)]"
           : "border-[var(--border)]"}`;
-        const label = <>
-          <span className="block text-base font-bold">{division.name}</span>
-          <span className="mt-1 block text-sm text-[var(--muted)]">{division.description}</span>
-        </>;
-        return onSelect ? (
+        return (
           <label key={id} className={`${style} cursor-pointer focus-within:outline focus-within:outline-[var(--brand)]`}>
             <input type="radio" name="division" value={id} checked={selected === id}
               onChange={() => onSelect(id)} className="float-right accent-[var(--brand)]" />
-            {label}
+            <span className="block text-base font-bold">{division.name}</span>
+            <span className="mt-1 block text-sm text-[var(--muted)]">{division.description}</span>
           </label>
-        ) : <div key={id} className={style}>{label}</div>;
+        );
       })}
     </div>
   );
 }
 
 export function TournamentSignup() {
+  const router = useRouter();
   const [data, setData] = useState<TournamentSignupData | null>();
   const [partnerId, setPartnerId] = useState("");
   const [division, setDivision] = useState<PartnerDivision>("open");
@@ -98,6 +97,7 @@ export function TournamentSignup() {
           const updated = await loadSignup();
           if (!active) return;
           setData(updated);
+          if (result?.status === "paid") router.refresh();
           if (result?.status === "cancelled") setMessage({ text: "Betalingen blev afbrudt eller udløb." });
         } catch (error) {
           if (active) setMessage({ text: (error as Error).message, error: true });
@@ -110,7 +110,7 @@ export function TournamentSignup() {
     }
     void initialize();
     return () => { active = false; };
-  }, []);
+  }, [router]);
 
   async function act(input: Record<string, unknown>) {
     setBusy(true);
@@ -127,6 +127,7 @@ export function TournamentSignup() {
         setMessage({ text: "Betalingen blev afbrudt eller udløb. I kan tilmelde jer igen, hvis fristen stadig er åben." });
       }
       if (result.status === "pending") setMessage({ text: "MobilePay afventer stadig betaling." });
+      if (result.status === "paid") router.refresh();
     } catch (error) {
       setMessage({ text: (error as Error).message, error: true });
     } finally {
@@ -142,19 +143,11 @@ export function TournamentSignup() {
     }
   }
 
-  if (!data) {
-    return (
-      <section className="padel-surface space-y-4">
-        <h2 className="text-xl font-bold">Rækker</h2>
-        <DivisionOptions />
-        {data === null ? (
-          <Link href="/login?makkerrangliste=1" className={button}>Log ind for at tilmelde jer</Link>
-        ) : loadError ? (
-          <p role="alert">{loadError} <button type="button" className="underline" onClick={() => location.reload()}>Prøv igen</button></p>
-        ) : <p role="status">Indlæser tilmelding …</p>}
-      </section>
-    );
+  if (data === null) return <Link href="/login?makkerrangliste=1" className={button}>Log ind for at tilmelde jer</Link>;
+  if (loadError) {
+    return <p role="alert">{loadError} <button type="button" className="underline" onClick={() => location.reload()}>Prøv igen</button></p>;
   }
+  if (!data) return <p role="status">Indlæser tilmelding …</p>;
 
   const entry = data.registration;
   const player = data.players.find((item) => item.id === data.userId);
@@ -176,11 +169,7 @@ export function TournamentSignup() {
   }
 
   return (
-    <section className="padel-surface space-y-5">
-      <h2 className="text-xl font-bold">Tilmelding</h2>
-      {data.preview && (
-        <p className="text-sm text-[var(--muted)]">Admin-forhåndsvisning. Du kan søge blandt appens spillere og vælge en makker.</p>
-      )}
+    <>
       {data.testPayments && <StatusPill tone="warning">MobilePay-testmiljø</StatusPill>}
       {message && <p role={message.error ? "alert" : "status"} className={message.error ? "font-semibold text-[var(--brand-strong)]" : ""}>{message.text}</p>}
       {entry ? (
@@ -245,8 +234,8 @@ export function TournamentSignup() {
         </form>
       ) : <p>Tilmeldingen er lukket.</p>}
       {!data.paymentAvailable && entry?.status !== "paid" && (data.open || entry) && (
-        <p role="status" className="text-sm">MobilePay er endnu ikke tilgængelig.</p>
+        <p role="status" className="text-sm">{data.preview ? "Forhåndsvisning. Tilmeldingen åbner senere." : "MobilePay er endnu ikke tilgængelig."}</p>
       )}
-    </section>
+    </>
   );
 }
