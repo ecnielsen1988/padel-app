@@ -368,11 +368,11 @@ export default function TvPage() {
           <p className={styles.brand}>Padelhuset</p>
           <h1>{slide?.title ?? "Ranglisten"}</h1>
           {ranking?.subtitle && <p className={styles.subtitle}>{ranking.subtitle}</p>}
-          {isWeek && <p className={styles.subtitle}>Kom og spil med!</p>}
+          {isWeek && <p className={styles.subtitle}>Tilmelding til alle spil sker via <strong>MATCHi</strong>.</p>}
         </div>
         {slide?.kind !== "media" && (
-          <a href={SIGNUP_URL} className={styles.signup} aria-label={isWeek ? "Opret profil og kom med" : "Tilmeld dig ranglisten"}>
-            {isWeek ? <span>Kom med!<br />Opret profil</span> : <span>Tilmeld dig<br />ranglisten</span>}
+          <a href={SIGNUP_URL} className={styles.signup} aria-label={isWeek ? "Opret ranglisteprofil" : "Tilmeld dig ranglisten"}>
+            {isWeek ? <span>Opret<br />ranglisteprofil</span> : <span>Tilmeld dig<br />ranglisten</span>}
             <QRCodeSVG value={SIGNUP_URL} size={96} marginSize={4} title="QR-kode til tilmelding" />
           </a>
         )}
