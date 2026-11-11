@@ -16,6 +16,11 @@ type TvSlide = {
   created_at: string;
 };
 
+const scheduleFormat = new Intl.DateTimeFormat("da-DK", {
+  dateStyle: "short",
+  timeStyle: "short",
+});
+
 export default function TvAdminPage() {
   const [title, setTitle] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -72,6 +77,17 @@ export default function TvAdminPage() {
       return;
     }
 
+    const startsAt = startDate ? new Date(startDate) : null;
+    const endsAt = endDate ? new Date(endDate) : null;
+    if (Number.isNaN(startsAt?.getTime()) || Number.isNaN(endsAt?.getTime())) {
+      setMessage("Angiv en gyldig start- og sluttid");
+      return;
+    }
+    if (startsAt && endsAt && endsAt <= startsAt) {
+      setMessage("Sluttiden skal ligge efter starttiden");
+      return;
+    }
+
     try {
       setUploading(true);
 
@@ -105,8 +121,8 @@ export default function TvAdminPage() {
         file_type: fileType,
         is_active: true,
         sort_order: sortOrder,
-        start_date: startDate || null,
-        end_date: endDate || null,
+        start_date: startsAt?.toISOString() ?? null,
+        end_date: endsAt?.toISOString() ?? null,
         duration_seconds: durationSeconds,
       });
 
@@ -207,8 +223,9 @@ export default function TvAdminPage() {
             </div>
 
             <div>
-              <label className="mb-1 block font-medium">Vis fra</label>
+              <label htmlFor="tv-start-date" className="mb-1 block font-medium">Vis fra (lokal tid)</label>
               <input
+                id="tv-start-date"
                 type="datetime-local"
                 className="w-full rounded-xl border p-3"
                 value={startDate}
@@ -217,8 +234,9 @@ export default function TvAdminPage() {
             </div>
 
             <div>
-              <label className="mb-1 block font-medium">Vis til</label>
+              <label htmlFor="tv-end-date" className="mb-1 block font-medium">Vis til (lokal tid)</label>
               <input
+                id="tv-end-date"
                 type="datetime-local"
                 className="w-full rounded-xl border p-3"
                 value={endDate}
@@ -254,6 +272,12 @@ export default function TvAdminPage() {
                     Aktiv: {slide.is_active ? "Ja" : "Nej"} | Rækkefølge:{" "}
                     {slide.sort_order} | Varighed: {slide.duration_seconds}s
                   </p>
+                  {slide.start_date && (
+                    <p className="text-sm text-gray-600">Vis fra {scheduleFormat.format(new Date(slide.start_date))}</p>
+                  )}
+                  {slide.end_date && (
+                    <p className="text-sm text-gray-600">Vis til {scheduleFormat.format(new Date(slide.end_date))}</p>
+                  )}
                   <a
                     href={slide.file_url}
                     target="_blank"
