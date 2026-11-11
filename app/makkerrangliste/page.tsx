@@ -16,20 +16,20 @@ export default function PartnerTournamentPage() {
         <PageHeader
           eyebrow="Turneringstilmelding"
           title={WINTER_2027.name}
-          description="Find en makker, og få en vintersæson med jævnbyrdige kampe og en finale at spille frem mod."
+          description="Find din makker, og spil jer til den store sæsonfinale. Der er præmier i alle rækker!"
           action={<div className="rounded-2xl border border-[var(--border)] px-5 py-3">
             <p className="text-2xl font-bold">200 kr.</p>
             <p className="text-sm text-[var(--muted)]">pr. par med MobilePay</p>
           </div>}
         />
         <section className="padel-surface space-y-4">
-          <h2 className="text-xl font-bold">Spil med i vinterens Makkerliga</h2>
+          <h2 className="text-xl font-bold">Tætte kampe hele vinteren</h2>
           <p>
-            Vi bruger ranglisten til at samle par på nogenlunde samme niveau. Vi sigter efter
-            seks par i hver pulje og tilpasser størrelsen efter antallet af tilmeldinger.
-            Alle puljer får deres egen sæsonfinale.
+            I møder par på jeres eget niveau, så der er noget at spille om fra første bold.
+            Vi bruger ranglisten til at sætte puljerne med så vidt muligt seks par i hver.
+            Hver pulje får sin egen sæsonfinale.
           </p>
-          <p>Vælg din makker og den række, I vil spille i. Hver spiller kan deltage én gang i sæsonen.</p>
+          <p>Vælg jeres række, og meld jer til som par. Hver spiller kan deltage én gang i sæsonen.</p>
           <dl className="grid gap-3 sm:grid-cols-3">
             {[
               ["Tilmeldingsfrist", WINTER_2027.closes_on],

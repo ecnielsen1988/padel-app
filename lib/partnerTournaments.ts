@@ -25,24 +25,14 @@ export type PartnerRegistration = {
   status: "pending" | "paid" | "cancelled";
 };
 
-export type PartnerTournament = {
-  id: string;
-  name: string;
-  play_date: string;
-  closes_on: string;
-  open: boolean;
-};
-
 export type TournamentSignupData = {
   userId: string;
-  admin: boolean;
   preview?: true;
+  open: boolean;
   paymentAvailable: boolean;
   testPayments: boolean;
-  tournaments: PartnerTournament[];
-  registrations: PartnerRegistration[];
-  occupiedPlayers: Record<string, string[]>;
-  confirmedPairs: Pick<PartnerRegistration, "tournament_id" | "payer_id" | "partner_id" | "division">[];
+  registration: PartnerRegistration | null;
+  occupiedPlayers: string[];
   players: { id: string; visningsnavn: string; koen: string | null }[];
 };
 

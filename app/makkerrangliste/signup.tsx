@@ -2,15 +2,15 @@
 
 import { type FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
+import Select from "react-select";
 import { StatusPill } from "../components/ui";
 import {
-  isWoman, PARTNER_DIVISIONS, tournamentDateLabel, UUID_PATTERN, type PartnerDivision,
+  isWoman, PARTNER_DIVISIONS, UUID_PATTERN, type PartnerDivision,
   type PartnerRegistration, type TournamentSignupData,
 } from "@/lib/partnerTournaments";
 
 const api = "/api/makkerrangliste";
 const divisions = Object.entries(PARTNER_DIVISIONS) as [PartnerDivision, typeof PARTNER_DIVISIONS[PartnerDivision]][];
-const field = "w-full rounded-xl border border-[var(--border)] bg-[var(--surface-strong)] px-3 py-2.5";
 const button = "padel-primary-button inline-flex disabled:cursor-not-allowed disabled:opacity-50";
 
 async function loadSignup() {
@@ -29,7 +29,7 @@ async function submit(input: Record<string, unknown>) {
   });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || "Handlingen kunne ikke gennemføres.");
-  return data as { status?: PartnerRegistration["status"]; redirectUrl?: string; tournamentId?: string };
+  return data as { status?: PartnerRegistration["status"]; redirectUrl?: string };
 }
 
 function eligibility(division: PartnerDivision, player?: string | null, partner?: string | null) {
@@ -69,7 +69,6 @@ function DivisionOptions({ selected, onSelect, showWomen = false }: {
 
 export function TournamentSignup() {
   const [data, setData] = useState<TournamentSignupData | null>();
-  const [tournamentId, setTournamentId] = useState("");
   const [partnerId, setPartnerId] = useState("");
   const [division, setDivision] = useState<PartnerDivision>("open");
   const [busy, setBusy] = useState(false);
@@ -85,9 +84,7 @@ export function TournamentSignup() {
         setData(current);
         const id = new URLSearchParams(window.location.search).get("betaling");
         if (!id || !UUID_PATTERN.test(id) || !current?.paymentAvailable) return;
-        const entry = current.registrations.find((item) => item.id === id);
-        if (entry) setTournamentId(entry.tournament_id);
-        if (entry?.status === "paid") return;
+        if (current.registration?.id === id && current.registration.status === "paid") return;
         setBusy(true);
         try {
           let result: Awaited<ReturnType<typeof submit>> | undefined;
@@ -96,7 +93,6 @@ export function TournamentSignup() {
             if (!active) return;
             result = await submit({ action: "status", id });
             if (!active) return;
-            if (result.tournamentId) setTournamentId(result.tournamentId);
             if (result.status !== "pending") break;
           }
           const updated = await loadSignup();
@@ -116,7 +112,7 @@ export function TournamentSignup() {
     return () => { active = false; };
   }, []);
 
-  async function act(input: Record<string, unknown>, form?: HTMLFormElement) {
+  async function act(input: Record<string, unknown>) {
     setBusy(true);
     setMessage(undefined);
     let redirecting = false;
@@ -131,10 +127,6 @@ export function TournamentSignup() {
         setMessage({ text: "Betalingen blev afbrudt eller udløb. I kan tilmelde jer igen, hvis fristen stadig er åben." });
       }
       if (result.status === "pending") setMessage({ text: "MobilePay afventer stadig betaling." });
-      if (input.action === "createTournament") {
-        form?.reset();
-        setMessage({ text: "Turneringen er oprettet og kan vælges på tilmeldingssiden." });
-      }
     } catch (error) {
       setMessage({ text: (error as Error).message, error: true });
     } finally {
@@ -159,155 +151,102 @@ export function TournamentSignup() {
           <Link href="/login?makkerrangliste=1" className={button}>Log ind for at tilmelde jer</Link>
         ) : loadError ? (
           <p role="alert">{loadError} <button type="button" className="underline" onClick={() => location.reload()}>Prøv igen</button></p>
-        ) : <p role="status">Indlæser turneringer …</p>}
+        ) : <p role="status">Indlæser tilmelding …</p>}
       </section>
     );
   }
 
-  const tournament = data.tournaments.find((item) => item.id === tournamentId) ?? data.tournaments[0];
-  const entry = data.registrations.find((item) => item.tournament_id === tournament?.id);
+  const entry = data.registration;
   const player = data.players.find((item) => item.id === data.userId);
   const showWomen = isWoman(player?.koen);
   const selectedDivision = division === "women" && !showWomen ? "open" : division;
-  const occupied = new Set(tournament ? data.occupiedPlayers[tournament.id] : []);
-  const partners = data.players.filter((item) => item.id !== data.userId &&
-    !occupied.has(item.id) && eligibility(selectedDivision, player?.koen, item.koen));
-  const selectedPartner = partners.some((item) => item.id === partnerId) ? partnerId : "";
-  const pairs = data.confirmedPairs.filter((pair) => pair.tournament_id === tournament?.id);
-  const names = new Map(data.players.map((item) => [item.id, item.visningsnavn]));
-  const pairNames = (pair: Pick<PartnerRegistration, "payer_id" | "partner_id">) =>
-    `${names.get(pair.payer_id) ?? "Spiller"} & ${names.get(pair.partner_id) ?? "Spiller"}`;
+  const occupied = new Set(data.occupiedPlayers);
+  const options = data.players
+    .filter((item) => item.id !== data.userId && !occupied.has(item.id) &&
+      eligibility(selectedDivision, player?.koen, item.koen))
+    .map((item) => ({ value: item.id, label: item.visningsnavn }));
+  const selectedPartner = options.find((option) => option.value === partnerId) ?? null;
+  const otherPlayerId = entry?.payer_id === data.userId ? entry.partner_id : entry?.payer_id;
+  const partnerName = data.players.find((item) => item.id === otherPlayerId)?.visningsnavn;
 
   function register(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!tournament || !selectedPartner || !data?.paymentAvailable) return;
-    setTournamentId(tournament.id);
-    void act({ action: "register", tournamentId: tournament.id, partnerId: selectedPartner, division: selectedDivision });
-  }
-
-  function createTournament(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    void act({ action: "createTournament", ...Object.fromEntries(new FormData(form)) }, form);
+    if (!data?.paymentAvailable || !selectedPartner) return;
+    void act({ action: "register", partnerId: selectedPartner.value, division: selectedDivision });
   }
 
   return (
-    <>
-      <section className="padel-surface space-y-5">
-        <h2 className="text-xl font-bold">Tilmelding</h2>
-        {data.preview && (
-          <p className="text-sm text-[var(--muted)]">
-            Admin-forhåndsvisning med eksempeldata. Du kan prøve rækken og makkervalget.
-          </p>
-        )}
-        {data.testPayments && <StatusPill tone="warning">MobilePay-testmiljø</StatusPill>}
-        {message && <p role={message.error ? "alert" : "status"} className={message.error ? "font-semibold text-[var(--brand-strong)]" : ""}>{message.text}</p>}
-        {!tournament ? (
-          <>
-            <p>Der er ingen åbne turneringer lige nu.</p>
-            <DivisionOptions showWomen={showWomen} />
-          </>
-        ) : (
-          <>
-            <label className="block space-y-1.5">
-              <span className="text-sm font-semibold">Turnering</span>
-              <select className={field} value={tournament.id} disabled={busy} onChange={(event) => {
-                setTournamentId(event.target.value);
-                setPartnerId("");
-                setDivision("open");
-                setMessage(undefined);
-              }}>
-                {data.tournaments.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-              </select>
-            </label>
-            <p className="text-sm text-[var(--muted)]">Tilmeldingsfrist {tournamentDateLabel(tournament.closes_on)}</p>
-            {entry ? (
-              <div className="space-y-3 rounded-2xl border border-[var(--border)] p-4">
-                <StatusPill tone={entry.status === "paid" ? "success" : "warning"}>
-                  {entry.status === "paid" ? "Tilmeldt og betalt" : "Afventer betaling"}
-                </StatusPill>
-                <p className="font-semibold">{pairNames(entry)}</p>
-                <p>{PARTNER_DIVISIONS[entry.division].name}</p>
-                {entry.status === "pending" && (
-                  <div className="flex flex-wrap gap-2">
-                    {entry.payer_id === data.userId ? (
-                      <button type="button" className={button} disabled={busy || !data.paymentAvailable}
-                        onClick={() => void act({ action: "resume", id: entry.id })}>Fortsæt til MobilePay</button>
-                    ) : <p className="w-full text-sm">Din makker står for betalingen.</p>}
-                    <button type="button" className="padel-secondary-button inline-flex disabled:opacity-50" disabled={busy || !data.paymentAvailable}
-                      onClick={() => void act({ action: "status", id: entry.id })}>Tjek betaling</button>
-                  </div>
-                )}
-              </div>
-            ) : tournament.open ? (
-              <form onSubmit={register} className="space-y-5">
-                <fieldset className="space-y-2" disabled={busy}>
-                  <legend className="text-sm font-semibold">Række</legend>
-                  <DivisionOptions showWomen={showWomen} selected={selectedDivision}
-                    onSelect={(value) => { setDivision(value); setPartnerId(""); }} />
-                </fieldset>
-                <label className="block space-y-1.5">
-                  <span className="text-sm font-semibold">Makker</span>
-                  <select className={field} value={selectedPartner} onChange={(event) => setPartnerId(event.target.value)} required disabled={busy || !partners.length}>
-                    <option value="">{partners.length ? "Vælg din makker" : "Ingen makkere tilgængelige i denne række"}</option>
-                    {partners.map((item) => <option key={item.id} value={item.id}>{item.visningsnavn}</option>)}
-                  </select>
-                </label>
-                <button type="submit" className={button} disabled={busy || !selectedPartner || !data.paymentAvailable}>
-                  {busy ? "Vent et øjeblik …" : "Betal 200 kr. med MobilePay"}
-                </button>
-              </form>
-            ) : <p>Tilmeldingen er lukket.</p>}
-            {!data.paymentAvailable && entry?.status !== "paid" && <p role="status" className="text-sm">MobilePay er endnu ikke tilgængelig.</p>}
-          </>
-        )}
-      </section>
-      {tournament && (
-        <section className="padel-surface space-y-4">
-          <h2 className="text-xl font-bold">Tilmeldte par</h2>
-          <div className={`grid gap-3 ${showWomen ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
-            {divisions.filter(([id]) => showWomen || id !== "women").map(([id, info]) => {
-              const divisionPairs = pairs.filter((pair) => pair.division === id);
-              return (
-                <div key={id} className="rounded-xl border border-[var(--border)] p-3">
-                  <h3 className="font-semibold">{info.name}</h3>
-                  {divisionPairs.length ? (
-                    <ul className="mt-2 space-y-2 text-sm">
-                      {divisionPairs.map((pair) => (
-                        <li key={pair.payer_id} className={entry?.payer_id === pair.payer_id ? "font-bold" : undefined}>
-                          {pairNames(pair)}{entry?.payer_id === pair.payer_id && " (jeres par)"}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : <p className="mt-2 text-sm text-[var(--muted)]">Ingen tilmeldte par endnu.</p>}
-                </div>
-              );
-            })}
-          </div>
-        </section>
+    <section className="padel-surface space-y-5">
+      <h2 className="text-xl font-bold">Tilmelding</h2>
+      {data.preview && (
+        <p className="text-sm text-[var(--muted)]">Admin-forhåndsvisning. Du kan søge blandt appens spillere og vælge en makker.</p>
       )}
-      {data.admin && !data.preview && (
-        <section className="padel-surface space-y-4">
-          <h2 className="text-xl font-bold">Opret en turnering</h2>
-          <form onSubmit={createTournament} className="space-y-4">
-            <label className="block space-y-1.5">
-              <span className="text-sm font-semibold">Turneringsnavn</span>
-              <input className={field} name="name" required maxLength={100} />
-            </label>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="block space-y-1.5">
-                <span className="text-sm font-semibold">Spilledato</span>
-                <input className={field} type="date" name="play_date" required />
-              </label>
-              <label className="block space-y-1.5">
-                <span className="text-sm font-semibold">Sidste tilmeldingsdag</span>
-                <input className={field} type="date" name="closes_on" required />
-              </label>
+      {data.testPayments && <StatusPill tone="warning">MobilePay-testmiljø</StatusPill>}
+      {message && <p role={message.error ? "alert" : "status"} className={message.error ? "font-semibold text-[var(--brand-strong)]" : ""}>{message.text}</p>}
+      {entry ? (
+        <div className="space-y-3 rounded-2xl border border-[var(--border)] p-4">
+          <StatusPill tone={entry.status === "paid" ? "success" : "warning"}>
+            {entry.status === "paid" ? "Tilmeldt og betalt" : "Afventer betaling"}
+          </StatusPill>
+          <dl className="flex flex-wrap gap-x-8 gap-y-2">
+            <div>
+              <dt className="text-sm text-[var(--muted)]">Din makker</dt>
+              <dd className="font-semibold">{partnerName ?? "Spillerprofil"}</dd>
             </div>
-            <button type="submit" className={button} disabled={busy}>Opret turnering</button>
-          </form>
-        </section>
+            <div>
+              <dt className="text-sm text-[var(--muted)]">Jeres række</dt>
+              <dd className="font-semibold">{PARTNER_DIVISIONS[entry.division].name}</dd>
+            </div>
+          </dl>
+          {entry.status === "pending" && (
+            <div className="flex flex-wrap gap-2">
+              {entry.payer_id === data.userId ? (
+                <button type="button" className={button} disabled={busy || !data.paymentAvailable}
+                  onClick={() => void act({ action: "resume", id: entry.id })}>Fortsæt til MobilePay</button>
+              ) : <p className="w-full text-sm">Din makker står for betalingen.</p>}
+              <button type="button" className="padel-secondary-button inline-flex disabled:opacity-50" disabled={busy || !data.paymentAvailable}
+                onClick={() => void act({ action: "status", id: entry.id })}>Tjek betaling</button>
+            </div>
+          )}
+        </div>
+      ) : data.open ? (
+        <form onSubmit={register} className="space-y-5">
+          <fieldset className="space-y-2" disabled={busy}>
+            <legend className="text-sm font-semibold">Række</legend>
+            <DivisionOptions showWomen={showWomen} selected={selectedDivision}
+              onSelect={(value) => { setDivision(value); setPartnerId(""); }} />
+          </fieldset>
+          <div className="space-y-1.5">
+            <label htmlFor="makkerliga-partner" className="block text-sm font-semibold">Makker</label>
+            <Select inputId="makkerliga-partner" instanceId="makkerliga-partner"
+              options={options} value={selectedPartner}
+              onChange={(option) => setPartnerId(option?.value ?? "")}
+              isSearchable isClearable isDisabled={busy}
+              placeholder="Skriv navnet på din makker"
+              noOptionsMessage={() => options.length ? "Ingen spillere matcher din søgning" : "Ingen ledige makkere i denne række"}
+              theme={(theme) => ({
+                ...theme,
+                borderRadius: 12,
+                colors: {
+                  ...theme.colors,
+                  primary: "var(--brand-strong)",
+                  primary25: "var(--surface)",
+                  neutral0: "var(--surface-strong)",
+                  neutral20: "var(--border)",
+                  neutral50: "var(--muted)",
+                  neutral80: "var(--foreground)",
+                },
+              })}
+            />
+          </div>
+          <button type="submit" className={button} disabled={busy || !selectedPartner || !data.paymentAvailable}>
+            {busy ? "Vent et øjeblik …" : "Betal 200 kr. med MobilePay"}
+          </button>
+        </form>
+      ) : <p>Tilmeldingen er lukket.</p>}
+      {!data.paymentAvailable && entry?.status !== "paid" && (data.open || entry) && (
+        <p role="status" className="text-sm">MobilePay er endnu ikke tilgængelig.</p>
       )}
-    </>
+    </section>
   );
 }

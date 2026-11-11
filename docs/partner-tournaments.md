@@ -1,7 +1,6 @@
 # Makkerranglisten
 
-Tilmeldingen findes på `/makkerrangliste` og fra appens startside. Log ind som
-admin for at oprette en turnering med navn, spilledato og sidste tilmeldingsdag.
+Tilmeldingen til Makkerliga 2027 Vinter findes på `/makkerrangliste` og fra appens startside.
 Fristen gælder til dagens udgang i dansk tid. Begge spillere skal have en
 spillerprofil. Mix og Kvinder bruger profilernes registrerede køn.
 
