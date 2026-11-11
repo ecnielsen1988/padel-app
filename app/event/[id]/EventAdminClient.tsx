@@ -7,9 +7,9 @@ import { supabase } from "@/lib/supabaseClient";
 import { beregnEloForKampe } from "@/lib/beregnElo";
 import { buildEventRulesText, parseEventRulesText, isRoyalEvent } from "@/lib/eventConfig";
 import {
-  getEventKampidRange,
-  getNextKampId,
   getEventSubmissionState,
+  saveEventSubmission,
+  type EventSubmissionSet,
 } from "@/lib/eventSubmission";
 
 import RoyalMatches from "./RoyalMatches";
@@ -59,22 +59,6 @@ type EventResultMeta = Pick<
   EventResultInsert,
   "group_index" | "court_label" | "start_time" | "end_time"
 > & { updated_at: string };
-
-// ---- NEWRESULTS: Insert-type (KUN de kolonner der findes i din tabel) ----
-type NewResultInsert = {
-  date: string; // "YYYY-MM-DD"
-  finish: boolean;
-  tiebreak: boolean | "matchtiebreak";
-  event: boolean;
-  kampid: number; // fælles for sæt i samme kamp
-  holdA1: string;
-  holdA2: string;
-  holdB1: string;
-  holdB2: string;
-  scoreA: number;
-  scoreB: number;
-  indberettet_af: string;
-};
 
 /* ======================== Hjælpere ======================== */
 const fmtTime = (t?: string | null) => (t ? t.slice(0, 5) : "");
@@ -1275,136 +1259,50 @@ useEffect(() => {
     }
   }
 
-  /* --- Submit til newresults --- */
   async function submitResults() {
     if (!event || submissionBusy) return;
-
     setSubmissionBusy(true);
     try {
-      const state = await getEventSubmissionState(supabase, event);
-      if (state.submitted) {
-        setResultsSubmitted(true);
-        setSubmittedSetCount(state.count);
-        alert("Eventet er allerede indberettet.");
-        return;
-      }
-
-      const { data: auth } = await supabase.auth.getUser();
-      const reporter =
-        (auth?.user?.user_metadata as any)?.visningsnavn ??
-        auth?.user?.email ??
-        "EventAdmin";
-
-      if (royal) {
-        for (let gi = 0; gi < basePlan.length; gi++) {
-          const error = validateRoyalScores(Array.from({ length: roundsPerCourt[gi] ?? 3 }, (_, si) => scores[`${gi}-${si}`] ?? { a: 0, b: 0 }));
+      const sets: EventSubmissionSet[] = [];
+      let matchIndex = -1;
+      for (const [gi, group] of basePlan.entries()) {
+        const groupScores = Array.from(
+          { length: roundsPerCourt[gi] ?? 3 },
+          (_, si) => scores[`${gi}-${si}`] ?? { a: 0, b: 0 },
+        );
+        if (royal) {
+          const error = validateRoyalScores(groupScores);
           if (error) throw new Error(error);
         }
-      }
-      const rows: NewResultInsert[] = [];
-      const groupsWithData = basePlan
-        .map((g, gi) => ({ g, gi }))
-        .filter(({ gi }) => {
-          const r = roundsPerCourt[gi] ?? 3;
-          for (let si = 0; si < r; si += 1) {
-            const sc = scores[`${gi}-${si}`] ?? { a: 0, b: 0 };
-            if (sc.a !== 0 || sc.b !== 0) return true;
-          }
-          return false;
-        });
 
-      let nextKampId = await getNextKampId(supabase);
-      let firstKampId: number | null = null;
-      let lastKampId: number | null = null;
-      groupsWithData.forEach(({ g, gi }) => {
-        let kampid = nextKampId++;
-        if (firstKampId == null) firstKampId = kampid;
-        lastKampId = kampid;
-
-        const r = roundsPerCourt[gi] ?? 3;
-        for (let si = 0; si < r; si++) {
-          if (royal && si > 0 && si % 3 === 0) { kampid = nextKampId++; lastKampId = kampid; }
-          const rot = eventRotation(si, royal);
-          const a1 = g.players[rot[0][0]]?.visningsnavn || "";
-          const a2 = g.players[rot[0][1]]?.visningsnavn || "";
-          const b1 = g.players[rot[1][0]]?.visningsnavn || "";
-          const b2 = g.players[rot[1][1]]?.visningsnavn || "";
-          const sc = scores[`${gi}-${si}`] ?? { a: 0, b: 0 };
-
-          if (sc.a === 0 && sc.b === 0) continue;
-
-          rows.push({
-            date: event.date,
-            finish: erFærdigtSæt(sc.a, sc.b, isRoyalTiebreak(si, royal)),
-            tiebreak: isRoyalTiebreak(si, royal) ? "matchtiebreak" : false,
-            event: true,
-            kampid,
-            holdA1: a1,
-            holdA2: a2,
-            holdB1: b1,
-            holdB2: b2,
-            scoreA: sc.a,
-            scoreB: sc.b,
-            indberettet_af: reporter,
+        for (const [si, score] of groupScores.entries()) {
+          if (si === 0 || (royal && si % 3 === 0)) matchIndex++;
+          if (score.a === 0 && score.b === 0) continue;
+          const rotation = eventRotation(si, royal);
+          sets.push({
+            matchIndex,
+            holdA1: group.players[rotation[0][0]]?.visningsnavn ?? "",
+            holdA2: group.players[rotation[0][1]]?.visningsnavn ?? "",
+            holdB1: group.players[rotation[1][0]]?.visningsnavn ?? "",
+            holdB2: group.players[rotation[1][1]]?.visningsnavn ?? "",
+            scoreA: score.a,
+            scoreB: score.b,
+            matchTiebreak: isRoyalTiebreak(si, royal),
           });
         }
-      });
-
-      if (!rows.length) {
+      }
+      if (!sets.length) {
         alert("Ingen sæt at indsende (alle står 0–0).");
         return;
       }
 
-      const newresultsTbl = supabase.from("newresults") as any;
-      const { error } = await newresultsTbl.insert(rows as any[]);
-      if (error) {
-        alert("Kunne ikke indsende: " + error.message);
-        return;
-      }
-
-      if (firstKampId != null && lastKampId != null) {
-        const parsed = parseEventRulesText(event.rules_text);
-        const nextRulesText = buildEventRulesText(parsed.visibleRulesText, {
-          ...parsed.meta,
-          submissionRange: { from: firstKampId, to: lastKampId },
-        });
-
-        const { data: updatedEvent, error: updateEventError } = await supabase
-          .from("events")
-          .update({ rules_text: nextRulesText })
-          .eq("id", event.id)
-          .select("*")
-          .single();
-
-        if (!updateEventError && updatedEvent) {
-          setEvent(updatedEvent as EventRow);
-        }
-      }
-
-      const spillereISubmit = Array.from(
-        new Set(
-          rows
-            .flatMap((r) => [r.holdA1, r.holdA2, r.holdB1, r.holdB2])
-            .filter(Boolean)
-            .map((navn) => String(navn).trim())
-        )
-      );
-
-      if (spillereISubmit.length > 0) {
-        const { error: statusError } = await supabase
-          .from("profiles")
-          .update({ status: "active" })
-          .in("visningsnavn", spillereISubmit)
-          .neq("status", "inactive");
-
-        if (statusError) {
-          console.error("Kunne ikke sætte event-spillere til active:", statusError);
-        }
-      }
-
+      const result = await saveEventSubmission<EventRow>(event.id, sets, true);
+      setEvent(result.event);
       setResultsSubmitted(true);
-      setSubmittedSetCount(rows.length);
-      alert(`Indsendt ${rows.length} sæt ✔️`);
+      setSubmittedSetCount(result.count);
+      alert(result.alreadySubmitted ? "Eventet er allerede indberettet." : `Indsendt ${result.count} sæt ✔️`);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Kunne ikke indsende eventet.");
     } finally {
       setSubmissionBusy(false);
     }
@@ -1412,50 +1310,17 @@ useEffect(() => {
 
   async function undoSubmittedResults() {
     if (!event || submissionBusy) return;
-    if (!confirm("Vil du fortryde hele event-indberetningen? Alle indberettede sæt slettes fra ranglisten.")) {
-      return;
-    }
-
-    const range = getEventKampidRange(event);
-    if (!range) {
-      alert("Eventet mangler en gyldig dato.");
-      return;
-    }
+    if (!confirm("Vil du fortryde hele event-indberetningen? Alle indberettede sæt slettes fra ranglisten.")) return;
 
     setSubmissionBusy(true);
     try {
-      const { error } = await supabase
-        .from("newresults")
-        .delete()
-        .gte("kampid", range.from)
-        .lte("kampid", range.to)
-        .eq("date", event.date)
-        .eq("event", true);
-
-      if (error) {
-        alert("Kunne ikke fortryde indberetning: " + error.message);
-        return;
-      }
-
-      const parsed = parseEventRulesText(event.rules_text);
-      const nextRulesText = buildEventRulesText(parsed.visibleRulesText, {
-        ...parsed.meta,
-        submissionRange: null,
-      });
-      const { data: updatedEvent } = await supabase
-        .from("events")
-        .update({ rules_text: nextRulesText })
-        .eq("id", event.id)
-        .select("*")
-        .single();
-
-      if (updatedEvent) {
-        setEvent(updatedEvent as EventRow);
-      }
-
+      const result = await saveEventSubmission<EventRow>(event.id, null);
+      setEvent(result.event);
       setResultsSubmitted(false);
       setSubmittedSetCount(0);
       alert("Indberetningen er fortrudt. Eventet kan nu indberettes igen.");
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Kunne ikke fortryde indberetningen.");
     } finally {
       setSubmissionBusy(false);
     }

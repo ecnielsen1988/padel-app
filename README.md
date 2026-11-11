@@ -19,6 +19,12 @@ og navnene i `elo_day_state` i én transaktion. Scores og Elo-værdier bevares.
 Navnekollisioner og ændringer siden siden blev indlæst afvises. Den nye
 funktion kræver rigtig login også ved lokal udvikling med login-bypass.
 
+### Indberetning af eventresultater
+
+Kør `database/event_submission.sql` i Supabase SQL Editor før Netlify-deploy.
+Admin-indberetning og fortrydelse gemmer ranglisteresultater og eventets
+kamp-id-interval i samme transaktion.
+
 ### Rangliste Padel Royal
 
 Royal findes på `/royal` med regler og kommende spilledage. Opret en spilledag

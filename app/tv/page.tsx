@@ -279,7 +279,7 @@ export default function TvPage() {
       if (refreshing) return;
       refreshing = true;
       try {
-        const response = await fetch("/api/ranking-overview?visning=tv", { signal: controller.signal });
+        const response = await fetch("/api/ranking-overview/tv", { signal: controller.signal });
         if (!response.ok) throw new Error("Kunne ikke hente ranglisterne");
         const data: TvRankingData = await response.json();
         if (!controller.signal.aborted) {

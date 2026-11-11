@@ -14,12 +14,14 @@ export async function GET(request: Request) {
     const data = new URL(request.url).searchParams.get("visning") === "tv"
       ? { rangliste: activeRanking, monthly: overview.monthly, women: overview.women, eggs: overview.eggs }
       : overview;
-    return NextResponse.json(data, { headers: PUBLIC_DATA_CACHE_HEADERS });
+    return NextResponse.json(data, {
+      headers: { ...PUBLIC_DATA_CACHE_HEADERS, "Netlify-Vary": "query=visning" },
+    });
   } catch (error) {
     console.error("GET /api/ranking-overview error", error);
     return NextResponse.json(
       { error: "Kunne ikke hente ranglisteoversigten" },
-      { status: 500, headers: NO_STORE_HEADERS }
+      { status: 500, headers: { ...NO_STORE_HEADERS, "Netlify-Vary": "query=visning" } }
     );
   }
 }

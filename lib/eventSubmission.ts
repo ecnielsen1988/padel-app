@@ -63,22 +63,6 @@ export function getEventKampidRange(event: EventSubmissionMeta) {
   };
 }
 
-export async function getNextKampId(supabase: any) {
-  const { data, error } = await supabase
-    .from("newresults")
-    .select("kampid")
-    .order("kampid", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    throw error;
-  }
-
-  const current = Number(data?.kampid ?? 0);
-  return Number.isFinite(current) && current > 0 ? current + 1 : 1;
-}
-
 export async function getEventSubmissionState(
   supabase: any,
   event: EventSubmissionMeta
@@ -104,4 +88,32 @@ export async function getEventSubmissionState(
     submitted: (count ?? 0) > 0,
     count: count ?? 0,
   };
+}
+
+export type EventSubmissionSet = {
+  matchIndex: number;
+  holdA1: string;
+  holdA2: string;
+  holdB1: string;
+  holdB2: string;
+  scoreA: number;
+  scoreB: number;
+  matchTiebreak?: boolean;
+};
+
+export async function saveEventSubmission<T extends EventSubmissionMeta>(
+  eventId: string,
+  sets: EventSubmissionSet[] | null,
+  activatePlayers = false,
+): Promise<{ event: T; count: number; alreadySubmitted: boolean }> {
+  const response = await fetch("/api/event-submission", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ eventId, sets, activatePlayers }),
+  });
+  const data = await response.json().catch(() => null);
+  if (!response.ok || !data?.event) {
+    throw new Error(data?.error ?? "Kunne ikke gemme event-indberetningen.");
+  }
+  return data;
 }

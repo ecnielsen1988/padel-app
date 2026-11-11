@@ -2,6 +2,7 @@
 
 import ProgramTimeInput from "@/app/components/ProgramTimeInput";
 import { queueThursdayWrite, savedThursdayGroups, thursdaySetNames, waitForThursdayWrites } from "@/lib/thursdayProgram";
+import { saveEventSubmission, type EventSubmissionSet } from "@/lib/eventSubmission";
 import { programPushSummary } from "@/lib/programNotificationsClient";
 import { Fragment, useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
@@ -49,21 +50,6 @@ type EventResultInsert = {
 };
 
 
-
-type NewResultInsert = {
-  date: string;
-  finish: boolean;
-  tiebreak: boolean;
-  event: boolean;
-  kampid: number;
-  holdA1: string;
-  holdA2: string;
-  holdB1: string;
-  holdB2: string;
-  scoreA: number;
-  scoreB: number;
-  indberettet_af: string;
-};
 
 type SignupRow = {
   visningsnavn: string | null;
@@ -289,30 +275,6 @@ async function persistGroupMeta(
     });
 }
 
-async function getNextKampId(): Promise<number> {
-  type KampIdRow = { kampid: number | string | null };
-  const { data, error } = await supabase
-    .from("newresults")
-    .select("kampid")
-    .order("kampid", { ascending: false })
-    .limit(1);
-
-  if (error) {
-    console.warn("Kunne ikke hente max kampid, starter fra 1:", error.message);
-    return 1;
-  }
-
-  const lastAny = (data as KampIdRow[] | null)?.[0]?.kampid;
-  const lastNum =
-    typeof lastAny === "number"
-      ? lastAny
-      : typeof lastAny === "string"
-      ? parseInt(lastAny, 10)
-      : 0;
-
-  return (Number.isFinite(lastNum) ? lastNum : 0) + 1;
-}
-
 /* ======================== Hovedkomponent ======================== */
 export default function EventAdminTorsdagClient({ eventId }: { eventId: string }) {
   const router = useRouter();
@@ -347,6 +309,7 @@ export default function EventAdminTorsdagClient({ eventId }: { eventId: string }
   const [programLoading, setProgramLoading] = useState(true);
   const [programLoadError, setProgramLoadError] = useState("");
   const [publishing, setPublishing] = useState(false);
+  const [submissionBusy, setSubmissionBusy] = useState(false);
   const savedGroups = useMemo(() => savedThursdayGroups(savedRows), [savedRows]);
 
   
@@ -987,77 +950,35 @@ useEffect(() => {
     }
   }
 
-  /* --- Submit til newresults --- */
   async function submitResults() {
-    if (!event) return;
-
-    const { data: auth } = await supabase.auth.getUser();
-    const reporter =
-      (auth?.user?.user_metadata as any)?.visningsnavn ??
-      auth?.user?.email ??
-      "EventAdmin";
-
-    const startKampId = await getNextKampId();
-
-    const giHasData: boolean[] = [];
-    basePlan.forEach(({ gi }) => {
-      const r = basePlan.find(match => match.gi === gi)?.saved?.rounds ?? roundsPerCourt[gi] ?? 3;
-      for (let si = 0; si < r; si++) {
-        const sc = scores[`${gi}-${si}`] ?? { a: 0, b: 0 };
-        if (sc.a !== 0 || sc.b !== 0) {
-          giHasData[gi] = true;
-          break;
+    if (!event || submissionBusy) return;
+    setSubmissionBusy(true);
+    try {
+      const sets: EventSubmissionSet[] = [];
+      for (const group of basePlan) {
+        const rounds = group.saved?.rounds ?? roundsPerCourt[group.gi] ?? 3;
+        for (let si = 0; si < rounds; si++) {
+          if (group.saved && !group.saved.sets[si]) continue;
+          const score = scores[`${group.gi}-${si}`] ?? { a: 0, b: 0 };
+          if (score.a === 0 && score.b === 0) continue;
+          const [holdA1, holdA2, holdB1, holdB2] = playersForSet(group, si)
+            .map((player) => player?.visningsnavn ?? "");
+          sets.push({ matchIndex: group.gi, holdA1, holdA2, holdB1, holdB2, scoreA: score.a, scoreB: score.b });
         }
       }
-    });
-
-    let nextId = startKampId;
-    const kampidByGi: Record<number, number> = {};
-    basePlan.forEach(({ gi }) => {
-      if (giHasData[gi]) kampidByGi[gi] = nextId++;
-    });
-
-    const rows: NewResultInsert[] = [];
-    basePlan.forEach((g) => {
-      const gi = g.gi;
-      const r = basePlan.find(match => match.gi === gi)?.saved?.rounds ?? roundsPerCourt[gi] ?? 3;
-      for (let si = 0; si < r; si++) {
-        if (g.saved && !g.saved.sets[si]) continue;
-        const [a1, a2, b1, b2] = playersForSet(g, si).map(player => player?.visningsnavn || "");
-        const sc = scores[`${gi}-${si}`] ?? { a: 0, b: 0 };
-
-        if (sc.a === 0 && sc.b === 0) continue;
-
-        rows.push({
-          date: event.date,
-          finish: erFærdigtSæt(sc.a, sc.b),
-          tiebreak: false,
-          event: true,
-          kampid: kampidByGi[gi],
-          holdA1: a1,
-          holdA2: a2,
-          holdB1: b1,
-          holdB2: b2,
-          scoreA: sc.a,
-          scoreB: sc.b,
-          indberettet_af: reporter,
-        });
+      if (!sets.length) {
+        alert("Ingen sæt at indsende (alle står 0–0).");
+        return;
       }
-    });
 
-    if (!rows.length) {
-      alert("Ingen sæt at indsende (alle står 0–0).");
-      return;
+      const result = await saveEventSubmission<EventRow>(event.id, sets);
+      setEvent(result.event);
+      alert(result.alreadySubmitted ? "Eventet er allerede indberettet." : `Indsendt ${result.count} sæt ✔️`);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Kunne ikke indsende eventet.");
+    } finally {
+      setSubmissionBusy(false);
     }
-
-    const newresultsTbl = supabase.from("newresults") as any;
-    const { error } = await newresultsTbl.insert(rows as any[]);
-    if (error) {
-      alert("Kunne ikke indsende: " + error.message);
-      return;
-    }
-
-    alert(`Indsendt ${rows.length} sæt ✔️ (første kampid i batch: ${startKampId})`);
   }
 
   /* --- Hent tilmeldinger (NY) --- */
@@ -1459,6 +1380,7 @@ useEffect(() => {
             <button
               type="button"
               onClick={submitResults}
+              disabled={submissionBusy}
               className="w-full px-3 py-2 rounded-md text-white hover:opacity-95"
               style={{ backgroundColor: GREEN }}
               title="Indsend alle gyldige sæt til newresults"

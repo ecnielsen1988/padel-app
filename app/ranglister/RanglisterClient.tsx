@@ -65,16 +65,23 @@ function buildDisplayRows(rows: PreviewRow[], myName: string | null) {
   });
 }
 
-function sectionsFromOverview(data: RankingOverview): PreviewSection[] {
-  return [
-    { href: "/nyrangliste", icon: "🥇", title: "Ranglisten", subtitle: "Den samlede Elo-top", accentClass: "bg-[#fff0f5]", metric: "elo", rows: data.rangliste },
-    { href: "/monthly", icon: "🌟", title: "Månedens spiller", subtitle: "Mest fremgang denne måned", accentClass: "bg-[#fff8e8]", metric: "pluspoint", rows: data.monthly },
-    { href: "/active", icon: "🏃‍♂️", title: "Mest aktive", subtitle: "Flest spillede sæt", accentClass: "bg-[#eefaf4]", metric: "sets", rows: data.active },
-    { href: "/women", icon: "👸", title: "GirlPower Listen", subtitle: "Kvinderanglistens top 3", accentClass: "bg-[#fff0f5]", metric: "elo", rows: data.women },
-    { href: "/egg", icon: "🥚", title: "Æggejagten", subtitle: "De største bagels", accentClass: "bg-[#fff8e8]", metric: "pluspoint", rows: data.eggs },
-    { href: "/winstreak", icon: "🔥", title: "Win-Streak", subtitle: "De længste sejrsserier", accentClass: "bg-[#fff0f5]", metric: "pluspoint", rows: data.winStreak },
-    { href: "/playstreak", icon: "📆", title: "5 Games Streak", subtitle: "Uger med masser af spil", accentClass: "bg-[#eefaf4]", metric: "pluspoint", rows: data.playStreak },
+function sectionsFromOverview(data: Partial<RankingOverview>): PreviewSection[] {
+  const overview = { ...EMPTY_OVERVIEW, ...data };
+  const sections: PreviewSection[] = [
+    { href: "/nyrangliste", icon: "🥇", title: "Ranglisten", subtitle: "Den samlede Elo-top", accentClass: "bg-[#fff0f5]", metric: "elo", rows: overview.rangliste },
+    { href: "/monthly", icon: "🌟", title: "Månedens spiller", subtitle: "Mest fremgang denne måned", accentClass: "bg-[#fff8e8]", metric: "pluspoint", rows: overview.monthly },
+    { href: "/active", icon: "🏃‍♂️", title: "Mest aktive", subtitle: "Flest spillede sæt", accentClass: "bg-[#eefaf4]", metric: "sets", rows: overview.active },
+    { href: "/women", icon: "👸", title: "GirlPower Listen", subtitle: "Kvinderanglistens top 3", accentClass: "bg-[#fff0f5]", metric: "elo", rows: overview.women },
+    { href: "/egg", icon: "🥚", title: "Æggejagten", subtitle: "De største bagels", accentClass: "bg-[#fff8e8]", metric: "pluspoint", rows: overview.eggs },
+    { href: "/winstreak", icon: "🔥", title: "Win-Streak", subtitle: "De længste sejrsserier", accentClass: "bg-[#fff0f5]", metric: "pluspoint", rows: overview.winStreak },
+    { href: "/playstreak", icon: "📆", title: "5 Games Streak", subtitle: "Uger med masser af spil", accentClass: "bg-[#eefaf4]", metric: "pluspoint", rows: overview.playStreak },
   ];
+  return sections.map((section) => ({
+    ...section,
+    rows: Array.isArray(section.rows)
+      ? section.rows.filter((row) => typeof row?.visningsnavn === "string")
+      : [],
+  }));
 }
 
 export default function RanglisterClient() {
@@ -102,9 +109,6 @@ export default function RanglisterClient() {
             .maybeSingle(),
           fetch("/api/ranking-overview"),
         ]);
-        const overview: RankingOverview = overviewResponse.ok
-          ? await overviewResponse.json()
-          : EMPTY_OVERVIEW;
         if (!mounted) return;
 
         const p = profileResult.data;
@@ -114,7 +118,15 @@ export default function RanglisterClient() {
           rolle: p?.rolle ?? null,
           torsdagspadel: !!p?.torsdagspadel,
         });
-        setPreviewSections(sectionsFromOverview(overview));
+        let overview: Partial<RankingOverview> = EMPTY_OVERVIEW;
+        if (overviewResponse.ok) {
+          try {
+            overview = await overviewResponse.json();
+          } catch (error) {
+            console.error("Ugyldigt svar fra ranglisteoversigten", error);
+          }
+        }
+        if (mounted) setPreviewSections(sectionsFromOverview(overview));
       } catch (error) {
         console.error("Kunne ikke hente ranglisteoversigten", error);
       } finally {
