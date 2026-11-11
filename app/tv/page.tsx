@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { supabase } from "@/lib/supabaseClient";
 import type { TvRankingData } from "@/lib/rankingOverview";
+import { DEFAULT_WEEK_PROGRAM, type WeekSession } from "@/lib/tvWeekProgram";
 import styles from "./tv.module.css";
 
 type TvSlide = {
@@ -49,6 +50,7 @@ const MONTH = new Intl.DateTimeFormat("da-DK", {
 
 const ROWS_PER_COLUMN = 20;
 const COLUMNS_PER_PAGE = 3;
+const WEEK_SLIDE = { id: "week-program", kind: "week", title: "Ugens spil", duration: 30 } as const;
 
 function buildRankingSlides(data: TvRankingData): RankingSlide[] {
   const pageSize = ROWS_PER_COLUMN * COLUMNS_PER_PAGE;
@@ -159,13 +161,69 @@ function RankingTables({ slide }: { slide: RankingSlide }) {
   );
 }
 
+function WeekProgram({ program }: { program: WeekSession[] }) {
+  return (
+    <div className={styles.weekGrid}>
+      {program.map((entry, index) => (
+        <article key={index} className={styles.weekCard}>
+          <div className={styles.weekTime}>
+            <span>{entry.day}</span>
+            <span>{entry.starts}–{entry.ends}</span>
+          </div>
+          <h2>{entry.title}</h2>
+          <div className={styles.weekDetails}>
+            <strong>{entry.place}</strong>
+            <span>{entry.level}</span>
+            {entry.minPoints !== "" && (
+              <span className={styles.weekPoints}>
+                {POINTS.format(Number(entry.minPoints))}–{POINTS.format(Number(entry.maxPoints))} point
+              </span>
+            )}
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
 export default function TvPage() {
   const [rankings, setRankings] = useState<TvRankingData | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [media, setMedia] = useState<MediaSlide[]>([]);
   const [activeId, setActiveId] = useState("ranking-0");
+  const [weekProgram, setWeekProgram] = useState(DEFAULT_WEEK_PROGRAM);
+  const [weekOnly, setWeekOnly] = useState<boolean | null>(null);
 
   useEffect(() => {
+    setWeekOnly(new URLSearchParams(window.location.search).get("visning") === "ugeprogram");
+    const controller = new AbortController();
+    let refreshing = false;
+
+    async function refresh() {
+      if (refreshing) return;
+      refreshing = true;
+      try {
+        const response = await fetch("/api/tv/ugeprogram", { signal: controller.signal });
+        if (!response.ok) return;
+        const { program }: { program: WeekSession[] } = await response.json();
+        if (!controller.signal.aborted) setWeekProgram(program);
+      } catch {
+        // Keep the last schedule visible if the TV loses its connection.
+      } finally {
+        refreshing = false;
+      }
+    }
+
+    void refresh();
+    const interval = window.setInterval(refresh, 60_000);
+    return () => {
+      controller.abort();
+      window.clearInterval(interval);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (weekOnly !== false) return;
     const controller = new AbortController();
     let refreshing = false;
 
@@ -193,9 +251,10 @@ export default function TvPage() {
       controller.abort();
       window.clearInterval(interval);
     };
-  }, []);
+  }, [weekOnly]);
 
   useEffect(() => {
+    if (weekOnly !== false) return;
     const controller = new AbortController();
     let refreshing = false;
 
@@ -230,9 +289,15 @@ export default function TvPage() {
       controller.abort();
       window.clearInterval(interval);
     };
-  }, []);
+  }, [weekOnly]);
 
-  const slides = useMemo(() => [...(rankings ? buildRankingSlides(rankings) : []), ...media], [rankings, media]);
+  const slides = useMemo(() => weekOnly
+    ? [WEEK_SLIDE]
+    : [
+      ...(rankings ? buildRankingSlides(rankings) : []),
+      ...(rankings || loadFailed ? [WEEK_SLIDE] : []),
+      ...media,
+    ], [rankings, loadFailed, media, weekOnly]);
   const index = Math.max(slides.findIndex((slide) => slide.id === activeId), 0);
   const slide = slides[index];
   const duration = slide?.duration;
@@ -257,24 +322,27 @@ export default function TvPage() {
   }, [previousId, nextId]);
 
   const ranking = slide?.kind === "ranking" ? slide : null;
+  const isWeek = slide?.kind === "week";
 
   return (
-    <main className={styles.screen}>
+    <main className={styles.screen} data-week={isWeek || undefined}>
       <header className={styles.header}>
         <div className={styles.heading}>
           <p className={styles.brand}>Padelhuset</p>
           <h1>{slide?.title ?? "Ranglisten"}</h1>
           {ranking?.subtitle && <p className={styles.subtitle}>{ranking.subtitle}</p>}
+          {isWeek && <p className={styles.subtitle}>Kom og spil med!</p>}
         </div>
         {slide?.kind !== "media" && (
-          <a href={SIGNUP_URL} className={styles.signup} aria-label="Tilmeld dig ranglisten">
-            <span>Tilmeld dig<br />ranglisten</span>
+          <a href={SIGNUP_URL} className={styles.signup} aria-label={isWeek ? "Opret profil og kom med" : "Tilmeld dig ranglisten"}>
+            {isWeek ? <span>Kom med!<br />Opret profil</span> : <span>Tilmeld dig<br />ranglisten</span>}
             <QRCodeSVG value={SIGNUP_URL} size={96} marginSize={4} title="QR-kode til tilmelding" />
           </a>
         )}
       </header>
 
       {ranking && <RankingTables slide={ranking} />}
+      {isWeek && <WeekProgram program={weekProgram} />}
       {slide?.kind === "media" && (
         <div className={styles.media}>
           {slide.file_type === "image" ? (

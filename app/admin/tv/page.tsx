@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 
 type TvSlide = {
@@ -175,6 +176,9 @@ export default function TvAdminPage() {
     <div className="min-h-screen bg-pink-50 p-6">
       <div className="mx-auto max-w-5xl space-y-8">
         <h1 className="text-3xl font-bold">TV Admin</h1>
+        <Link href="/admin/tv/ugeprogram" className="inline-flex rounded-xl bg-pink-700 px-5 py-3 font-semibold text-white">
+          Redigér ugens spil
+        </Link>
 
         <form
           onSubmit={handleUpload}

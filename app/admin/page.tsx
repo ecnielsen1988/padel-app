@@ -72,6 +72,13 @@ export default function AdminHomePage() {
 
       <div className="grid gap-4">
         <Link
+          href="/admin/tv"
+          className="block bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
+        >
+          TV og ugeprogram
+        </Link>
+
+        <Link
           href="/admin/beskeder"
           className="block bg-zinc-900 hover:bg-zinc-800 text-white font-semibold py-3 px-5 rounded-xl text-center shadow"
         >
