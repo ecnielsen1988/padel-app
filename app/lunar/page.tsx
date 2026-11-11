@@ -82,6 +82,7 @@ const TEAM_OPTIONS = [
   { name: "Reclutas", color: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200" },
   { name: "Exploradores", color: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-200" },
   { name: "Novatos", color: "bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200" },
+  { name: "Legionarios", color: "bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-200" },
 ] as const
 
 const TEAM_COLOR_BY_NAME = Object.fromEntries(
@@ -702,7 +703,7 @@ export default function LunarSide() {
   }
 
   return (
-    <main className="mx-auto max-w-7xl p-6 text-gray-900 dark:text-white">
+    <main className="mx-auto w-full max-w-[100rem] p-3 text-gray-900 sm:p-5 dark:text-white">
       <h1 className="mb-4 text-3xl font-bold">🌙 Lunar – kommende hold</h1>
 
       <p className="mb-4 text-sm text-zinc-600 dark:text-zinc-300">
@@ -746,12 +747,13 @@ export default function LunarSide() {
           Der er endnu ingen spillere tilføjet.
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-700">
-          <table className="min-w-full text-xs sm:text-sm">
-            <thead className="bg-zinc-100 dark:bg-zinc-800">
+        <div className="rounded-xl border border-zinc-200 dark:border-zinc-700">
+          <table role="table" className="block w-full text-xs xl:table">
+            <thead className="sr-only bg-zinc-100 xl:not-sr-only dark:bg-zinc-800">
               <tr>
                 <th className="px-2 py-2 text-left">#</th>
                 <th className="px-2 py-2 text-left">Spiller</th>
+                <th className="px-2 py-2 text-right">Sum</th>
                 {monthsHeader.map((m) => (
                   <th key={m.key} className="px-2 py-2 text-right">
                     {m.label}
@@ -763,11 +765,10 @@ export default function LunarSide() {
                 <th className="px-2 py-2 text-right">Torsdags-events</th>
                 <th className="px-2 py-2 text-left">Efterår 26</th>
                 <th className="px-2 py-2 text-left">Forår 27 primær</th>
-                <th className="px-2 py-2 text-right">Sum</th>
-                <th className="px-2 py-2 text-right"></th>
+                <th className="px-2 py-2 text-right"><span className="sr-only">Handling</span></th>
               </tr>
             </thead>
-            <tbody>
+            <tbody role="rowgroup" className="block divide-y divide-zinc-200 xl:table-row-group dark:divide-zinc-700">
               {rows.map((r, idx) => {
                 let badge = ""
                 if (idx === 0) badge = "👑"
@@ -781,52 +782,64 @@ export default function LunarSide() {
                 return (
                   <tr
                     key={r.visningsnavn}
-                    className={
+                    role="row"
+                    className={`grid grid-cols-6 items-center gap-y-2 p-2 xl:table-row xl:p-0 ${
                       idx % 2 === 0
                         ? "bg-white dark:bg-zinc-900"
                         : "bg-zinc-50 dark:bg-zinc-950"
-                    }
+                    }`}
                   >
-                    <td className="px-2 py-2">{idx + 1}</td>
-                    <td className="whitespace-nowrap px-2 py-2">
+                    <td role="cell" className="px-2 xl:py-2">{idx + 1}</td>
+                    <td role="cell" className="col-span-3 min-w-0 break-words px-2 font-medium xl:py-2">
                       {badge && <span className="mr-1">{badge}</span>}
                       {r.visningsnavn}
                     </td>
+                    <td role="cell" className="col-span-2 px-2 text-right font-bold tabular-nums xl:py-2">
+                      <span className="block font-medium text-zinc-600 xl:hidden dark:text-zinc-400">Sum</span>
+                      {r.total.toFixed(1)}
+                    </td>
 
                     {r.months.map((m) => (
-                      <td key={`${r.visningsnavn}-${m.label}`} className="px-2 py-2 text-right">
+                      <td key={m.label} role="cell" className="col-span-2 px-2 tabular-nums xl:py-2 xl:text-right">
+                        <span className="block text-zinc-600 xl:hidden dark:text-zinc-400">{m.label}</span>
                         {m.avgElo != null ? m.avgElo.toFixed(0) : "–"}
                       </td>
                     ))}
 
-                    <td className="px-2 py-2 text-right font-semibold">
+                    <td role="cell" className="col-span-2 px-2 font-semibold tabular-nums xl:py-2 xl:text-right">
+                      <span className="block font-normal text-zinc-600 xl:hidden dark:text-zinc-400">Vægtet Elo</span>
                       {r.weightedElo.toFixed(1)}
                     </td>
-                    <td className="px-2 py-2 text-right font-semibold">
+                    <td role="cell" className="col-span-2 px-2 font-semibold tabular-nums xl:py-2 xl:text-right">
+                      <span className="block font-normal text-zinc-600 xl:hidden dark:text-zinc-400">Lunar +</span>
                       {r.lunarBonus.toFixed(0)}
                     </td>
-                    <td className="px-2 py-2 text-right">
+                    <td role="cell" className="col-span-2 px-2 tabular-nums xl:py-2 xl:text-right">
+                      <span className="block text-zinc-600 xl:hidden dark:text-zinc-400">Torsdags-events</span>
                       {r.thursdayCount > 0
                         ? `${r.thursdayCount}× (+${r.thursdayPoints.toFixed(0)})`
                         : "–"}
                     </td>
-                    <td className="px-2 py-2">
+                    <td role="cell" className="col-span-2 min-w-0 px-2 xl:py-2">
+                      <span className="mb-1 block text-zinc-600 xl:hidden dark:text-zinc-400">Efterår 26</span>
                       {fixedTeam ? (
-                        <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${getTeamBadgeClass(fixedTeam)}`}>
+                        <span className={`inline-block max-w-full break-words rounded-full px-2 py-1 text-xs font-semibold ${getTeamBadgeClass(fixedTeam)}`}>
                           {fixedTeam}
                         </span>
                       ) : (
                         "–"
                       )}
                     </td>
-                    <td className="px-2 py-2">
+                    <td role="cell" className="col-span-3 min-w-0 px-2 xl:py-2">
+                      <span className="mb-1 block text-zinc-600 xl:hidden dark:text-zinc-400">Forår 27 primær</span>
                       <select
+                        aria-label={`Primærhold for ${r.visningsnavn} i foråret 2027`}
                         value={editableTeamId ?? ""}
                         onChange={(e) =>
                           setEditablePrimaryTeam(r.visningsnavn, e.target.value)
                         }
                         disabled={savingAssignment === r.visningsnavn}
-                        className={`min-w-[190px] rounded border px-2 py-1 dark:bg-zinc-900 ${
+                        className={`w-full min-w-0 rounded border px-1 py-1 xl:min-w-28 ${
                           editableTeam?.name
                             ? getTeamBadgeClass(editableTeam.name)
                             : "border-zinc-300 bg-white text-zinc-900 dark:border-zinc-700 dark:text-white"
@@ -842,10 +855,7 @@ export default function LunarSide() {
                         )}
                       </select>
                     </td>
-                    <td className="px-2 py-2 text-right font-bold">
-                      {r.total.toFixed(1)}
-                    </td>
-                    <td className="px-2 py-2 text-right">
+                    <td role="cell" className="px-2 text-right xl:py-2">
                       <button
                         onClick={() => removePlayer(r.visningsnavn)}
                         className="text-red-500 hover:text-red-700"
