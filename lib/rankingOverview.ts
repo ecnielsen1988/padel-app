@@ -32,6 +32,8 @@ export type RankingOverviewData = {
   playStreak: PreviewRow[];
 };
 
+export type TvRankingData = Pick<RankingOverviewData, "rangliste" | "monthly" | "women" | "eggs">;
+
 const RESULT_COLUMNS =
   "id,date,holdA1,holdA2,holdB1,holdB2,scoreA,scoreB,finish";
 
@@ -58,6 +60,28 @@ async function fetchAllResults(): Promise<ResultRow[]> {
   return rows;
 }
 
+async function fetchActiveProfiles() {
+  const supabase = createSupabaseServerReadClient();
+  const pageSize = 1000;
+  const profiles = new Map<string, string | null>();
+
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("visningsnavn, koen")
+      .eq("status", "active")
+      .order("id")
+      .range(from, from + pageSize - 1);
+
+    if (error) throw error;
+    for (const profile of data ?? []) {
+      const name = String(profile.visningsnavn ?? "").trim().toLowerCase();
+      if (name) profiles.set(name, profile.koen);
+    }
+    if (!data || data.length < pageSize) return profiles;
+  }
+}
+
 function currentCopenhagenMonth() {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Europe/Copenhagen",
@@ -71,20 +95,13 @@ function currentCopenhagenMonth() {
   };
 }
 
-async function buildRankingOverview(): Promise<RankingOverviewData> {
-  const supabase = createSupabaseServerReadClient();
-  const [rankingData, monthlyData, allSets, womenProfilesResult] = await Promise.all([
+async function buildRankingOverview(): Promise<RankingOverviewData & { activeRanking: PreviewRow[] }> {
+  const [rankingData, monthlyData, allSets, activeProfiles] = await Promise.all([
     getCachedRangliste(),
     beregnEloÆndringerForIndeværendeMåned(),
     fetchAllResults(),
-    supabase
-      .from("profiles")
-      .select("visningsnavn")
-      .eq("status", "active")
-      .eq("koen", "kvinde"),
+    fetchActiveProfiles(),
   ]);
-
-  if (womenProfilesResult.error) throw womenProfilesResult.error;
 
   const rangliste = rankingData
     .map((row) => ({
@@ -180,7 +197,8 @@ async function buildRankingOverview(): Promise<RankingOverviewData> {
       (a, b) =>
         (b.pluspoint ?? 0) - (a.pluspoint ?? 0) ||
         (eloMap.get(b.visningsnavn.toLowerCase()) ?? 0) -
-          (eloMap.get(a.visningsnavn.toLowerCase()) ?? 0)
+          (eloMap.get(a.visningsnavn.toLowerCase()) ?? 0) ||
+        a.visningsnavn.localeCompare(b.visningsnavn, "da")
     );
 
   const winStreak = Array.from(winBestMap.entries())
@@ -239,20 +257,16 @@ async function buildRankingOverview(): Promise<RankingOverviewData> {
         (b.pluspoint ?? 0) - (a.pluspoint ?? 0)
     );
 
-  const womenSet = new Set(
-    (womenProfilesResult.data ?? [])
-      .map((row) => String(row.visningsnavn ?? "").trim().toLowerCase())
-      .filter(Boolean)
-  );
-  const women = rangliste.filter((row) =>
-    womenSet.has(row.visningsnavn.toLowerCase())
+  const activeRanking = rangliste.filter((row) => activeProfiles.has(row.visningsnavn.toLowerCase()));
+  const women = activeRanking.filter((row) =>
+    activeProfiles.get(row.visningsnavn.toLowerCase()) === "kvinde"
   );
 
-  return { rangliste, monthly, active, women, eggs, winStreak, playStreak };
+  return { rangliste, monthly, active, women, eggs, winStreak, playStreak, activeRanking };
 }
 
 export const getCachedRankingOverview = unstable_cache(
   buildRankingOverview,
-  ["ranking-overview-v1"],
+  ["ranking-overview-v2"],
   { revalidate: 60, tags: ["ranking-overview", "rangliste"] }
 );
