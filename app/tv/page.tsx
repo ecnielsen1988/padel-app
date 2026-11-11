@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { supabase } from "@/lib/supabaseClient";
 import type { TvRankingData } from "@/lib/rankingOverview";
-import { DEFAULT_WEEK_PROGRAM, type WeekSession } from "@/lib/tvWeekProgram";
+import { DEFAULT_WEEK_PROGRAM, WEEKDAYS, type WeekSession } from "@/lib/tvWeekProgram";
 import styles from "./tv.module.css";
 
 type TvSlide = {
@@ -161,26 +161,63 @@ function RankingTables({ slide }: { slide: RankingSlide }) {
   );
 }
 
+const WEEK_OFFER_ART = [
+  { match: /americano/i, file: "morgenbroed.jpg", title: "Morgen Americano", original: "Formiddags Americano" },
+  { match: /torsdags?\s*tøser/i, file: "torsdagstoeserne.jpg", title: "TorsdagsTøserne", original: "Rangliste TorsdagsTøserne" },
+  { match: /fredags\s*fun/i, file: "fredags-fun.jpg", title: "Fredags Fun", original: "Rangliste Fredags Fun" },
+  { match: /sunday\s*social/i, file: "sunday-social.jpg", title: "Sunday Social", original: "Rangliste Sunday Social" },
+];
+
 function WeekProgram({ program }: { program: WeekSession[] }) {
+  const days = WEEKDAYS.flatMap((day) => {
+    const sessions = program.filter((entry) => entry.day === day);
+    if (!sessions.length) return [];
+
+    const offers: { title: string; sessions: WeekSession[] }[] = [];
+    for (const session of sessions) {
+      const previous = offers[offers.length - 1];
+      if (previous?.title === session.title) previous.sessions.push(session);
+      else offers.push({ title: session.title, sessions: [session] });
+    }
+    return [{ day, sessions, offers }];
+  });
+  const columns = Math.min(days.length, Math.max(2, Math.ceil(days.length / 2)));
+
   return (
-    <div className={styles.weekGrid}>
-      {program.map((entry, index) => (
-        <article key={index} className={styles.weekCard}>
-          <div className={styles.weekTime}>
-            <span>{entry.day}</span>
-            <span>{entry.starts}–{entry.ends}</span>
+    <div className={styles.weekGrid} data-columns={columns}>
+      {days.map(({ day, sessions, offers }) => (
+        <section className={styles.weekDay} key={day} data-compact={sessions.length > 3 || undefined}>
+          <h2>{day}</h2>
+          <div className={styles.weekOffers} data-single={offers.length === 1 || undefined}>
+            {offers.map((offer, index) => {
+              const art = WEEK_OFFER_ART.find(({ match }) => match.test(offer.title));
+              const title = art?.original === offer.title ? art.title : offer.title;
+              return (
+                <article className={styles.weekOffer} key={index} data-photo={!!art || undefined}>
+                  {art && (
+                    <div className={styles.weekPhoto}>
+                      <img src={`/tv/ugeprogram/${art.file}`} alt="" />
+                    </div>
+                  )}
+                  <div className={styles.weekOfferText}>
+                    <h3>{title}</h3>
+                    {offer.sessions.map((entry, sessionIndex) => (
+                      <div className={styles.weekSlot} key={sessionIndex}>
+                        <p className={styles.weekTime}>Kl. {entry.starts}–{entry.ends} i {entry.place}</p>
+                        <p className={styles.weekLevel}>
+                          {entry.level}
+                          {entry.minPoints !== "" && (
+                            <span> · {POINTS.format(Number(entry.minPoints))}–{POINTS.format(Number(entry.maxPoints))} point</span>
+                          )}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </article>
+              );
+            })}
           </div>
-          <h2>{entry.title}</h2>
-          <div className={styles.weekDetails}>
-            <strong>{entry.place}</strong>
-            <span>{entry.level}</span>
-            {entry.minPoints !== "" && (
-              <span className={styles.weekPoints}>
-                {POINTS.format(Number(entry.minPoints))}–{POINTS.format(Number(entry.maxPoints))} point
-              </span>
-            )}
-          </div>
-        </article>
+        </section>
       ))}
     </div>
   );
