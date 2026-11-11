@@ -16,18 +16,20 @@ type TvSlide = {
   duration_seconds: number;
 };
 
+type RankingColumn = {
+  start: number;
+  rows: TvRankingData["rangliste"];
+  metric: string;
+  format: Intl.NumberFormat;
+  heading?: { title: string; detail?: string; color: "gold" | "lilac" | "lime" };
+};
+
 type RankingSlide = {
   id: string;
   kind: "ranking";
   title: string;
-  subtitle: string;
-  metric: string;
-  color: "pink" | "gold" | "lilac" | "lime";
-  start: number;
-  columns: number;
-  rowsPerColumn: number;
-  rows: TvRankingData["rangliste"];
-  format: Intl.NumberFormat;
+  subtitle?: string;
+  columns: RankingColumn[];
   duration: number;
 };
 
@@ -45,66 +47,97 @@ const MONTH = new Intl.DateTimeFormat("da-DK", {
   year: "numeric",
 });
 
+const ROWS_PER_COLUMN = 20;
+const COLUMNS_PER_PAGE = 3;
+
 function buildRankingSlides(data: TvRankingData): RankingSlide[] {
-  const rowsPerColumn = 20;
-  const columns = 3;
-  const pageSize = rowsPerColumn * columns;
+  const pageSize = ROWS_PER_COLUMN * COLUMNS_PER_PAGE;
   const rankingPages: RankingSlide[] = Array.from(
     { length: Math.max(1, Math.ceil(data.rangliste.length / pageSize)) },
     (_, index) => {
       const start = index * pageSize;
       const rows = data.rangliste.slice(start, start + pageSize);
+      const columns = Array.from(
+        { length: Math.ceil(rows.length / ROWS_PER_COLUMN) },
+        (_, column) => {
+          const offset = column * ROWS_PER_COLUMN;
+          return {
+            start: start + offset,
+            rows: rows.slice(offset, offset + ROWS_PER_COLUMN),
+            metric: "Elo-point",
+            format: POINTS,
+          };
+        }
+      );
       return {
-        id: `ranking-${index}`, kind: "ranking", title: "Ranglisten",
+        id: `ranking-${index}`,
+        kind: "ranking",
+        title: "Ranglisten",
         subtitle: rows.length ? `Placering ${start + 1}–${start + rows.length}` : "Den samlede rangliste",
-        metric: "Elo-point", color: "pink", start, columns, rowsPerColumn, rows,
-        format: POINTS, duration: 24,
+        columns,
+        duration: 24,
       };
     }
   );
 
-  const topTwenty = {
-    kind: "ranking", start: 0, columns: 2, rowsPerColumn: 10, duration: 18,
-  } as const;
-
   return [
     ...rankingPages,
     {
-      ...topTwenty, id: "monthly", title: "Månedens Spiller", color: "gold",
-      subtitle: `Top 20 · ${MONTH.format(new Date())}`, metric: "Netto Elo",
-      rows: data.monthly.slice(0, 20), format: MONTHLY_POINTS,
-    },
-    {
-      ...topTwenty, id: "women", title: "Girlpower-listen", color: "lilac",
-      subtitle: "Top 20 · Kvinderanglisten", metric: "Elo-point",
-      rows: data.women.slice(0, 20), format: POINTS,
-    },
-    {
-      ...topTwenty, id: "eggs", title: "Æggejagten", color: "lime",
-      subtitle: "Top 20 · Sæt vundet 6–0", metric: "Æg",
-      rows: data.eggs.slice(0, 20), format: POINTS,
+      id: "top-twenty",
+      kind: "ranking",
+      title: "Top 20",
+      duration: 24,
+      columns: [
+        {
+          start: 0,
+          heading: { title: "Månedens Spiller", detail: MONTH.format(new Date()), color: "gold" },
+          metric: "Netto Elo",
+          rows: data.monthly.slice(0, ROWS_PER_COLUMN),
+          format: MONTHLY_POINTS,
+        },
+        {
+          start: 0,
+          heading: { title: "Girlpower-listen", color: "lilac" },
+          metric: "Elo-point",
+          rows: data.women.slice(0, ROWS_PER_COLUMN),
+          format: POINTS,
+        },
+        {
+          start: 0,
+          heading: { title: "Æggejagten", detail: "Sæt vundet 6–0", color: "lime" },
+          metric: "Æg",
+          rows: data.eggs.slice(0, ROWS_PER_COLUMN),
+          format: POINTS,
+        },
+      ],
     },
   ];
 }
 
 function RankingTables({ slide }: { slide: RankingSlide }) {
-  if (slide.rows.length === 0) {
+  if (slide.columns.length === 0) {
     return <p className={styles.status}>Ingen resultater endnu.</p>;
   }
 
   return (
-    <div className={`${styles.tables} ${slide.columns === 2 ? styles.topTwenty : ""}`}>
-      {Array.from({ length: slide.columns }, (_, column) => {
-        const offset = column * slide.rowsPerColumn;
-        const rows = slide.rows.slice(offset, offset + slide.rowsPerColumn);
-        return (
-          <section className={styles.table} key={column} hidden={rows.length === 0}>
+    <div className={styles.tables}>
+      {slide.columns.map(({ start, rows, metric, format, heading }) => (
+        <section className={styles.table} key={heading?.title ?? start} data-color={heading?.color}>
+          <header>
+            {heading && (
+              <div className={styles.category}>
+                <h2>{heading.title}</h2>
+                {heading.detail && <p>{heading.detail}</p>}
+              </div>
+            )}
             <div className={styles.tableHead}>
-              <span>#</span><span>Spiller</span><span>{slide.metric}</span>
+              <span>#</span><span>Spiller</span><span>{metric}</span>
             </div>
-            <ol className={styles.rows} start={slide.start + offset + 1}>
+          </header>
+          {rows.length > 0 ? (
+            <ol className={styles.rows} start={start + 1}>
               {rows.map((row, index) => {
-                const position = slide.start + offset + index + 1;
+                const position = start + index + 1;
                 return (
                   <li
                     className={`${styles.row} ${position <= 3 ? styles.podium : ""}`}
@@ -112,14 +145,16 @@ function RankingTables({ slide }: { slide: RankingSlide }) {
                   >
                     <span className={styles.position}>{position}</span>
                     <span className={styles.player}>{row.visningsnavn}</span>
-                    <span className={styles.points}>{slide.format.format(row.elo ?? row.pluspoint ?? 0)}</span>
+                    <span className={styles.points}>{format.format(row.elo ?? row.pluspoint ?? 0)}</span>
                   </li>
                 );
               })}
             </ol>
-          </section>
-        );
-      })}
+          ) : (
+            <p className={styles.emptyColumn}>Ingen resultater endnu.</p>
+          )}
+        </section>
+      ))}
     </div>
   );
 }
@@ -224,12 +259,12 @@ export default function TvPage() {
   const ranking = slide?.kind === "ranking" ? slide : null;
 
   return (
-    <main className={styles.screen} data-color={ranking?.color ?? "pink"}>
+    <main className={styles.screen}>
       <header className={styles.header}>
         <div className={styles.heading}>
           <p className={styles.brand}>Padelhuset</p>
           <h1>{slide?.title ?? "Ranglisten"}</h1>
-          {ranking && <p className={styles.subtitle}>{ranking.subtitle}</p>}
+          {ranking?.subtitle && <p className={styles.subtitle}>{ranking.subtitle}</p>}
         </div>
         {slide?.kind !== "media" && (
           <a href={SIGNUP_URL} className={styles.signup} aria-label="Tilmeld dig ranglisten">
