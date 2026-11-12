@@ -42,14 +42,20 @@ assert.equal(config.getEventAdminHref("42", raw), "/event/42");
 
 // Exercise authorization, slot validation, 2–0, tiebreaks and rotation via the player API.
 let rows, writes, admin = false, viewerName = "A", submitted = false, eventRules = raw;
+let adminWrite = false, duplicate = false;
+function insertSets(payload) {
+  writes.push(payload);
+  return { select: async () => duplicate
+    ? { data: null, error: { code: "23505" } }
+    : { data: payload, error: null } };
+}
 const db = {
-  auth: { getUser: async () => ({ data: { user: { id: "user", user_metadata: {} } } }) },
   from(table) {
     const query = {
       select() { return this; }, eq() { return this; }, order() { return this; },
       maybeSingle: async () => ({ data: table === "profiles" ? { visningsnavn: viewerName, rolle: admin ? "admin" : "user" } : { id: "42", date: event.date, rules_text: eventRules } }),
       update(payload) { writes.push(payload); return this; },
-      upsert: async payload => { writes.push(payload); return { error: null }; },
+      insert: insertSets,
       then(resolve) { resolve({ data: rows, error: null }); },
     };
     return query;
@@ -58,7 +64,13 @@ const db = {
 const route = load("../app/api/event-score/route.ts", {
   "@/lib/royal": rules, "@/lib/eventConfig": config,
   "@/lib/eventSubmission": { getEventSubmissionState: async () => ({ submitted }) },
-  "@/lib/supabaseClient": { supabaseRoute: () => db },
+  "@/lib/messagingAuth": { messagingAuth: async () => ({ db, user: { id: "user", user_metadata: {} } }) },
+  "@/lib/supabaseServiceRole": { supabaseServiceRole: {
+    from: () => ({ insert(payload) {
+      adminWrite = true;
+      return insertSets(payload);
+    } }),
+  } },
 });
 const reset = scores => { writes = []; rows = scores.map((score, si) => ({ event_id: "42", group_index: 0, set_index: si, holdA1: "A", holdA2: "B", holdB1: "C", holdB2: "D", court_label: "CC", start_time: "18:00", end_time: "20:00", scoreA: score.a, scoreB: score.b })); };
 async function post(body) { return route.POST(new Request("http://localhost/api/event-score", { method: "POST", body: JSON.stringify({ eventId: "42", groupIndex: 0, ...body }) })); }
@@ -81,6 +93,7 @@ assert.equal((await post({ action: "addSet" })).status, 403);
 admin = true;
 reset([win, win, empty]);
 assert.equal((await post({ action: "addSet" })).status, 200);
+assert.equal(adminWrite, true);
 submitted = true;
 assert.equal((await post({ action: "addSet" })).status, 409);
 submitted = false;
@@ -99,7 +112,27 @@ for (const format of ["standard", "partner"]) {
   assert.deepEqual([next.holdA1, next.holdA2, next.holdB1, next.holdB2], format === "partner" ? ["A", "B", "C", "D"] : ["A", "C", "B", "D"]);
   assert.equal(next.tiebreak, false);
 }
-console.log("Royal rules, score API and existing event regression checks passed.");
+eventRules = null;
+admin = true;
+adminWrite = false;
+reset([win, loss, empty]);
+assert.equal((await post({ action: "addSet", expectedSetIndex: 2 })).status, 409);
+assert.equal(writes.length, 0);
+const thursdayResponse = await post({ action: "addSet", expectedSetIndex: 3 });
+assert.equal(thursdayResponse.status, 200);
+assert.equal(adminWrite, true);
+const { rows: thursdaySets } = await thursdayResponse.json();
+assert.deepEqual(thursdaySets, [{
+  event_id: "42", group_index: 0, set_index: 3,
+  court_label: "CC", start_time: "18:00", end_time: "20:00",
+  holdA1: "A", holdA2: "B", holdB1: "C", holdB2: "D",
+  scoreA: 0, scoreB: 0, tiebreak: false,
+}]);
+duplicate = true;
+assert.equal((await post({ action: "addSet", expectedSetIndex: 3 })).status, 409);
+duplicate = false;
+admin = false;
+console.log("Royal rules, score API and Thursday extra-set checks passed.");
 
 let royalFilter = null;
 const listDb = {

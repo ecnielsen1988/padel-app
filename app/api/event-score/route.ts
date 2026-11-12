@@ -7,7 +7,9 @@ import { NextResponse } from "next/server";
 import { getEventSubmissionState } from "@/lib/eventSubmission";
 import { eventRotation, isRoyalTiebreak, royalPairingComplete, validateRoyalScores } from "@/lib/royal";
 import { isPartnerEvent, isRoyalEvent } from "@/lib/eventConfig";
-import { supabaseRoute } from "@/lib/supabaseClient";
+import { messagingAuth } from "@/lib/messagingAuth";
+import { supabaseServiceRole } from "@/lib/supabaseServiceRole";
+import type { User } from "@supabase/supabase-js";
 
 const ROTATIONS = [
   [
@@ -24,15 +26,7 @@ const ROTATIONS = [
   ],
 ] as const;
 
-async function getViewerContext(supabase: any) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return null;
-  }
-
+async function getViewerContext(supabase: any, user: User) {
   const { data: profile } = await supabase
     .from("profiles")
     .select("visningsnavn, rolle")
@@ -60,8 +54,10 @@ function canEditMatch(viewerName: string, row: any) {
 
 export async function POST(req: Request) {
   try {
-    const supabase = supabaseRoute();
-    const viewer = await getViewerContext(supabase);
+    const access = await messagingAuth();
+    if (access.response) return access.response;
+    const supabase = access.db!;
+    const viewer = await getViewerContext(supabase, access.user!);
 
     if (!viewer?.user || !viewer.visningsnavn) {
       return NextResponse.json({ error: "Du skal være logget ind." }, { status: 401 });
@@ -153,12 +149,30 @@ export async function POST(req: Request) {
     }
 
     if (action === "addSet") {
+      const writer = viewer.isAdmin ? supabaseServiceRole : supabase;
       const partnerEvent = isPartnerEvent(eventRow?.rules_text ?? null);
 
       const nextSetIndex = groupRows.reduce(
         (max: number, row: any) => Math.max(max, Number(row?.set_index ?? 0)),
         -1
       ) + 1;
+
+      const conflict = () => NextResponse.json(
+        { error: "Kampen er blevet opdateret. Genindlæs siden, og prøv igen." },
+        { status: 409 },
+      );
+      if (body.expectedSetIndex !== undefined && body.expectedSetIndex !== nextSetIndex) {
+        return conflict();
+      }
+
+      async function addRows(rows: object[]) {
+        const { data, error } = await (writer.from("event_result") as any)
+          .insert(rows).select("*");
+        if (error?.code === "23505") return conflict();
+        if (error) throw error;
+        if (data?.length !== rows.length) return conflict();
+        return NextResponse.json({ ok: true, setIndex: nextSetIndex, rows: data });
+      }
 
       const playerOrder = [
         (firstRow?.holdA1 ?? "").toString().trim(),
@@ -190,9 +204,7 @@ export async function POST(req: Request) {
             scoreA: 0, scoreB: 0, tiebreak: isRoyalTiebreak(si),
           };
         });
-        const { error } = await (supabase.from("event_result") as any).upsert(rows, { onConflict: "event_id,group_index,set_index" });
-        if (error) throw error;
-        return NextResponse.json({ ok: true, setIndex: nextSetIndex });
+        return await addRows(rows);
       }
 
       const payload = {
@@ -219,15 +231,7 @@ export async function POST(req: Request) {
         tiebreak: false,
       };
 
-      const { error } = await (supabase.from("event_result") as any).upsert([payload], {
-        onConflict: "event_id,group_index,set_index",
-      });
-
-      if (error) {
-        throw error;
-      }
-
-      return NextResponse.json({ ok: true, setIndex: nextSetIndex });
+      return await addRows([payload]);
     }
 
     return NextResponse.json({ error: "Ukendt handling." }, { status: 400 });

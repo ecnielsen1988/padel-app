@@ -56,6 +56,24 @@ export async function waitForThursdayWrites(eventId: string) {
   await pendingWrites.get(eventId);
 }
 
+export async function addPublishedThursdaySet(
+  eventId: string,
+  groupIndex: number,
+  expectedSetIndex: number,
+): Promise<ThursdaySet & { event_id: string; scoreA: number; scoreB: number; tiebreak: boolean }> {
+  const response = await fetch("/api/event-score", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "addSet", eventId, groupIndex, expectedSetIndex }),
+  });
+  const data = await response.json().catch(() => null);
+  const row = data?.rows?.[0];
+  if (!response.ok || !row) {
+    throw new Error(data?.error ?? "Kunne ikke tilføje sættet.");
+  }
+  return row;
+}
+
 export function parseThursdayPublication(value: unknown, eventId: string) {
   if (!Array.isArray(value) || !value.length || value.length > 500) {
     throw new Error("Programmet skal indeholde mellem 1 og 500 sæt.");

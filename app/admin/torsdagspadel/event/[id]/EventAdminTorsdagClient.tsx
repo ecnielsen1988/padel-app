@@ -1,7 +1,7 @@
 "use client";
 
 import ProgramTimeInput from "@/app/components/ProgramTimeInput";
-import { queueThursdayWrite, savedThursdayGroups, thursdaySetNames, waitForThursdayWrites } from "@/lib/thursdayProgram";
+import { addPublishedThursdaySet, queueThursdayWrite, savedThursdayGroups, thursdaySetNames, waitForThursdayWrites } from "@/lib/thursdayProgram";
 import { saveEventSubmission, type EventSubmissionSet } from "@/lib/eventSubmission";
 import { programPushSummary } from "@/lib/programNotificationsClient";
 import { Fragment, useEffect, useMemo, useState, useCallback } from "react";
@@ -310,6 +310,7 @@ export default function EventAdminTorsdagClient({ eventId }: { eventId: string }
   const [programLoadError, setProgramLoadError] = useState("");
   const [publishing, setPublishing] = useState(false);
   const [submissionBusy, setSubmissionBusy] = useState(false);
+  const [addingSet, setAddingSet] = useState(false);
   const savedGroups = useMemo(() => savedThursdayGroups(savedRows), [savedRows]);
 
   
@@ -774,8 +775,25 @@ useEffect(() => {
     void persistGroupMeta(event.id, gi, nextRounds, nextCourts, nextTimes);
   }
 
-  function addRoundForMatch(gi: number) {
-    if (locked || publishing) return;
+  async function addRoundForMatch(gi: number) {
+    if (!event || publishing || addingSet || submissionBusy) return;
+    if (locked) {
+      const group = savedGroups.find((group) => group.gi === gi);
+      if (!group) return;
+      setAddingSet(true);
+      try {
+        const row = await addPublishedThursdaySet(event.id, gi, group.rounds);
+        setSavedRows((prev) => [...prev.filter((saved) =>
+          saved.group_index !== gi || saved.set_index !== row.set_index
+        ), row]);
+        setRoundsPerCourt((prev) => ({ ...prev, [gi]: row.set_index + 1 }));
+      } catch (error) {
+        alert(error instanceof Error ? error.message : "Kunne ikke tilføje sættet.");
+      } finally {
+        setAddingSet(false);
+      }
+      return;
+    }
     setRoundsPerCourt((prev) => {
       const next = (prev[gi] ?? 3) + 1;
       void upsertEventResultRow({
@@ -901,7 +919,7 @@ useEffect(() => {
 
   /* --- Publicer program toggle (og sikr event_result) --- */
   async function setProgramPublished(next: boolean) {
-    if (!event || publishing || programLoading || programLoadError) return;
+    if (!event || publishing || addingSet || submissionBusy || programLoading || programLoadError) return;
 
     setPublishing(true);
     try {
@@ -951,9 +969,10 @@ useEffect(() => {
   }
 
   async function submitResults() {
-    if (!event || submissionBusy) return;
+    if (!event || submissionBusy || addingSet || publishing) return;
     setSubmissionBusy(true);
     try {
+      await waitForThursdayWrites(event.id);
       const sets: EventSubmissionSet[] = [];
       for (const group of basePlan) {
         const rounds = group.saved?.rounds ?? roundsPerCourt[group.gi] ?? 3;
@@ -1092,7 +1111,7 @@ useEffect(() => {
           className="text-sm flex items-center gap-2 px-2 py-1 rounded-md border bg-white dark:bg-zinc-900"
           style={{ borderColor: GREEN }}
         >
-          <input type="checkbox" checked={locked} disabled={publishing || programLoading || !!programLoadError || (!locked && loadingPlayers)} onChange={(e) => void setProgramPublished(e.target.checked)} />
+          <input type="checkbox" checked={locked} disabled={publishing || addingSet || submissionBusy || programLoading || !!programLoadError || (!locked && loadingPlayers)} onChange={(e) => void setProgramPublished(e.target.checked)} />
           <span>Programmet offentliggøres</span>
         </label>
       </div>
@@ -1337,6 +1356,7 @@ useEffect(() => {
             <CenterMatches
               plan={plan}
               publishing={publishing}
+              addSetDisabled={publishing || addingSet || submissionBusy}
               courtsOrder={courtsOrder}
               setCourtLabel={setCourtLabel}
               matchTimes={matchTimes}
@@ -1380,7 +1400,7 @@ useEffect(() => {
             <button
               type="button"
               onClick={submitResults}
-              disabled={submissionBusy}
+              disabled={submissionBusy || addingSet || publishing}
               className="w-full px-3 py-2 rounded-md text-white hover:opacity-95"
               style={{ backgroundColor: GREEN }}
               title="Indsend alle gyldige sæt til newresults"
@@ -1451,8 +1471,10 @@ function CenterMatches({
   event,
   courtSuggestions,
   publishing,
+  addSetDisabled,
 }: {
   publishing: boolean;
+  addSetDisabled: boolean;
   plan: ThursdayMatch[];
   courtsOrder: (string | number)[];
   setCourtLabel: (gi: number, value: string) => void;
@@ -1556,8 +1578,8 @@ function CenterMatches({
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  disabled={locked || publishing}
-                  onClick={() => addRoundForMatch(gi)}
+                  disabled={addSetDisabled}
+                  onClick={() => void addRoundForMatch(gi)}
                   className="text-xs px-2 py-1 rounded border bg-white/80 dark:bg-zinc-900"
                   style={{ borderColor: GREEN }}
                   title="Tilføj sæt"
