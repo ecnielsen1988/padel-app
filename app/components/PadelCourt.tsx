@@ -5,12 +5,14 @@ import { useState, type ReactNode } from "react";
 export const padelEventWidth = "w-full px-3 sm:px-5 2xl:px-8";
 export const padelEventGrid = "grid grid-cols-1 items-start gap-3 lg:grid-cols-[minmax(13rem,1fr)_repeat(2,minmax(0,1.7fr))_minmax(11rem,0.85fr)] xl:gap-5 2xl:gap-6";
 
-export function PadelCourtColumns({ courts }: { courts: ReactNode[] }) {
+export function PadelCourtColumns({ courts, byRow = false }: { courts: ReactNode[]; byRow?: boolean }) {
   const midpoint = Math.max(2, Math.ceil(courts.length / 2));
 
   return <div className="grid items-start gap-3 sm:grid-cols-2 xl:gap-5 2xl:gap-6">
-    <div className="grid min-w-0 gap-3">{courts.slice(0, midpoint)}</div>
-    {courts.length > midpoint && <div className="grid min-w-0 gap-3">{courts.slice(midpoint)}</div>}
+    {byRow ? courts : <>
+      <div className="grid min-w-0 gap-3">{courts.slice(0, midpoint)}</div>
+      {courts.length > midpoint && <div className="grid min-w-0 gap-3">{courts.slice(midpoint)}</div>}
+    </>}
   </div>;
 }
 

@@ -2106,7 +2106,7 @@ function CenterMatches({
     );
   });
 
-  return thursday ? <PadelCourtColumns courts={courts} /> : <div className="space-y-3">{courts}</div>;
+  return thursday ? <PadelCourtColumns courts={courts} byRow /> : <div className="space-y-3">{courts}</div>;
 }
 
 /* ===== Modal: Redigér event ===== */

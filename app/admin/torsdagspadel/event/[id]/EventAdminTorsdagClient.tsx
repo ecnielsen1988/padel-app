@@ -1649,7 +1649,7 @@ function CenterMatches({
     );
   });
 
-  return <PadelCourtColumns courts={courts} />;
+  return <PadelCourtColumns courts={courts} byRow />;
 }
 
 /* ===== Modal: Redigér event ===== */
