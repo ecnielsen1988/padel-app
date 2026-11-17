@@ -1355,7 +1355,7 @@ useEffect(() => {
   );
 
   return (
-    <div className="mx-auto px-2 sm:px-3 lg:px-4 max-w-[1600px] text-gray-900 dark:text-gray-100">
+    <div className={`mx-auto text-gray-900 dark:text-gray-100 ${royal ? "w-full px-3 sm:px-5 2xl:px-8" : "max-w-[1600px] px-2 sm:px-3 lg:px-4"}`}>
       <style jsx global>{`
         input[type="number"]::-webkit-outer-spin-button,
         input[type="number"]::-webkit-inner-spin-button {
@@ -1435,12 +1435,12 @@ useEffect(() => {
 
       {/* Grid */}
       <div className={royal
-        ? "grid grid-cols-1 items-start gap-2 lg:grid-cols-[minmax(14rem,1fr)_repeat(2,minmax(0,1.5fr))_minmax(11rem,0.85fr)]"
+        ? "grid grid-cols-1 items-start gap-3 lg:grid-cols-[minmax(13rem,1fr)_repeat(2,minmax(0,1.7fr))_minmax(11rem,0.85fr)] xl:gap-5 2xl:gap-6"
         : "grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-12"}>
         {/* Venstre */}
-        <section className={`${royal ? "min-w-0" : "md:col-span-3"} rounded-xl p-3 bg-pink-50/70 dark:bg-pink-900/10 border border-pink-400/80 dark:border-pink-800`}>
+        <section className={`rounded-xl border p-3 ${royal ? "min-w-0 border-sky-200 bg-sky-50/70 dark:border-sky-900 dark:bg-slate-950/70" : "md:col-span-3 border-pink-400/80 bg-pink-50/70 dark:border-pink-800 dark:bg-pink-900/10"}`}>
           <div className="flex items-center justify-between mb-2">
-            <h2 className="font-semibold text-pink-900 dark:text-pink-200">
+            <h2 className={`font-semibold ${royal ? "text-sky-950 dark:text-sky-100" : "text-pink-900 dark:text-pink-200"}`}>
               Spillere ({orderedPlayers.length})
             </h2>
             <button
@@ -1598,8 +1598,8 @@ useEffect(() => {
         {matchesPanel}
 
         {/* Højre */}
-        <section className={`${royal ? "min-w-0 lg:sticky lg:top-2" : "md:col-span-2 md:sticky md:top-2"} border rounded-xl p-3 bg-white/90 dark:bg-zinc-900/60 border-pink-400 dark:border-pink-800 flex flex-col h-fit`}>
-          <h2 className="font-semibold mb-2 text-pink-900 dark:text-pink-200">
+        <section className={`flex h-fit flex-col rounded-xl border p-3 ${royal ? "min-w-0 border-sky-200 bg-sky-50/70 lg:sticky lg:top-2 dark:border-sky-900 dark:bg-slate-950/70" : "border-pink-400 bg-white/90 md:sticky md:top-2 md:col-span-2 dark:border-pink-800 dark:bg-zinc-900/60"}`}>
+          <h2 className={`mb-2 font-semibold ${royal ? "text-sky-950 dark:text-sky-100" : "text-pink-900 dark:text-pink-200"}`}>
             📈 Dagens Elo
           </h2>
           {dayDiffSorted.length === 0 ? (

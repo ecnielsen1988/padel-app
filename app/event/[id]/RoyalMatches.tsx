@@ -42,7 +42,7 @@ function RoyalScoreInput({ value, empty, label, tiebreak, disabled, onChange }: 
       onChange(digits);
     }}
     disabled={disabled}
-    className="block h-7 w-full min-w-0 rounded-md border border-pink-200 bg-white text-center text-sm font-bold tabular-nums text-zinc-900 outline-none transition focus:border-pink-500 focus:ring-2 focus:ring-pink-200 disabled:cursor-not-allowed disabled:border-transparent disabled:bg-zinc-100 disabled:text-zinc-400 dark:border-pink-900 dark:bg-zinc-900 dark:text-white dark:disabled:bg-zinc-800"
+    className="block h-7 w-full min-w-0 rounded-md border border-white/70 bg-sky-50 text-center text-sm font-bold text-sky-950 tabular-nums outline-none transition [text-shadow:none] placeholder:text-sky-700 focus:bg-white focus:ring-2 focus:ring-cyan-300 disabled:cursor-not-allowed disabled:border-white/25 disabled:bg-sky-950/60 disabled:text-sky-100 disabled:placeholder:text-sky-200/75"
   />;
 }
 
@@ -53,11 +53,11 @@ export default function RoyalMatches({ plan, roundsPerCourt, scores, setScore, s
   const eloStats = useMemo(() => calculateRoyalElo(plan, roundsPerCourt, scores, eloMap), [plan, roundsPerCourt, scores, eloMap]);
   const courts = plan.map(group => {
     const pairings = Math.ceil(Math.max(9, roundsPerCourt[group.gi] ?? 9) / 3);
-    return <section key={group.gi} aria-label={`Bane ${group.court}`} className="overflow-hidden rounded-xl border border-pink-200 bg-white shadow-sm dark:border-pink-900 dark:bg-zinc-950">
-      <header className="bg-pink-50 px-2 py-1 dark:bg-pink-950/40">
-        <h2 className="text-sm font-bold text-pink-900 dark:text-pink-100">Bane {group.court}</h2>
+    return <section key={group.gi} aria-label={`Bane ${group.court}`} className="min-w-0 rounded-xl border border-sky-200 bg-sky-50/70 p-1.5 dark:border-sky-900 dark:bg-slate-950/70">
+      <header className="px-2 pt-0.5 pb-1.5">
+        <h2 className="text-sm font-bold text-sky-950 dark:text-sky-100">Bane {group.court}</h2>
       </header>
-      <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+      <div className="space-y-1.5">
         {Array.from({ length: pairings }, (_, pairing) => {
           const base = pairing * 3;
           const sets = [0, 1, 2].map(i => score(group.gi, base + i));
@@ -69,21 +69,26 @@ export default function RoyalMatches({ plan, roundsPerCourt, scores, setScore, s
           const percentA = Math.round(stats.probabilityA * 100);
           const winnersA = sets.reduce((wins, s, i) => wins + (finishedEventSet(s.a, s.b, i === 2) && s.a > s.b ? 1 : 0), 0);
           const winnersB = sets.reduce((wins, s, i) => wins + (finishedEventSet(s.a, s.b, i === 2) && s.b > s.a ? 1 : 0), 0);
-          return <article key={pairing} aria-label={`Kamp ${pairing + 1} på bane ${group.court}`} className="px-2 py-1">
-            <div className="grid grid-cols-[minmax(0,1fr)_repeat(3,2.25rem)] items-start gap-x-1 gap-y-0.5">
-              <h3 className="text-xs font-bold text-zinc-500 dark:text-zinc-400">Kamp {pairing + 1}{complete && <span className="ml-2 text-emerald-600 dark:text-emerald-400">{winnersA}–{winnersB}</span>}</h3>
-              {["Sæt 1", "Sæt 2", "MTB"].map(label => <span key={label} title={label === "MTB" ? "Matchtiebreak til 10 ved 1–1 i sæt" : undefined} className="text-center text-[10px] font-semibold text-zinc-400">{label}</span>)}
+          return <article key={pairing} aria-label={`Kamp ${pairing + 1} på bane ${group.court}`} className="relative overflow-hidden rounded-lg bg-linear-to-br from-[#105eaa] to-[#073567] px-3 py-2 text-white">
+            <div aria-hidden="true" className="pointer-events-none absolute inset-1 rounded-sm border border-white/70">
+              <div className="absolute inset-y-0 left-[16%] right-[16%] border-x border-white/35">
+                <div className="absolute inset-x-0 top-1/2 border-t border-white/35" />
+              </div>
+              <div className="absolute inset-y-0 left-1/2 w-1 -translate-x-1/2 border-x border-white/60 bg-[repeating-linear-gradient(to_bottom,#eff6ff_0_1px,#093d78_1px_3px)] shadow-sm" />
+            </div>
+            <div className="relative grid grid-cols-[50%_repeat(4,minmax(0,1fr))] items-start gap-y-0.5 [text-shadow:0_1px_2px_#073567]">
+              <h3 className="pr-2 text-xs font-bold">Kamp {pairing + 1}{complete && <span className="ml-2 text-emerald-200">{winnersA}–{winnersB}</span>}</h3>
+              <span title="Forventet vinderchance" className="pl-1 text-center text-[10px] font-semibold text-sky-100">%</span>
+              {["Sæt 1", "Sæt 2", "MTB"].map(label => <span key={label} title={label === "MTB" ? "Matchtiebreak til 10 ved 1–1 i sæt" : undefined} className="text-center text-[10px] font-semibold whitespace-nowrap text-sky-100">{label}</span>)}
               {rotation.map((team, side) => <div key={side} className="contents">
-                <div className="flex min-h-7 min-w-0 items-center justify-between gap-1 pr-1 text-xs font-semibold leading-tight text-zinc-800 dark:text-zinc-100">
-                  <div className="flex min-w-0 items-center gap-1">
-                    <span className={`h-5 w-0.5 shrink-0 rounded-full ${side === 0 ? "bg-pink-500" : "bg-violet-400"}`} />
-                    <span className="min-w-0 break-words">{group.players[team[0]]?.visningsnavn || "Spiller mangler"}<span className="mx-1 text-pink-400">&amp;</span>{group.players[team[1]]?.visningsnavn || "Spiller mangler"}</span>
-                  </div>
-                  <span title="Forventet vinderchance før kampen" aria-label={`Vinderchance hold ${side === 0 ? "A" : "B"}`} className="shrink-0 text-xs font-bold tabular-nums" style={{ color: `hsl(${Math.round(120 * (side === 0 ? stats.probabilityA : 1 - stats.probabilityA))} 65% 40%)` }}>{side === 0 ? percentA : 100 - percentA}%</span>
+                <div className="flex min-h-7 min-w-0 items-center gap-1.5 pr-2 text-xs font-semibold leading-tight">
+                  <span className={`h-5 w-0.5 shrink-0 rounded-full ${side === 0 ? "bg-cyan-200" : "bg-violet-200"}`} />
+                  <span className="min-w-0 wrap-break-word">{group.players[team[0]]?.visningsnavn || "Spiller mangler"}<span className="mx-1 text-sky-200">&amp;</span>{group.players[team[1]]?.visningsnavn || "Spiller mangler"}</span>
                 </div>
+                <span title="Forventet vinderchance før kampen" aria-label={`Vinderchance hold ${side === 0 ? "A" : "B"}`} className="flex h-7 items-center justify-center pl-1 text-[11px] font-bold tabular-nums" style={{ color: `hsl(${Math.round(120 * (side === 0 ? stats.probabilityA : 1 - stats.probabilityA))} 90% 83%)` }}>{side === 0 ? percentA : 100 - percentA}%</span>
                 {sets.map((set, i) => {
                   const diff = stats.sets[i]?.[side === 0 ? "a" : "b"];
-                  return <div key={i} className="min-w-0">
+                  return <div key={i} className="min-w-0 px-px sm:px-0.5">
                     <RoyalScoreInput
                       value={side === 0 ? set.a : set.b}
                       empty={set.a === 0 && set.b === 0}
@@ -92,7 +97,7 @@ export default function RoyalMatches({ plan, roundsPerCourt, scores, setScore, s
                       disabled={submittedLocked || group.players.length < 4 || (i === 2 && !splitSets && sets[2].a === 0 && sets[2].b === 0)}
                       onChange={raw => setScore(group.gi, base + i, side === 0 ? "a" : "b", raw)}
                     />
-                    {diff != null && <div title="Elo-point pr. spiller for sættet" aria-label={`Elo kamp ${pairing + 1}, sæt ${i + 1}, hold ${side === 0 ? "A" : "B"}`} className={`text-center text-[10px] font-semibold leading-3 tabular-nums ${diff > 0 ? "text-emerald-600 dark:text-emerald-400" : diff < 0 ? "text-rose-600 dark:text-rose-400" : "text-zinc-400"}`}>{formatElo(diff)}</div>}
+                    {diff != null && <div title="Elo-point pr. spiller for sættet" aria-label={`Elo kamp ${pairing + 1}, sæt ${i + 1}, hold ${side === 0 ? "A" : "B"}`} className={`text-center text-[10px] font-semibold leading-3 tabular-nums ${diff > 0 ? "text-emerald-200" : diff < 0 ? "text-rose-200" : "text-sky-100"}`}>{formatElo(diff)}</div>}
                   </div>;
                 })}
               </div>)}
@@ -103,8 +108,8 @@ export default function RoyalMatches({ plan, roundsPerCourt, scores, setScore, s
     </section>;
   });
 
-  return <div className="grid items-start gap-2 sm:grid-cols-2">
-    <div className="grid min-w-0 gap-2">{courts.slice(0, 2)}</div>
-    {courts.length > 2 && <div className="grid min-w-0 gap-2">{courts.slice(2)}</div>}
+  return <div className="grid items-start gap-3 sm:grid-cols-2 xl:gap-5 2xl:gap-6">
+    <div className="grid min-w-0 gap-3">{courts.slice(0, 2)}</div>
+    {courts.length > 2 && <div className="grid min-w-0 gap-3">{courts.slice(2)}</div>}
   </div>;
 }
