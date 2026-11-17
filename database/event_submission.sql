@@ -58,10 +58,12 @@ begin
       (date, "holdA1", "holdA2", "holdB1", "holdB2", "scoreA", "scoreB", finish, event, tiebreak, kampid, indberettet_af)
     select current_event.date, "holdA1", "holdA2", "holdB1", "holdB2", "scoreA", "scoreB",
       finish, true, tiebreak, first_id + dense_rank() over (order by match_index) - 1, reporter
-    from jsonb_to_recordset(p_rows) as sets(
+    from jsonb_array_elements(p_rows) with ordinality as input(set_row, set_order)
+    cross join lateral jsonb_to_record(input.set_row) as sets(
       match_index integer, "holdA1" text, "holdA2" text, "holdB1" text, "holdB2" text,
       "scoreA" integer, "scoreB" integer, finish boolean, tiebreak text
-    );
+    )
+    order by match_index, input.set_order;
     get diagnostics submitted_count = row_count;
     select first_id + count(distinct (set_row->>'match_index')::integer) - 1 into last_id
     from jsonb_array_elements(p_rows) as set_row;

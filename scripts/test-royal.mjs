@@ -170,6 +170,8 @@ assert.equal((markup.match(/<input /g) ?? []).length, 18);
 for (const n of [1, 2, 3]) assert.ok(markup.includes(`aria-label="Kamp ${n} på bane CC"`));
 const input = (html, label) => html.match(new RegExp(`<input[^>]*aria-label="${label}"[^>]*>`))?.[0] ?? "";
 const secondGameLabel = "Bane CC, kamp 2, sæt 1, hold A";
+const firstSetBLabel = "Bane CC, kamp 1, sæt 1, hold B";
+assert.ok(input(markup, firstSetBLabel).includes('value=""'));
 assert.ok(!input(markup, secondGameLabel).includes('disabled=""'));
 assert.ok(!input(markup, "Bane CC, kamp 3, sæt 1, hold A").includes('disabled=""'));
 assert.ok(markup.includes("50%"));
@@ -204,6 +206,7 @@ for (const [id, row] of referenceRows.entries()) {
 assert.deepEqual(preview["0-1"].sets, [null, null, null]);
 assert.equal(royalElo.calculateRoyalElo(props.plan, props.roundsPerCourt, {}, props.eloMap)["0-2"].probabilityA, 0.5);
 markup = renderToStaticMarkup(React.createElement(RoyalMatches, { ...props, scores: { "0-0": { a: 6, b: 0 } } }));
+assert.ok(input(markup, firstSetBLabel).includes('value="0"'));
 assert.ok(markup.includes("+32,0"));
 assert.ok(markup.includes("-32,0"));
 // The player API also accepts later games while earlier ones remain empty or partial.

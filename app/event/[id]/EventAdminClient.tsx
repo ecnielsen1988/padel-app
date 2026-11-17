@@ -1264,8 +1264,8 @@ useEffect(() => {
     setSubmissionBusy(true);
     try {
       const sets: EventSubmissionSet[] = [];
-      let matchIndex = -1;
-      for (const [gi, group] of basePlan.entries()) {
+      for (const group of basePlan) {
+        const { gi } = group;
         const groupScores = Array.from(
           { length: roundsPerCourt[gi] ?? 3 },
           (_, si) => scores[`${gi}-${si}`] ?? { a: 0, b: 0 },
@@ -1276,11 +1276,10 @@ useEffect(() => {
         }
 
         for (const [si, score] of groupScores.entries()) {
-          if (si === 0 || (royal && si % 3 === 0)) matchIndex++;
           if (score.a === 0 && score.b === 0) continue;
           const rotation = eventRotation(si, royal);
           sets.push({
-            matchIndex,
+            matchIndex: gi,
             holdA1: group.players[rotation[0][0]]?.visningsnavn ?? "",
             holdA2: group.players[rotation[0][1]]?.visningsnavn ?? "",
             holdB1: group.players[rotation[1][0]]?.visningsnavn ?? "",
@@ -1327,6 +1326,33 @@ useEffect(() => {
   }
 
   if (!event) return <div className="p-4">Indlæser…</div>;
+
+  const matchesPanel = (
+    <section className={royal ? "md:col-span-12" : "md:col-span-7 border rounded-xl p-3 bg-white/80 dark:bg-zinc-900/60 border-pink-400 dark:border-pink-800"}>
+      {!plan.length ? (
+        <div className="text-sm opacity-70">
+          Tilføj spillere for at generere kampe.
+        </div>
+      ) : (
+        <CenterMatches
+          plan={plan}
+          courtsOrder={courtsOrder}
+          setCourtLabel={setCourtLabel}
+          matchTimes={matchTimes}
+          setMatchTimes={setMatchTimes}
+          roundsPerCourt={roundsPerCourt}
+          addRoundForMatch={addRoundForMatch}
+          moveCourtUp={moveCourtUp}
+          scores={scores}
+          setScore={setScore}
+          eloMap={eloMap}
+          event={event}
+          courtSuggestions={courtSuggestions}
+          submittedLocked={resultsSubmitted}
+        />
+      )}
+    </section>
+  );
 
   return (
     <div className="mx-auto px-2 sm:px-3 lg:px-4 max-w-[1600px] text-gray-900 dark:text-gray-100">
@@ -1409,8 +1435,10 @@ useEffect(() => {
 
       {/* Grid */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-3 sm:gap-4">
+        {royal && matchesPanel}
+
         {/* Venstre */}
-        <section className="md:col-span-3 rounded-xl p-3 bg-pink-50/70 dark:bg-pink-900/10 border border-pink-400/80 dark:border-pink-800">
+        <section className={`${royal ? "md:col-span-8" : "md:col-span-3"} rounded-xl p-3 bg-pink-50/70 dark:bg-pink-900/10 border border-pink-400/80 dark:border-pink-800`}>
           <div className="flex items-center justify-between mb-2">
             <h2 className="font-semibold text-pink-900 dark:text-pink-200">
               Spillere ({orderedPlayers.length})
@@ -1567,34 +1595,10 @@ useEffect(() => {
           </div>
         </section>
 
-        {/* Midten */}
-        <section className="md:col-span-7 border rounded-xl p-3 bg-white/80 dark:bg-zinc-900/60 border-pink-400 dark:border-pink-800">
-          {!plan.length ? (
-            <div className="text-sm opacity-70">
-              Tilføj spillere for at generere kampe.
-            </div>
-          ) : (
-            <CenterMatches
-              plan={plan}
-              courtsOrder={courtsOrder}
-              setCourtLabel={setCourtLabel}
-              matchTimes={matchTimes}
-              setMatchTimes={setMatchTimes}
-              roundsPerCourt={roundsPerCourt}
-              addRoundForMatch={addRoundForMatch}
-              moveCourtUp={moveCourtUp}
-              scores={scores}
-              setScore={setScore}
-              eloMap={eloMap}
-              event={event}
-              courtSuggestions={courtSuggestions}
-              submittedLocked={resultsSubmitted}
-            />
-          )}
-        </section>
+        {!royal && matchesPanel}
 
         {/* Højre */}
-        <section className="md:col-span-2 border rounded-xl p-3 bg-white/90 dark:bg-zinc-900/60 border-pink-400 dark:border-pink-800 flex flex-col md:sticky md:top-2 h-fit">
+        <section className={`${royal ? "md:col-span-4" : "md:col-span-2 md:sticky md:top-2"} border rounded-xl p-3 bg-white/90 dark:bg-zinc-900/60 border-pink-400 dark:border-pink-800 flex flex-col h-fit`}>
           <h2 className="font-semibold mb-2 text-pink-900 dark:text-pink-200">
             📈 Dagens Elo
           </h2>
