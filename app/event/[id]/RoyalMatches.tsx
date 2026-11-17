@@ -58,7 +58,7 @@ export default function RoyalMatches({ plan, roundsPerCourt, scores, setScore, s
         <h2 className="text-sm font-bold text-sky-950 dark:text-sky-100">Bane {group.court}</h2>
       </header>
       <div className="relative overflow-hidden rounded-lg bg-linear-to-br from-[#105eaa] to-[#073567] py-1 text-white">
-        <div aria-hidden="true" className="pointer-events-none absolute inset-1 rounded-sm border border-white/70">
+        <div aria-hidden="true" className="pointer-events-none absolute inset-1">
           <div className="absolute inset-y-0 left-[16%] right-[16%] border-x border-white/35">
             <div className="absolute inset-x-0 top-1/2 border-t border-white/35" />
           </div>
@@ -75,14 +75,13 @@ export default function RoyalMatches({ plan, roundsPerCourt, scores, setScore, s
           const percentA = Math.round(stats.probabilityA * 100);
           const winnersA = sets.reduce((wins, s, i) => wins + (finishedEventSet(s.a, s.b, i === 2) && s.a > s.b ? 1 : 0), 0);
           const winnersB = sets.reduce((wins, s, i) => wins + (finishedEventSet(s.a, s.b, i === 2) && s.b > s.a ? 1 : 0), 0);
-          return <article key={pairing} aria-label={`Kamp ${pairing + 1} på bane ${group.court}`} className="relative mx-1 border-b border-white/20 px-2 py-1.5 last:border-b-0">
+          return <article key={pairing} aria-label={`Kamp ${pairing + 1} på bane ${group.court}`} className="relative px-3 py-2">
             <div className="grid grid-cols-[50%_repeat(4,minmax(0,1fr))] items-start gap-y-0.5 [text-shadow:0_1px_2px_#073567]">
               <h3 className="pr-2 text-xs font-bold">Kamp {pairing + 1}{complete && <span className="ml-2 text-emerald-200">{winnersA}–{winnersB}</span>}</h3>
               <span title="Forventet vinderchance" className="pl-1 text-center text-[10px] font-semibold text-sky-100">%</span>
               {["Sæt 1", "Sæt 2", "MTB"].map(label => <span key={label} title={label === "MTB" ? "Matchtiebreak til 10 ved 1–1 i sæt" : undefined} className="text-center text-[10px] font-semibold whitespace-nowrap text-sky-100">{label}</span>)}
               {rotation.map((team, side) => <div key={side} className="contents">
-                <div className="flex min-h-7 min-w-0 items-center gap-1.5 pr-2 text-xs font-semibold leading-tight">
-                  <span className={`h-5 w-0.5 shrink-0 rounded-full ${side === 0 ? "bg-cyan-200" : "bg-violet-200"}`} />
+                <div className="flex min-h-7 min-w-0 items-center pr-2 text-xs font-semibold leading-tight">
                   <span className="min-w-0 wrap-break-word">{group.players[team[0]]?.visningsnavn || "Spiller mangler"}<span className="mx-1 text-sky-200">&amp;</span>{group.players[team[1]]?.visningsnavn || "Spiller mangler"}</span>
                 </div>
                 <span title="Forventet vinderchance før kampen" aria-label={`Vinderchance hold ${side === 0 ? "A" : "B"}`} className="flex h-7 items-center justify-center pl-1 text-[11px] font-bold tabular-nums" style={{ color: `hsl(${Math.round(120 * (side === 0 ? stats.probabilityA : 1 - stats.probabilityA))} 90% 83%)` }}>{side === 0 ? percentA : 100 - percentA}%</span>
