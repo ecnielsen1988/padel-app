@@ -1328,7 +1328,7 @@ useEffect(() => {
   if (!event) return <div className="p-4">Indlæser…</div>;
 
   const matchesPanel = (
-    <section className={royal ? "md:col-span-12" : "md:col-span-7 border rounded-xl p-3 bg-white/80 dark:bg-zinc-900/60 border-pink-400 dark:border-pink-800"}>
+    <section className={royal ? "min-w-0 lg:col-span-2" : "md:col-span-7 border rounded-xl p-3 bg-white/80 dark:bg-zinc-900/60 border-pink-400 dark:border-pink-800"}>
       {!plan.length ? (
         <div className="text-sm opacity-70">
           Tilføj spillere for at generere kampe.
@@ -1434,11 +1434,11 @@ useEffect(() => {
       </div>
 
       {/* Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-3 sm:gap-4">
-        {royal && matchesPanel}
-
+      <div className={royal
+        ? "grid grid-cols-1 items-start gap-2 lg:grid-cols-[minmax(14rem,1fr)_repeat(2,minmax(0,1.5fr))_minmax(11rem,0.85fr)]"
+        : "grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-12"}>
         {/* Venstre */}
-        <section className={`${royal ? "md:col-span-8" : "md:col-span-3"} rounded-xl p-3 bg-pink-50/70 dark:bg-pink-900/10 border border-pink-400/80 dark:border-pink-800`}>
+        <section className={`${royal ? "min-w-0" : "md:col-span-3"} rounded-xl p-3 bg-pink-50/70 dark:bg-pink-900/10 border border-pink-400/80 dark:border-pink-800`}>
           <div className="flex items-center justify-between mb-2">
             <h2 className="font-semibold text-pink-900 dark:text-pink-200">
               Spillere ({orderedPlayers.length})
@@ -1595,10 +1595,10 @@ useEffect(() => {
           </div>
         </section>
 
-        {!royal && matchesPanel}
+        {matchesPanel}
 
         {/* Højre */}
-        <section className={`${royal ? "md:col-span-4" : "md:col-span-2 md:sticky md:top-2"} border rounded-xl p-3 bg-white/90 dark:bg-zinc-900/60 border-pink-400 dark:border-pink-800 flex flex-col h-fit`}>
+        <section className={`${royal ? "min-w-0 lg:sticky lg:top-2" : "md:col-span-2 md:sticky md:top-2"} border rounded-xl p-3 bg-white/90 dark:bg-zinc-900/60 border-pink-400 dark:border-pink-800 flex flex-col h-fit`}>
           <h2 className="font-semibold mb-2 text-pink-900 dark:text-pink-200">
             📈 Dagens Elo
           </h2>
