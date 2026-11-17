@@ -57,7 +57,13 @@ export default function RoyalMatches({ plan, roundsPerCourt, scores, setScore, s
       <header className="px-2 pt-0.5 pb-1.5">
         <h2 className="text-sm font-bold text-sky-950 dark:text-sky-100">Bane {group.court}</h2>
       </header>
-      <div className="space-y-1.5">
+      <div className="relative overflow-hidden rounded-lg bg-linear-to-br from-[#105eaa] to-[#073567] py-1 text-white">
+        <div aria-hidden="true" className="pointer-events-none absolute inset-1 rounded-sm border border-white/70">
+          <div className="absolute inset-y-0 left-[16%] right-[16%] border-x border-white/35">
+            <div className="absolute inset-x-0 top-1/2 border-t border-white/35" />
+          </div>
+          <div className="absolute inset-y-0 left-1/2 w-1 -translate-x-1/2 border-x border-white/60 bg-[repeating-linear-gradient(to_bottom,#eff6ff_0_1px,#093d78_1px_3px)] shadow-sm" />
+        </div>
         {Array.from({ length: pairings }, (_, pairing) => {
           const base = pairing * 3;
           const sets = [0, 1, 2].map(i => score(group.gi, base + i));
@@ -69,14 +75,8 @@ export default function RoyalMatches({ plan, roundsPerCourt, scores, setScore, s
           const percentA = Math.round(stats.probabilityA * 100);
           const winnersA = sets.reduce((wins, s, i) => wins + (finishedEventSet(s.a, s.b, i === 2) && s.a > s.b ? 1 : 0), 0);
           const winnersB = sets.reduce((wins, s, i) => wins + (finishedEventSet(s.a, s.b, i === 2) && s.b > s.a ? 1 : 0), 0);
-          return <article key={pairing} aria-label={`Kamp ${pairing + 1} på bane ${group.court}`} className="relative overflow-hidden rounded-lg bg-linear-to-br from-[#105eaa] to-[#073567] px-3 py-2 text-white">
-            <div aria-hidden="true" className="pointer-events-none absolute inset-1 rounded-sm border border-white/70">
-              <div className="absolute inset-y-0 left-[16%] right-[16%] border-x border-white/35">
-                <div className="absolute inset-x-0 top-1/2 border-t border-white/35" />
-              </div>
-              <div className="absolute inset-y-0 left-1/2 w-1 -translate-x-1/2 border-x border-white/60 bg-[repeating-linear-gradient(to_bottom,#eff6ff_0_1px,#093d78_1px_3px)] shadow-sm" />
-            </div>
-            <div className="relative grid grid-cols-[50%_repeat(4,minmax(0,1fr))] items-start gap-y-0.5 [text-shadow:0_1px_2px_#073567]">
+          return <article key={pairing} aria-label={`Kamp ${pairing + 1} på bane ${group.court}`} className="relative mx-1 border-b border-white/20 px-2 py-1.5 last:border-b-0">
+            <div className="grid grid-cols-[50%_repeat(4,minmax(0,1fr))] items-start gap-y-0.5 [text-shadow:0_1px_2px_#073567]">
               <h3 className="pr-2 text-xs font-bold">Kamp {pairing + 1}{complete && <span className="ml-2 text-emerald-200">{winnersA}–{winnersB}</span>}</h3>
               <span title="Forventet vinderchance" className="pl-1 text-center text-[10px] font-semibold text-sky-100">%</span>
               {["Sæt 1", "Sæt 2", "MTB"].map(label => <span key={label} title={label === "MTB" ? "Matchtiebreak til 10 ved 1–1 i sæt" : undefined} className="text-center text-[10px] font-semibold whitespace-nowrap text-sky-100">{label}</span>)}
