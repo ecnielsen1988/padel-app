@@ -12,6 +12,8 @@ import {
   type EventSubmissionSet,
 } from "@/lib/eventSubmission";
 
+import { PadelCourt, PadelCourtColumns, padelEventGrid, padelEventWidth } from "@/app/components/PadelCourt";
+import ThursdayCourtSet from "@/app/components/ThursdayCourtSet";
 import RoyalMatches from "./RoyalMatches";
 
 import { eventRotation, isRoyalTiebreak, finishedEventSet, ROYAL_COURTS, ROYAL_RULES, royalSetLabel, royalPairingComplete, validateRoyalScores, validateRoyalEvent } from "@/lib/royal";
@@ -367,6 +369,7 @@ export default function EventAdminClient({ eventId }: { eventId: string }) {
 
   const [event, setEvent] = useState<EventRow | null>(null);
   const royal = isRoyalEvent(event?.rules_text);
+  const padelLayout = royal || isTorsdag(event?.name);
   const [eventsList, setEventsList] = useState<EventRow[]>([]);
   const [players, setPlayers] = useState<EventPlayer[]>([]);
   const [orderIds, setOrderIds] = useState<string[]>([]);
@@ -1328,7 +1331,7 @@ useEffect(() => {
   if (!event) return <div className="p-4">Indlæser…</div>;
 
   const matchesPanel = (
-    <section className={royal ? "min-w-0 lg:col-span-2" : "md:col-span-7 border rounded-xl p-3 bg-white/80 dark:bg-zinc-900/60 border-pink-400 dark:border-pink-800"}>
+    <section className={padelLayout ? "min-w-0 lg:col-span-2" : "md:col-span-7 border rounded-xl p-3 bg-white/80 dark:bg-zinc-900/60 border-pink-400 dark:border-pink-800"}>
       {!plan.length ? (
         <div className="text-sm opacity-70">
           Tilføj spillere for at generere kampe.
@@ -1355,7 +1358,7 @@ useEffect(() => {
   );
 
   return (
-    <div className={`mx-auto text-gray-900 dark:text-gray-100 ${royal ? "w-full px-3 sm:px-5 2xl:px-8" : "max-w-[1600px] px-2 sm:px-3 lg:px-4"}`}>
+    <div className={`mx-auto text-gray-900 dark:text-gray-100 ${padelLayout ? padelEventWidth : "max-w-[1600px] px-2 sm:px-3 lg:px-4"}`}>
       <style jsx global>{`
         input[type="number"]::-webkit-outer-spin-button,
         input[type="number"]::-webkit-inner-spin-button {
@@ -1434,13 +1437,13 @@ useEffect(() => {
       </div>
 
       {/* Grid */}
-      <div className={royal
-        ? "grid grid-cols-1 items-start gap-3 lg:grid-cols-[minmax(13rem,1fr)_repeat(2,minmax(0,1.7fr))_minmax(11rem,0.85fr)] xl:gap-5 2xl:gap-6"
+      <div className={padelLayout
+        ? padelEventGrid
         : "grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-12"}>
         {/* Venstre */}
-        <section className={`rounded-xl border p-3 ${royal ? "min-w-0 border-sky-200 bg-sky-50/70 dark:border-sky-900 dark:bg-slate-950/70" : "md:col-span-3 border-pink-400/80 bg-pink-50/70 dark:border-pink-800 dark:bg-pink-900/10"}`}>
+        <section className={`rounded-xl border p-3 ${padelLayout ? "min-w-0 border-sky-200 bg-sky-50/70 dark:border-sky-900 dark:bg-slate-950/70" : "md:col-span-3 border-pink-400/80 bg-pink-50/70 dark:border-pink-800 dark:bg-pink-900/10"}`}>
           <div className="flex items-center justify-between mb-2">
-            <h2 className={`font-semibold ${royal ? "text-sky-950 dark:text-sky-100" : "text-pink-900 dark:text-pink-200"}`}>
+            <h2 className={`font-semibold ${padelLayout ? "text-sky-950 dark:text-sky-100" : "text-pink-900 dark:text-pink-200"}`}>
               Spillere ({orderedPlayers.length})
             </h2>
             <button
@@ -1598,8 +1601,8 @@ useEffect(() => {
         {matchesPanel}
 
         {/* Højre */}
-        <section className={`flex h-fit flex-col rounded-xl border p-3 ${royal ? "min-w-0 border-sky-200 bg-sky-50/70 lg:sticky lg:top-2 dark:border-sky-900 dark:bg-slate-950/70" : "border-pink-400 bg-white/90 md:sticky md:top-2 md:col-span-2 dark:border-pink-800 dark:bg-zinc-900/60"}`}>
-          <h2 className={`mb-2 font-semibold ${royal ? "text-sky-950 dark:text-sky-100" : "text-pink-900 dark:text-pink-200"}`}>
+        <section className={`flex h-fit flex-col rounded-xl border p-3 ${padelLayout ? "min-w-0 border-sky-200 bg-sky-50/70 lg:sticky lg:top-2 dark:border-sky-900 dark:bg-slate-950/70" : "border-pink-400 bg-white/90 md:sticky md:top-2 md:col-span-2 dark:border-pink-800 dark:bg-zinc-900/60"}`}>
+          <h2 className={`mb-2 font-semibold ${padelLayout ? "text-sky-950 dark:text-sky-100" : "text-pink-900 dark:text-pink-200"}`}>
             📈 Dagens Elo
           </h2>
           {dayDiffSorted.length === 0 ? (
@@ -1779,320 +1782,331 @@ function CenterMatches({
 
   if (royal) return <RoyalMatches plan={plan} roundsPerCourt={roundsPerCourt} scores={scores} setScore={setScore} submittedLocked={submittedLocked} eloMap={eloMap} />;
 
-  return (
-    <div className="space-y-3">
-      {plan.map((g, index) => {
-        const gi = g.gi;
-        const kampNr = index + 1;
-        const runder = roundsPerCourt[gi] ?? 3;
-        const mt =
-          matchTimes[gi] ?? {
-            start: (event.start_time || "17:00").slice(0, 5),
-            end: (event.end_time || "18:30").slice(0, 5),
-          };
+  const thursday = isTorsdag(event.name);
+  const courts = plan.map((g, index) => {
+    const gi = g.gi;
+    const kampNr = index + 1;
+    const runder = roundsPerCourt[gi] ?? 3;
+    const mt =
+      matchTimes[gi] ?? {
+        start: (event.start_time || "17:00").slice(0, 5),
+        end: (event.end_time || "18:30").slice(0, 5),
+      };
 
-        return (
-          <div
-            key={`kamp-${gi}`}
-            className="rounded-lg border dark:border-zinc-800 overflow-hidden"
+    const court = `Bane ${courtsOrder[gi] ?? g.court}, kamp ${kampNr}`;
+    const header = (
+      <header className={`flex flex-wrap items-center justify-between gap-2 ${thursday ? "px-1.5 pb-1.5" : "bg-pink-100/70 px-3 py-2 dark:bg-pink-900/30"}`}>
+        <h2 className={thursday ? "text-sm font-bold text-sky-950 dark:text-sky-100" : "font-semibold text-pink-900 dark:text-pink-200"}>
+          Kamp #{kampNr}
+        </h2>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="text-sm flex items-center gap-1">
+            Bane
+            <select
+              className="border rounded px-2 py-1 text-sm bg-white dark:bg-zinc-900 border-pink-300 dark:border-pink-700"
+              value={String(courtsOrder[gi] ?? "")}
+              disabled={submittedLocked || royal}
+              onChange={(e) =>
+                setCourtLabel(gi, e.target.value)
+              }
+            >
+              {courtSuggestions.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-sm flex items-center gap-1">
+            <input
+              type="time"
+              name="start"
+              readOnly={royal}
+              value={mt.start}
+              disabled={submittedLocked}
+              onChange={(e) => {
+                const nv = e.target.value;
+                setMatchTimes((p) => ({
+                  ...p,
+                  [gi]: { ...mt, start: nv },
+                }));
+                for (let i = 0; i < runder; i++)
+                  upsertEventResultRow({
+                    eventId: event.id,
+                    gi,
+                    si: i,
+                    courtLabel: courtsOrder[gi],
+                    start: nv,
+                    end:
+                      matchTimes[gi]?.end ?? mt.end,
+                  });
+              }}
+              className="border rounded px-2 py-1 text-sm bg-white dark:bg-zinc-900 border-pink-300 dark:border-pink-700"
+              title="Start"
+            />
+            –
+            <input
+              type="time"
+              name="end"
+              readOnly={royal}
+              value={mt.end}
+              disabled={submittedLocked}
+              onChange={(e) => {
+                const nv = e.target.value;
+                setMatchTimes((p) => ({
+                  ...p,
+                  [gi]: { ...mt, end: nv },
+                }));
+                for (let i = 0; i < runder; i++)
+                  upsertEventResultRow({
+                    eventId: event.id,
+                    gi,
+                    si: i,
+                    courtLabel: courtsOrder[gi],
+                    start:
+                      matchTimes[gi]?.start ?? mt.start,
+                    end: nv,
+                  });
+              }}
+              className="border rounded px-2 py-1 text-sm bg-white dark:bg-zinc-900 border-pink-300 dark:border-pink-700"
+              title="Slut"
+            />
+          </label>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => addRoundForMatch(gi)}
+            disabled={submittedLocked}
+            className="text-xs px-2 py-1 rounded border bg-white/80 hover:bg-pink-50 border-pink-300 dark:border-pink-700 dark:bg-zinc-900"
+            title={royal ? "Næste makkerkombination" : "Tilføj sæt"}
           >
-            {/* Header linje */}
-            <div className="px-3 py-2 bg-pink-100/70 dark:bg-pink-900/30 flex flex-wrap items-center gap-2 justify-between">
-              <div className="font-semibold text-pink-900 dark:text-pink-200">
-                Kamp #{kampNr}
-              </div>
-              <div className="flex items-center gap-2">
-                <label className="text-sm flex items-center gap-1">
-                  Bane
-                  <select
-                    className="border rounded px-2 py-1 text-sm bg-white dark:bg-zinc-900 border-pink-300 dark:border-pink-700"
-                    value={String(courtsOrder[gi] ?? "")}
-                    disabled={submittedLocked || royal}
-                    onChange={(e) =>
-                      setCourtLabel(gi, e.target.value)
-                    }
-                  >
-                    {courtSuggestions.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="text-sm flex items-center gap-1">
-                  <input
-                    type="time"
-                    name="start"
-                    readOnly={royal}
-                    value={mt.start}
-                    disabled={submittedLocked}
-                    onChange={(e) => {
-                      const nv = e.target.value;
-                      setMatchTimes((p) => ({
-                        ...p,
-                        [gi]: { ...mt, start: nv },
-                      }));
-                      for (let i = 0; i < runder; i++)
-                        upsertEventResultRow({
-                          eventId: event.id,
-                          gi,
-                          si: i,
-                          courtLabel: courtsOrder[gi],
-                          start: nv,
-                          end:
-                            matchTimes[gi]?.end ?? mt.end,
-                        });
-                    }}
-                    className="border rounded px-2 py-1 text-sm bg-white dark:bg-zinc-900 border-pink-300 dark:border-pink-700"
-                    title="Start"
-                  />
-                  –
-                  <input
-                    type="time"
-                    name="end"
-                    readOnly={royal}
-                    value={mt.end}
-                    disabled={submittedLocked}
-                    onChange={(e) => {
-                      const nv = e.target.value;
-                      setMatchTimes((p) => ({
-                        ...p,
-                        [gi]: { ...mt, end: nv },
-                      }));
-                      for (let i = 0; i < runder; i++)
-                        upsertEventResultRow({
-                          eventId: event.id,
-                          gi,
-                          si: i,
-                          courtLabel: courtsOrder[gi],
-                          start:
-                            matchTimes[gi]?.start ?? mt.start,
-                          end: nv,
-                        });
-                    }}
-                    className="border rounded px-2 py-1 text-sm bg-white dark:bg-zinc-900 border-pink-300 dark:border-pink-700"
-                    title="Slut"
-                  />
-                </label>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => addRoundForMatch(gi)}
-                  disabled={submittedLocked}
-                  className="text-xs px-2 py-1 rounded border bg-white/80 hover:bg-pink-50 border-pink-300 dark:border-pink-700 dark:bg-zinc-900"
-                  title={royal ? "Næste makkerkombination" : "Tilføj sæt"}
-                >
-                  {royal ? "+ Næste makkerkombination" : "+ Tilføj sæt"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => moveCourtUp(gi)}
-                  disabled={submittedLocked || royal}
-                  className="text-xs px-2 py-1 rounded border bg-white/80 hover:bg-pink-50 border-pink-300 dark:border-pink-700 dark:bg-zinc-900"
-                  title="Ryk kampen op"
-                >
-                  ⬆️
-                </button>
-              </div>
-            </div>
+            {royal ? "+ Næste makkerkombination" : "+ Tilføj sæt"}
+          </button>
+          <button
+            type="button"
+            onClick={() => moveCourtUp(gi)}
+            disabled={submittedLocked || royal}
+            className="text-xs px-2 py-1 rounded border bg-white/80 hover:bg-pink-50 border-pink-300 dark:border-pink-700 dark:bg-zinc-900"
+            title="Ryk kampen op"
+          >
+            ⬆️
+          </button>
+        </div>
+      </header>
+    );
 
-            {/* Sætlinjer */}
-            <div className="px-3 py-2 space-y-1">
-              {Array.from({ length: runder }).map((_, si) => {
-                const rot = eventRotation(si, royal);
-                const a1 = g.players[rot[0][0]];
-                const a2 = g.players[rot[0][1]];
-                const b1 = g.players[rot[1][0]];
-                const b2 = g.players[rot[1][1]];
-                const key = setKey(gi, si);
-                const sc = scoreOf(scores[key]);
+    const sets = Array.from({ length: runder }, (_, si) => {
+      const rot = eventRotation(si, royal);
+      const a1 = g.players[rot[0][0]];
+      const a2 = g.players[rot[0][1]];
+      const b1 = g.players[rot[1][0]];
+      const b2 = g.players[rot[1][1]];
+      const key = setKey(gi, si);
+      const sc = scoreOf(scores[key]);
+      // Forventningspct for visning
+      const prevSets: any[] = [];
+      for (let gg = 0; gg <= gi; gg++) {
+        const r = roundsPerCourt[gg] ?? 3;
+        const lastSi = gg === gi ? si - 1 : r - 1;
+        if (lastSi < 0) continue;
+        const players =
+          plan.find((x) => x.gi === gg)?.players ?? [];
+        for (let s = 0; s <= lastSi; s++) {
+          const rRot = eventRotation(s, royal);
+          const A1 =
+            players[rRot[0][0]]?.visningsnavn || "?";
+          const A2 =
+            players[rRot[0][1]]?.visningsnavn || "?";
+          const B1 =
+            players[rRot[1][0]]?.visningsnavn || "?";
+          const B2 =
+            players[rRot[1][1]]?.visningsnavn || "?";
+          const SS = scoreOf(scores[setKey(gg, s)]);
+          if (royal && SS.a === 0 && SS.b === 0) continue;
+          const done =
+            SS.a !== 0 || SS.b !== 0
+              ? erFærdigtSæt(SS.a, SS.b, isRoyalTiebreak(s, royal))
+              : false;
+          prevSets.push({
+            id: 2_000_000 + gg * 100 + s,
+            kampid: 800_000 + gg,
+            date: event.date ?? "1970-01-01",
+            holdA1: A1,
+            holdA2: A2,
+            holdB1: B1,
+            holdB2: B2,
+            scoreA: SS.a,
+            scoreB: SS.b,
+            finish: done,
+            event: true,
+            tiebreak: isRoyalTiebreak(s, royal) ? "matchtiebreak" : "false",
+          });
+              }
+            }
+            const { nyEloMap } = beregnEloForKampe(
+              prevSets as any,
+              eloMap
+            );
+            const rA1 =
+              a1?.visningsnavn
+                ? nyEloMap[a1.visningsnavn] ?? 1500
+                : 1500;
+            const rA2 =
+              a2?.visningsnavn
+                ? nyEloMap[a2.visningsnavn] ?? 1500
+                : 1500;
+            const rB1 =
+              b1?.visningsnavn
+                ? nyEloMap[b1.visningsnavn] ?? 1500
+                : 1500;
+            const rB2 =
+              b2?.visningsnavn
+                ? nyEloMap[b2.visningsnavn] ?? 1500
+                : 1500;
+            const rA = (rA1 + rA2) / 2;
+            const rB = (rB1 + rB2) / 2;
+            const qa = Math.pow(10, rA / 400);
+            const qb = Math.pow(10, rB / 400);
+            const pA = qa / (qa + qb);
+            const pctA = Math.round(100 * pA);
+            const pctB = 100 - pctA;
+            const colorA = pctColor(pA);
+            const colorB = pctColor(1 - pA);
 
-                // Forventningspct for visning
-                const prevSets: any[] = [];
-                for (let gg = 0; gg <= gi; gg++) {
-                  const r = roundsPerCourt[gg] ?? 3;
-                  const lastSi = gg === gi ? si - 1 : r - 1;
-                  if (lastSi < 0) continue;
-                  const players =
-                    plan.find((x) => x.gi === gg)?.players ?? [];
-                  for (let s = 0; s <= lastSi; s++) {
-                    const rRot = eventRotation(s, royal);
-                    const A1 =
-                      players[rRot[0][0]]?.visningsnavn || "?";
-                    const A2 =
-                      players[rRot[0][1]]?.visningsnavn || "?";
-                    const B1 =
-                      players[rRot[1][0]]?.visningsnavn || "?";
-                    const B2 =
-                      players[rRot[1][1]]?.visningsnavn || "?";
-                    const SS = scoreOf(scores[setKey(gg, s)]);
-                    if (royal && SS.a === 0 && SS.b === 0) continue;
-                    const done =
-                      SS.a !== 0 || SS.b !== 0
-                        ? erFærdigtSæt(SS.a, SS.b, isRoyalTiebreak(s, royal))
-                        : false;
-                    prevSets.push({
-                      id: 2_000_000 + gg * 100 + s,
-                      kampid: 800_000 + gg,
-                      date: event.date ?? "1970-01-01",
-                      holdA1: A1,
-                      holdA2: A2,
-                      holdB1: B1,
-                      holdB2: B2,
-                      scoreA: SS.a,
-                      scoreB: SS.b,
-                      finish: done,
-                      event: true,
-                      tiebreak: isRoyalTiebreak(s, royal) ? "matchtiebreak" : "false",
-                    });
-                  }
-                }
-                const { nyEloMap } = beregnEloForKampe(
-                  prevSets as any,
-                  eloMap
-                );
-                const rA1 =
-                  a1?.visningsnavn
-                    ? nyEloMap[a1.visningsnavn] ?? 1500
-                    : 1500;
-                const rA2 =
-                  a2?.visningsnavn
-                    ? nyEloMap[a2.visningsnavn] ?? 1500
-                    : 1500;
-                const rB1 =
-                  b1?.visningsnavn
-                    ? nyEloMap[b1.visningsnavn] ?? 1500
-                    : 1500;
-                const rB2 =
-                  b2?.visningsnavn
-                    ? nyEloMap[b2.visningsnavn] ?? 1500
-                    : 1500;
-                const rA = (rA1 + rA2) / 2;
-                const rB = (rB1 + rB2) / 2;
-                const qa = Math.pow(10, rA / 400);
-                const qb = Math.pow(10, rB / 400);
-                const pA = qa / (qa + qb);
-                const pctA = Math.round(100 * pA);
-                const pctB = 100 - pctA;
-                const colorA = pctColor(pA);
-                const colorB = pctColor(1 - pA);
+            const nonZero = sc.a !== 0 || sc.b !== 0;
+            const currentSet = {
+              id: 3_000_000 + gi * 100 + si,
+              kampid: 700_000 + gi,
+              date: event.date ?? "1970-01-01",
+              holdA1: a1?.visningsnavn || "?",
+              holdA2: a2?.visningsnavn || "?",
+              holdB1: b1?.visningsnavn || "?",
+              holdB2: b2?.visningsnavn || "?",
+              scoreA: sc.a,
+              scoreB: sc.b,
+              finish: erFærdigtSæt(sc.a, sc.b, isRoyalTiebreak(si, royal)),
+              event: true,
+              tiebreak: isRoyalTiebreak(si, royal) ? "matchtiebreak" : "false",
+            };
+            const { eloChanges: chForThis } =
+              beregnEloForKampe(
+                [...prevSets, currentSet] as any,
+                eloMap
+              );
 
-                const nonZero = sc.a !== 0 || sc.b !== 0;
-                const currentSet = {
-                  id: 3_000_000 + gi * 100 + si,
-                  kampid: 700_000 + gi,
-                  date: event.date ?? "1970-01-01",
-                  holdA1: a1?.visningsnavn || "?",
-                  holdA2: a2?.visningsnavn || "?",
-                  holdB1: b1?.visningsnavn || "?",
-                  holdB2: b2?.visningsnavn || "?",
-                  scoreA: sc.a,
-                  scoreB: sc.b,
-                  finish: erFærdigtSæt(sc.a, sc.b, isRoyalTiebreak(si, royal)),
-                  event: true,
-                  tiebreak: isRoyalTiebreak(si, royal) ? "matchtiebreak" : "false",
-                };
-                const { eloChanges: chForThis } =
-                  beregnEloForKampe(
-                    [...prevSets, currentSet] as any,
-                    eloMap
-                  );
+            let plusTxt = "";
+            if (nonZero && chForThis?.[currentSet.id]) {
+              const diffs = Object.values(
+                chForThis[currentSet.id]
+              ).map((x: any) =>
+                typeof x?.diff === "number"
+                  ? x.diff
+                  : 0
+              );
+              const maxPos = Math.max(
+                ...diffs.filter((d: number) => d > 0)
+              );
+              if (Number.isFinite(maxPos))
+                plusTxt = `+${maxPos.toFixed(1)}`;
+            }
 
-                let plusTxt = "";
-                if (nonZero && chForThis?.[currentSet.id]) {
-                  const diffs = Object.values(
-                    chForThis[currentSet.id]
-                  ).map((x: any) =>
-                    typeof x?.diff === "number"
-                      ? x.diff
-                      : 0
-                  );
-                  const maxPos = Math.max(
-                    ...diffs.filter((d: number) => d > 0)
-                  );
-                  if (Number.isFinite(maxPos))
-                    plusTxt = `+${maxPos.toFixed(1)}`;
-                }
+            if (thursday) return <ThursdayCourtSet
+              key={key}
+              number={si + 1}
+              court={court}
+              teams={[`${a1?.visningsnavn || "?"} & ${a2?.visningsnavn || "?"}`, `${b1?.visningsnavn || "?"} & ${b2?.visningsnavn || "?"}`]}
+              probabilityA={pA}
+              score={sc}
+              eloGain={plusTxt}
+              disabled={submittedLocked}
+              onScore={(side, value) => setScore(gi, si, side, value)}
+            />;
 
-                return (
-                  <div
-                    key={key}
-                    className={royal ? "flex flex-wrap items-center justify-between gap-2 border-t border-pink-100 py-2 text-sm dark:border-pink-900" : "flex items-center justify-between gap-2 text-sm"}
-                  >
-                    <div className={royal ? "flex w-full flex-wrap items-center gap-2 min-w-0" : "flex items-center gap-2 min-w-0 flex-1"}>
-                      <span className={royal ? "w-full font-semibold text-pink-700 dark:text-pink-300" : "opacity-70 shrink-0"}>
-                        {royal ? royalSetLabel(si) : `Sæt ${si + 1}`}
-                      </span>
-                      <div className="flex-1 flex items-center gap-2 min-w-0">
-                        <span className="truncate basis-0 grow min-w-0">
-                          {a1?.visningsnavn || "?"} &amp;{" "}
-                          {a2?.visningsnavn || "?"}
-                        </span>
-                        <span
-                          className="shrink-0 font-semibold tabnums"
-                          style={{ color: colorA }}
-                        >
-                          {pctA}%
-                        </span>
-                        <span className="opacity-60 shrink-0">
-                          vs
-                        </span>
-                        <span
-                          className="shrink-0 font-semibold tabnums"
-                          style={{ color: colorB }}
-                        >
-                          {pctB}%
-                        </span>
-                        <span className="truncate basis-0 grow min-w-0 text-right">
-                          {b1?.visningsnavn || "?"} &amp;{" "}
-                          {b2?.visningsnavn || "?"}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="ml-auto flex min-w-[8rem] shrink-0 items-center justify-end gap-1">
-                      <div className="flex w-[6rem] items-center justify-end gap-1">
-                        <EventScoreBox
-                          multipleDigits={isRoyalTiebreak(si, royal)}
-                          disabled={submittedLocked}
-                          value={sc.a}
-                          onChange={(val) =>
-                            setScore(gi, si, "a", val)
-                          }
-                          title={isRoyalTiebreak(si, royal) ? "Matchtiebreak A – til 10 med to overskydende" : "Score A (0–7)"}
-                        />
-                        <span className="opacity-60">
-                          -
-                        </span>
-                        <EventScoreBox
-                          multipleDigits={isRoyalTiebreak(si, royal)}
-                          disabled={submittedLocked}
-                          value={sc.b}
-                          onChange={(val) =>
-                            setScore(gi, si, "b", val)
-                          }
-                          title={isRoyalTiebreak(si, royal) ? "Matchtiebreak B – til 10 med to overskydende" : "Score B (0–7)"}
-                        />
-                      </div>
-                      <span
-                        className={`w-[3rem] font-semibold tabnums text-right ${
-                          plusTxt
-                            ? "text-pink-700"
-                            : "text-transparent"
-                        }`}
-                      >
-                        {plusTxt || "+00,0"}
-                      </span>
-                    </div>
+            return (
+              <div
+                key={key}
+                className={royal ? "flex flex-wrap items-center justify-between gap-2 border-t border-pink-100 py-2 text-sm dark:border-pink-900" : "flex items-center justify-between gap-2 text-sm"}
+              >
+                <div className={royal ? "flex w-full flex-wrap items-center gap-2 min-w-0" : "flex items-center gap-2 min-w-0 flex-1"}>
+                  <span className={royal ? "w-full font-semibold text-pink-700 dark:text-pink-300" : "opacity-70 shrink-0"}>
+                    {royal ? royalSetLabel(si) : `Sæt ${si + 1}`}
+                  </span>
+                  <div className="flex-1 flex items-center gap-2 min-w-0">
+                    <span className="truncate basis-0 grow min-w-0">
+                      {a1?.visningsnavn || "?"} &amp;{" "}
+                      {a2?.visningsnavn || "?"}
+                    </span>
+                    <span
+                      className="shrink-0 font-semibold tabnums"
+                      style={{ color: colorA }}
+                    >
+                      {pctA}%
+                    </span>
+                    <span className="opacity-60 shrink-0">
+                      vs
+                    </span>
+                    <span
+                      className="shrink-0 font-semibold tabnums"
+                      style={{ color: colorB }}
+                    >
+                      {pctB}%
+                    </span>
+                    <span className="truncate basis-0 grow min-w-0 text-right">
+                      {b1?.visningsnavn || "?"} &amp;{" "}
+                      {b2?.visningsnavn || "?"}
+                    </span>
                   </div>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
+                </div>
+                <div className="ml-auto flex min-w-[8rem] shrink-0 items-center justify-end gap-1">
+                  <div className="flex w-[6rem] items-center justify-end gap-1">
+                    <EventScoreBox
+                      multipleDigits={isRoyalTiebreak(si, royal)}
+                      disabled={submittedLocked}
+                      value={sc.a}
+                      onChange={(val) =>
+                        setScore(gi, si, "a", val)
+                      }
+                      title={isRoyalTiebreak(si, royal) ? "Matchtiebreak A – til 10 med to overskydende" : "Score A (0–7)"}
+                    />
+                    <span className="opacity-60">
+                      -
+                    </span>
+                    <EventScoreBox
+                      multipleDigits={isRoyalTiebreak(si, royal)}
+                      disabled={submittedLocked}
+                      value={sc.b}
+                      onChange={(val) =>
+                        setScore(gi, si, "b", val)
+                      }
+                      title={isRoyalTiebreak(si, royal) ? "Matchtiebreak B – til 10 med to overskydende" : "Score B (0–7)"}
+                    />
+                  </div>
+                  <span
+                    className={`w-[3rem] font-semibold tabnums text-right ${
+                      plusTxt
+                        ? "text-pink-700"
+                        : "text-transparent"
+                    }`}
+                  >
+                    {plusTxt || "+00,0"}
+                  </span>
+                </div>
+              </div>
+            );
+    });
+
+    return thursday ? (
+      <PadelCourt key={gi} label={court} header={header}>{sets}</PadelCourt>
+    ) : (
+      <div key={gi} className="rounded-lg border dark:border-zinc-800 overflow-hidden">
+        {header}
+        <div className="px-3 py-2 space-y-1">{sets}</div>
+      </div>
+    );
+  });
+
+  return thursday ? <PadelCourtColumns courts={courts} /> : <div className="space-y-3">{courts}</div>;
 }
 
 /* ===== Modal: Redigér event ===== */

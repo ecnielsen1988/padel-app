@@ -1,5 +1,7 @@
 "use client";
 
+import { PadelCourt, PadelCourtColumns, padelEventGrid, padelEventWidth } from "@/app/components/PadelCourt";
+import ThursdayCourtSet from "@/app/components/ThursdayCourtSet";
 import ProgramTimeInput from "@/app/components/ProgramTimeInput";
 import { addPublishedThursdaySet, queueThursdayWrite, savedThursdayGroups, thursdaySetNames, waitForThursdayWrites } from "@/lib/thursdayProgram";
 import { saveEventSubmission, type EventSubmissionSet } from "@/lib/eventSubmission";
@@ -132,11 +134,6 @@ const erFærdigtSæt = (a: number, b: number) => {
     min = Math.min(a, b);
   return (max === 6 && min <= 4) || (max === 7 && (min === 5 || min === 6));
 };
-
-const pctColor = (p: number) =>
-  `hsl(${Math.round(120 * Math.max(0, Math.min(1, p)))} ${
-    55 + Math.round(40 * Math.abs(p - 0.5) * 2)
-  }% 42%)`;
 
 const emojiForPluspoint = (p: number) => {
   if (p >= 100) return "🍾";
@@ -1232,7 +1229,7 @@ useEffect(() => {
   if (!event) return <div className="p-4">Indlæser…</div>;
 
   return (
-    <div className="mx-auto px-2 sm:px-3 lg:px-4 max-w-[1600px] text-gray-900 dark:text-gray-100">
+    <div className={`mx-auto text-gray-900 dark:text-gray-100 ${padelEventWidth}`}>
       <style jsx global>{`
         input[type="number"]::-webkit-outer-spin-button,
         input[type="number"]::-webkit-inner-spin-button {
@@ -1304,10 +1301,10 @@ useEffect(() => {
       </div>
 
       {/* Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-3 sm:gap-4">
+      <div className={padelEventGrid}>
         {/* Venstre */}
         <section
-          className="md:col-span-3 rounded-xl p-3 border"
+          className="min-w-0 rounded-xl p-3 border"
           style={{ backgroundColor: "rgba(11,107,58,0.06)", borderColor: GREEN }}
         >
           <div className="flex items-center justify-between mb-2">
@@ -1507,10 +1504,7 @@ useEffect(() => {
         </section>
 
         {/* Midten */}
-        <section
-          className="md:col-span-7 border rounded-xl p-3 bg-white/80 dark:bg-zinc-900/60"
-          style={{ borderColor: GREEN }}
-        >
+        <section className="min-w-0 lg:col-span-2">
           {programLoading ? <p>Henter gemt program…</p> : programLoadError ? <p role="alert">{programLoadError}</p> : locked && !plan.length ? <p role="alert">Det udgivne program har ingen gemte kampe. Lås op for at oprette programmet igen.</p> : !plan.length ? (
             <div className="text-sm opacity-70">Tilføj spillere for at generere kampe.</div>
           ) : (
@@ -1538,7 +1532,7 @@ useEffect(() => {
 
         {/* Højre */}
         <section
-          className="md:col-span-2 border rounded-xl p-3 bg-white/90 dark:bg-zinc-900/60 flex flex-col md:sticky md:top-2 h-fit"
+          className="min-w-0 border rounded-xl p-3 bg-white/90 dark:bg-zinc-900/60 flex flex-col lg:sticky lg:top-2 h-fit"
           style={{ borderColor: GREEN }}
         >
           <h2 className="font-semibold mb-2" style={{ color: GREEN }}>
@@ -1674,239 +1668,180 @@ function CenterMatches({
   const setKey = (gi: number, si: number) => `${gi}-${si}`;
   const scoreOf = (s?: { a: number; b: number }) => ({ a: s?.a ?? 0, b: s?.b ?? 0 });
 
-  const ScoreBox = ({
-    value,
-    onChange,
-    title,
-  }: {
-    value: number;
-    onChange: (val: string) => void;
-    title: string;
-  }) => (
-    <input
-      type="text"
-      inputMode="numeric"
-      pattern="[0-7]"
-      maxLength={1}
-      value={String(value)}
-      onFocus={(e) => e.currentTarget.select()}
-      onChange={(e) => onChange(e.target.value)}
-      className="w-9 border rounded px-1 py-0.5 text-center text-sm tabnums bg-white dark:bg-zinc-900"
-      style={{ borderColor: GREEN }}
-      title={title}
-    />
-  );
-
   const playerLabel = (player?: Pick<EventPlayer, "visningsnavn">) => {
     const navn = (player?.visningsnavn || "?").trim();
     return (
       <>
-        <span className="truncate">{navn}</span>
+        <span>{navn}</span>
         {(fineDebtByName[navn] ?? 0) > 0 && <span title="Skylder til bødekassen">💰</span>}
       </>
     );
   };
 
-  return (
-    <div className="space-y-3">
-      {plan.map((g, index) => {
-        const gi = g.gi;
-        const kampNr = index + 1;
-        const runder = g.saved?.rounds ?? roundsPerCourt[gi] ?? 3;
-        const mt =
-          (g.saved ? { start: g.saved.start, end: g.saved.end } : matchTimes[gi]) ?? {
-            start: (event.start_time || "17:00").slice(0, 5),
-            end: (event.end_time || "18:30").slice(0, 5),
-          };
-        const locked = event?.status === "published";
+  const courts = plan.map((g, index) => {
+    const gi = g.gi;
+    const kampNr = index + 1;
+    const runder = g.saved?.rounds ?? roundsPerCourt[gi] ?? 3;
+    const mt =
+      (g.saved ? { start: g.saved.start, end: g.saved.end } : matchTimes[gi]) ?? {
+        start: (event.start_time || "17:00").slice(0, 5),
+        end: (event.end_time || "18:30").slice(0, 5),
+      };
+    const locked = event?.status === "published";
 
-        return (
-          <div key={`kamp-${gi}`} className="rounded-lg border dark:border-zinc-800 overflow-hidden" style={{ borderColor: GREEN }}>
-            {/* Header linje */}
-            <div
-              className="px-3 py-2 flex flex-wrap items-center gap-2 justify-between"
-              style={{ backgroundColor: "rgba(11,107,58,0.10)" }}
-            >
-              <div className="font-semibold" style={{ color: GREEN }}>
-                Kamp #{kampNr}
-              </div>
-              <div className="flex items-center gap-2">
-                <label className="text-sm flex items-center gap-1">
-                  Bane
-                  <select
-                    className="border rounded px-2 py-1 text-sm bg-white dark:bg-zinc-900"
-                    style={{ borderColor: GREEN }}
-                    value={String(g.saved ? g.court : courtsOrder[gi] ?? "")}
+    const court = `Bane ${g.saved ? g.court : courtsOrder[gi] ?? g.court}, kamp ${kampNr}`;
+    return (
+      <PadelCourt key={gi} label={court} header={
+        <header className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 px-1.5 pb-1.5">
+          <h2 className="text-sm font-bold text-sky-950 dark:text-sky-100">Kamp #{kampNr}</h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="text-sm flex items-center gap-1">
+              Bane
+              <select
+                className="border rounded px-2 py-1 text-sm bg-white dark:bg-zinc-900"
+                style={{ borderColor: GREEN }}
+                value={String(g.saved ? g.court : courtsOrder[gi] ?? "")}
+                disabled={locked || publishing}
+                onChange={(e) => setCourtLabel(gi, e.target.value)}
+              >
+                {g.saved && !courtSuggestions.includes(String(g.court)) && <option value={g.court}>{g.court}</option>}
+                {courtSuggestions.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="flex items-center gap-1 text-sm">
+              {(["start", "end"] as const).map((field, index) => (
+                <Fragment key={field}>
+                  {index > 0 && "–"}
+                  <ProgramTimeInput
+                    label={field === "start" ? "Starttid" : "Sluttid"}
+                    value={mt[field]}
                     disabled={locked || publishing}
-                    onChange={(e) => setCourtLabel(gi, e.target.value)}
-                  >
-                    {g.saved && !courtSuggestions.includes(String(g.court)) && <option value={g.court}>{g.court}</option>}
-                    {courtSuggestions.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="text-sm flex items-center gap-1">
-                  {(["start", "end"] as const).map((field, index) => (
-                    <Fragment key={field}>
-                      {index > 0 && "–"}
-                      <ProgramTimeInput
-                        label={field === "start" ? "Starttid" : "Sluttid"}
-                        value={mt[field]}
-                        disabled={locked || publishing}
-                        onCommit={(value) => {
-                          setMatchTimes(prev => ({ ...prev, [gi]: { ...mt, ...prev[gi], [field]: value } }));
-                          for (let si = 0; si < runder; si++) {
-                            void upsertEventResultRow({ eventId: event.id, gi, si, [field]: value });
-                          }
-                        }}
-                      />
-                    </Fragment>
-                  ))}
-                </label>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  disabled={addSetDisabled}
-                  onClick={() => void addRoundForMatch(gi)}
-                  className="text-xs px-2 py-1 rounded border bg-white/80 dark:bg-zinc-900"
-                  style={{ borderColor: GREEN }}
-                  title="Tilføj sæt"
-                >
-                  + Tilføj sæt
-                </button>
-                <button
-                  type="button"
-                  disabled={locked || publishing}
-                  onClick={() => moveCourtUp(gi)}
-                  className="text-xs px-2 py-1 rounded border bg-white/80 dark:bg-zinc-900"
-                  style={{ borderColor: GREEN }}
-                  title="Ryk kampen op"
-                >
-                  ⬆️
-                </button>
-              </div>
-            </div>
-
-            {/* Sætlinjer */}
-            <div className="px-3 py-2 space-y-1">
-              {Array.from({ length: runder }).map((_, si) => {
-                if (g.saved && !g.saved.sets[si]) return null;
-                const [a1, a2, b1, b2] = playersForSet(g, si);
-                const key = setKey(gi, si);
-                const sc = scoreOf(scores[key]);
-
-                // Forventning
-                const prevSets: any[] = [];
-                for (let gg = 0; gg <= gi; gg++) {
-                  const match = plan.find(x => x.gi === gg);
-                  if (!match) continue;
-                  const rMax = match.saved?.rounds ?? roundsPerCourt[gg] ?? 3;
-                  const lastSi = gg === gi ? si - 1 : rMax - 1;
-                  for (let s = 0; s <= lastSi; s++) {
-                    if (match.saved && !match.saved.sets[s]) continue;
-                    const [A1, A2, B1, B2] = playersForSet(match, s).map(player => player?.visningsnavn || "?");
-                    const SS = scoreOf(scores[setKey(gg, s)]);
-                    const done = SS.a !== 0 || SS.b !== 0 ? erFærdigtSæt(SS.a, SS.b) : false;
-                    prevSets.push({
-                      id: 2_000_000 + gg * 100 + s,
-                      kampid: 800_000 + gg,
-                      date: event.date ?? "1970-01-01",
-                      holdA1: A1,
-                      holdA2: A2,
-                      holdB1: B1,
-                      holdB2: B2,
-                      scoreA: SS.a,
-                      scoreB: SS.b,
-                      finish: done,
-                      event: true,
-                      tiebreak: "false",
-                    });
-                  }
-                }
-                const { nyEloMap } = beregnEloForKampe(prevSets as any, eloMap);
-                const rA1 = a1?.visningsnavn ? nyEloMap[a1.visningsnavn] ?? 1500 : 1500,
-                  rA2 = a2?.visningsnavn ? nyEloMap[a2.visningsnavn] ?? 1500 : 1500;
-                const rB1 = b1?.visningsnavn ? nyEloMap[b1.visningsnavn] ?? 1500 : 1500,
-                  rB2 = b2?.visningsnavn ? nyEloMap[b2.visningsnavn] ?? 1500 : 1500;
-                const rA = (rA1 + rA2) / 2,
-                  rB = (rB1 + rB2) / 2,
-                  qa = Math.pow(10, rA / 400),
-                  qb = Math.pow(10, rB / 400),
-                  pA = qa / (qa + qb),
-                  pctA = Math.round(100 * pA),
-                  pctB = 100 - pctA,
-                  colorA = pctColor(pA),
-                  colorB = pctColor(1 - pA);
-
-                const nonZero = sc.a !== 0 || sc.b !== 0;
-                const currentSet = {
-                  id: 3_000_000 + gi * 100 + si,
-                  kampid: 700_000 + gi,
-                  date: event.date ?? "1970-01-01",
-                  holdA1: a1?.visningsnavn || "?",
-                  holdA2: a2?.visningsnavn || "?",
-                  holdB1: b1?.visningsnavn || "?",
-                  holdB2: b2?.visningsnavn || "?",
-                  scoreA: sc.a,
-                  scoreB: sc.b,
-                  finish: erFærdigtSæt(sc.a, sc.b),
-                  event: true,
-                  tiebreak: "false",
-                };
-                const { eloChanges: chForThis } = beregnEloForKampe([...prevSets, currentSet] as any, eloMap);
-
-                let plusTxt = "";
-                if (nonZero && chForThis?.[currentSet.id]) {
-                  const diffs = Object.values(chForThis[currentSet.id]).map((x: any) =>
-                    typeof x?.diff === "number" ? x.diff : 0
-                  );
-                  const maxPos = Math.max(...diffs.filter((d: number) => d > 0));
-                  if (Number.isFinite(maxPos)) plusTxt = `+${maxPos.toFixed(1)}`;
-                }
-
-                return (
-                  <div key={key} className="flex items-center justify-between gap-2 text-sm">
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                      <span className="opacity-70 shrink-0">Sæt {si + 1}</span>
-                      <div className="flex-1 flex items-center gap-2 min-w-0">
-                        <span className="truncate basis-0 grow min-w-0 inline-flex items-center gap-1">
-                          {playerLabel(a1)} <span>&amp;</span> {playerLabel(a2)}
-                        </span>
-                        <span className="shrink-0 font-semibold tabnums" style={{ color: colorA }}>
-                          {pctA}%
-                        </span>
-                        <span className="opacity-60 shrink-0">vs</span>
-                        <span className="shrink-0 font-semibold tabnums" style={{ color: colorB }}>
-                          {pctB}%
-                        </span>
-                        <span className="truncate basis-0 grow min-w-0 text-right inline-flex items-center justify-end gap-1">
-                          {playerLabel(b1)} <span>&amp;</span> {playerLabel(b2)}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3 shrink-0">
-                      <div className="flex items-center gap-1">
-                        <ScoreBox value={sc.a} onChange={(val) => setScore(gi, si, "a", val)} title="Score A (0–7)" />
-                        <span className="opacity-60">-</span>
-                        <ScoreBox value={sc.b} onChange={(val) => setScore(gi, si, "b", val)} title="Score B (0–7)" />
-                      </div>
-                      <span className="font-semibold tabnums min-w-[52px] text-right" style={{ color: GREEN }}>
-                        {plusTxt}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
+                    onCommit={(value) => {
+                      setMatchTimes(prev => ({ ...prev, [gi]: { ...mt, ...prev[gi], [field]: value } }));
+                      for (let si = 0; si < runder; si++) {
+                        void upsertEventResultRow({ eventId: event.id, gi, si, [field]: value });
+                      }
+                    }}
+                  />
+                </Fragment>
+              ))}
             </div>
           </div>
-        );
-      })}
-    </div>
-  );
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={addSetDisabled}
+              onClick={() => void addRoundForMatch(gi)}
+              className="text-xs px-2 py-1 rounded border bg-white/80 dark:bg-zinc-900"
+              style={{ borderColor: GREEN }}
+              title="Tilføj sæt"
+            >
+              + Tilføj sæt
+            </button>
+            <button
+              type="button"
+              disabled={locked || publishing}
+              onClick={() => moveCourtUp(gi)}
+              className="text-xs px-2 py-1 rounded border bg-white/80 dark:bg-zinc-900"
+              style={{ borderColor: GREEN }}
+              title="Ryk kampen op"
+            >
+              ⬆️
+            </button>
+          </div>
+        </header>
+      }>
+          {Array.from({ length: runder }).map((_, si) => {
+            if (g.saved && !g.saved.sets[si]) return null;
+            const [a1, a2, b1, b2] = playersForSet(g, si);
+            const key = setKey(gi, si);
+            const sc = scoreOf(scores[key]);
+
+            // Forventning
+            const prevSets: any[] = [];
+            for (let gg = 0; gg <= gi; gg++) {
+              const match = plan.find(x => x.gi === gg);
+              if (!match) continue;
+              const rMax = match.saved?.rounds ?? roundsPerCourt[gg] ?? 3;
+              const lastSi = gg === gi ? si - 1 : rMax - 1;
+              for (let s = 0; s <= lastSi; s++) {
+                if (match.saved && !match.saved.sets[s]) continue;
+                const [A1, A2, B1, B2] = playersForSet(match, s).map(player => player?.visningsnavn || "?");
+                const SS = scoreOf(scores[setKey(gg, s)]);
+                const done = SS.a !== 0 || SS.b !== 0 ? erFærdigtSæt(SS.a, SS.b) : false;
+                prevSets.push({
+                  id: 2_000_000 + gg * 100 + s,
+                  kampid: 800_000 + gg,
+                  date: event.date ?? "1970-01-01",
+                  holdA1: A1,
+                  holdA2: A2,
+                  holdB1: B1,
+                  holdB2: B2,
+                  scoreA: SS.a,
+                  scoreB: SS.b,
+                  finish: done,
+                  event: true,
+                  tiebreak: "false",
+                });
+              }
+            }
+            const { nyEloMap } = beregnEloForKampe(prevSets as any, eloMap);
+            const rA1 = a1?.visningsnavn ? nyEloMap[a1.visningsnavn] ?? 1500 : 1500,
+              rA2 = a2?.visningsnavn ? nyEloMap[a2.visningsnavn] ?? 1500 : 1500;
+            const rB1 = b1?.visningsnavn ? nyEloMap[b1.visningsnavn] ?? 1500 : 1500,
+              rB2 = b2?.visningsnavn ? nyEloMap[b2.visningsnavn] ?? 1500 : 1500;
+            const rA = (rA1 + rA2) / 2,
+              rB = (rB1 + rB2) / 2,
+              qa = Math.pow(10, rA / 400),
+              qb = Math.pow(10, rB / 400),
+              pA = qa / (qa + qb);
+
+            const nonZero = sc.a !== 0 || sc.b !== 0;
+            const currentSet = {
+              id: 3_000_000 + gi * 100 + si,
+              kampid: 700_000 + gi,
+              date: event.date ?? "1970-01-01",
+              holdA1: a1?.visningsnavn || "?",
+              holdA2: a2?.visningsnavn || "?",
+              holdB1: b1?.visningsnavn || "?",
+              holdB2: b2?.visningsnavn || "?",
+              scoreA: sc.a,
+              scoreB: sc.b,
+              finish: erFærdigtSæt(sc.a, sc.b),
+              event: true,
+              tiebreak: "false",
+            };
+            const { eloChanges: chForThis } = beregnEloForKampe([...prevSets, currentSet] as any, eloMap);
+
+            let plusTxt = "";
+            if (nonZero && chForThis?.[currentSet.id]) {
+              const diffs = Object.values(chForThis[currentSet.id]).map((x: any) =>
+                typeof x?.diff === "number" ? x.diff : 0
+              );
+              const maxPos = Math.max(...diffs.filter((d: number) => d > 0));
+              if (Number.isFinite(maxPos)) plusTxt = `+${maxPos.toFixed(1)}`;
+            }
+
+            return <ThursdayCourtSet
+              key={key}
+              number={si + 1}
+              court={court}
+              teams={[<>{playerLabel(a1)} &amp; {playerLabel(a2)}</>, <>{playerLabel(b1)} &amp; {playerLabel(b2)}</>]}
+              probabilityA={pA}
+              score={sc}
+              eloGain={plusTxt}
+              onScore={(side, value) => setScore(gi, si, side, value)}
+            />;
+          })}
+      </PadelCourt>
+    );
+  });
+
+  return <PadelCourtColumns courts={courts} />;
 }
 
 /* ===== Modal: Redigér event ===== */

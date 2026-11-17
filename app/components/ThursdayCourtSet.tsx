@@ -1,0 +1,43 @@
+"use client";
+
+import { Fragment, type ReactNode } from "react";
+import { CourtScoreInput, CourtWinChance } from "./PadelCourt";
+
+export default function ThursdayCourtSet({ number, court, teams, probabilityA, score, eloGain, disabled = false, onScore }: {
+  number: number;
+  court: string;
+  teams: [ReactNode, ReactNode];
+  probabilityA: number;
+  score: { a: number; b: number };
+  eloGain: string;
+  disabled?: boolean;
+  onScore: (side: "a" | "b", value: string) => void;
+}) {
+  const percentA = Math.round(100 * probabilityA);
+
+  return <article aria-label={`${court}, sæt ${number}`} className="relative grid grid-cols-[50%_25%_25%] items-start gap-y-0.5 px-3 py-2 [text-shadow:0_1px_2px_#073567]">
+    <h3 className="pr-2 text-xs font-bold">Sæt {number}</h3>
+    <span title="Forventet vinderchance" className="pl-1 text-center text-[10px] font-semibold text-sky-100">%</span>
+    <span title={eloGain ? "Største Elo-fremgang i sættet" : undefined} className={`text-center text-[10px] font-semibold ${eloGain ? "text-emerald-200" : "text-sky-100"}`}>
+      {eloGain ? `Elo ${eloGain}` : "Score"}
+    </span>
+    {(["a", "b"] as const).map((side, index) => (
+      <Fragment key={side}>
+        <div className="flex min-h-7 min-w-0 items-center pr-2 text-xs font-semibold leading-tight">
+          <span className="min-w-0 wrap-break-word">{teams[index]}</span>
+        </div>
+        <CourtWinChance side={side === "a" ? "A" : "B"} probability={side === "a" ? probabilityA : 1 - probabilityA} percent={side === "a" ? percentA : 100 - percentA} />
+        <div className="mx-auto w-full max-w-14 px-0.5">
+          <CourtScoreInput
+            value={score[side]}
+            empty={false}
+            label={`${court}, sæt ${number}, hold ${side.toUpperCase()}`}
+            tiebreak={false}
+            disabled={disabled}
+            onChange={value => onScore(side, value)}
+          />
+        </div>
+      </Fragment>
+    ))}
+  </article>;
+}

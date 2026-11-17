@@ -160,7 +160,8 @@ const React = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
 const elo = load("../lib/beregnElo.ts");
 const royalElo = load("../lib/royalElo.ts", { "@/lib/royal": rules, "@/lib/beregnElo": elo });
-const RoyalMatches = load("../app/event/[id]/RoyalMatches.tsx", { "@/lib/royal": rules, "@/lib/royalElo": royalElo }).default;
+const padelCourt = load("../app/components/PadelCourt.tsx");
+const RoyalMatches = load("../app/event/[id]/RoyalMatches.tsx", { "@/lib/royal": rules, "@/lib/royalElo": royalElo, "@/app/components/PadelCourt": padelCourt }).default;
 const props = {
   plan: [{ gi: 0, court: "CC", players: ["Anna", "Bo", "Clara", "David"].map((visningsnavn, i) => ({ user_id: String(i), visningsnavn, elo: 1500 })) }],
   roundsPerCourt: { 0: 3 }, scores: {}, setScore() {}, submittedLocked: false, eloMap: { Anna: 1500, Bo: 1500, Clara: 1500, David: 1500 },
