@@ -57,3 +57,11 @@ export function copenhagenDate() {
   const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value;
   return `${part("year")}-${part("month")}-${part("day")}`;
 }
+
+export function partnerMobilePayLink(names: string[]) {
+  const url = new URL("https://qr.mobilepay.dk/paymentlink");
+  url.searchParams.set("phone", "102438");
+  url.searchParams.set("amount", String(PARTNER_FEE_OERE / 100));
+  url.searchParams.set("comment", names.join(" & "));
+  return url.toString();
+}
