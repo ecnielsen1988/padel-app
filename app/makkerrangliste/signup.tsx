@@ -228,11 +228,11 @@ export function TournamentSignup() {
             />
           </div>
           <div className="space-y-1.5">
-            <label htmlFor="makkerliga-phone" className="block text-sm font-semibold">Kontaktpersonens telefonnummer</label>
+            <label htmlFor="makkerliga-phone" className="block text-sm font-semibold">Dit tlf. nr.</label>
             <input id="makkerliga-phone" type="tel" autoComplete="tel" required maxLength={25}
               value={contactPhone} onChange={(event) => setContactPhone(event.target.value)} disabled={busy}
               className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-strong)] p-3" placeholder="Fx 12345678" />
-            <p className="text-sm text-[var(--muted)]">Dit navn er holdets kontaktperson. Nummeret vises til holdene i jeres pulje, så I kan aftale kampe.</p>
+            <p className="text-sm text-[var(--muted)]">Du bliver parrets kontaktperson. Nummeret vises til holdene i jeres pulje, så I kan aftale kampe.</p>
           </div>
           <p className="text-sm">Efter tilmelding betaler I <strong>200 kr. pr. par til MobilePay 102438</strong>. Skriv begge spillernes navne i beskeden.</p>
           <button type="submit" className={button} disabled={busy || !selectedPartner || !contactPhone.trim() || !data.paymentAvailable}>
