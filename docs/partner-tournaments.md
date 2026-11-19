@@ -74,3 +74,11 @@ både nedenstående opsætning og en ændring af tilmeldingsflowet, før den akt
 - Bekræftede kampe vises i [den offentlige kalender](https://padelhuset-app.netlify.app/makkerrangliste/kalender).
   Indberet resultatet fra kampaftalen. Appen opdaterer puljestillingen og bruger
   samme dobbelte Elo-vægt som for eventkampe.
+
+## Fjern en tilmelding
+
+Kør [admin-annullering](../database/partner_league_cancel_registration.sql) i Supabase SQL Editor.
+Under **Admin → Makkerliga → Fjern par** kan admin annullere tilmeldingen før puljerne offentliggøres.
+Begge spillere bliver straks ledige igen i den pågældende række. Tilmeldingen bevares som annulleret i adminhistorikken.
+Eventuel tilbagebetaling håndteres manuelt. Par i offentliggjorte puljer kan ikke fjernes her.
+Makkerliga-knappen på startsiden er synlig for alle brugere.

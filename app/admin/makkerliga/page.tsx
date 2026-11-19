@@ -42,6 +42,11 @@ export default function MakkerligaAdminPage() {
     }
   }
 
+  function removeTeam(id: string, names: string[], paid: boolean) {
+    const text = `Fjern ${names.join(" & ")} fra Makkerligaen? Begge spillere bliver ledige i rækken igen.${paid ? " En eventuel tilbagebetaling skal håndteres manuelt." : ""}`;
+    if (window.confirm(text)) void publish("cancel_registration", id);
+  }
+
   const paid = roster?.registrations.filter((entry) => entry.status === "paid").length ?? 0;
   const pending = roster?.registrations.filter((entry) => entry.status === "pending").length ?? 0;
   const canPublish = roster?.closes_on && roster.closes_on < copenhagenDate() && paid > 0;
@@ -80,6 +85,9 @@ export default function MakkerligaAdminPage() {
                       {labels[entry.status]}
                     </StatusPill>
                     {entry.status === "pending" && <button type="button" disabled={busy} className="padel-secondary-button disabled:opacity-50" onClick={() => void publish("confirm_payment", entry.id)}>Markér betaling modtaget</button>}
+                    {entry.status !== "cancelled" && !roster.pools_published && <button type="button" disabled={busy}
+                      className="padel-secondary-button disabled:opacity-50"
+                      onClick={() => removeTeam(entry.id, entry.names, entry.status === "paid")}>Fjern par</button>}
                   </li>)}
                 </ul>
               )}

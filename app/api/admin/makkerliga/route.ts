@@ -39,6 +39,12 @@ export async function POST(request: Request) {
       });
       return error ? failure(error) : reply({ ok: true });
     }
+    if (body?.action === "cancel_registration" && typeof body.id === "string" && UUID_PATTERN.test(body.id)) {
+      const { error } = await db.rpc("cancel_partner_league_registration", {
+        p_actor: access.user!.id, p_id: body.id, p_tournament: WINTER_2027.id,
+      });
+      return error ? failure(error) : reply({ ok: true });
+    }
     if (body?.action !== "publish") return reply({ error: "Ukendt handling." }, 400);
 
     const ranking = await getCachedRangliste();
