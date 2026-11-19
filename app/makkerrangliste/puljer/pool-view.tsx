@@ -83,6 +83,13 @@ function PoolDetails({ pool }: { pool: LeaguePool }) {
         </table>
       </div>
     </section>
+    {pool.teams.some((team) => team.contact_phone) && <section className="padel-surface space-y-3">
+      <h2 className="text-xl font-bold">Kontakt holdene i puljen</h2>
+      <ul className="space-y-3">{pool.teams.filter((team) => team.contact_phone).map((team) => <li key={team.id}>
+        <p className="font-semibold">{team.names.join(" & ")}</p>
+        <p className="text-sm">Kontakt: {team.names[0]} · <a className="underline" href={`tel:${team.contact_phone}`}>{team.contact_phone}</a></p>
+      </li>)}</ul>
+    </section>}
     <section className="padel-surface space-y-3">
       <h2 className="text-xl font-bold">Puljekampe</h2>
       {pool.matches.length ? (

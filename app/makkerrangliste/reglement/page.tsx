@@ -17,26 +17,28 @@ export default function PartnerTournamentRulesPage() {
 
         <section className={section}>
           <h2 className="text-xl font-bold">Tilmelding og puljer</h2>
-          <p>I tilmelder jer som par i appen. Det koster <strong>200 kr. pr. par</strong>, og tilmeldingen er bekræftet, når I har betalt med MobilePay.</p>
+          <p>I tilmelder jer som par i appen. Det koster <strong>200 kr. pr. par</strong>, som I betaler manuelt til <strong>MobilePay 102438</strong>. Skriv begge spillernes navne i beskeden. Jeres hold registreres straks i appen; betalingen markeres som modtaget af de turneringsansvarlige.</p>
           <p>Hver spiller kan deltage på <strong>ét hold pr. række</strong> i sæsonen. I kan derfor godt stille op i både Mix og Åben.</p>
           <ul className={list}>
             {Object.entries(PARTNER_DIVISIONS).map(([id, division]) => (
               <li key={id}><strong>{division.name}.</strong> {division.description}</li>
             ))}
           </ul>
+          <p><strong>Makkerligaen er for alle niveauer</strong> – både nye og erfarne spillere. Ved tilmelding oplyser I kontaktpersonens telefonnummer, som vises til de andre hold i jeres pulje, så I nemt kan aftale kampe.</p>
           <p>Efter tilmeldingsfristen fordeler vi parrene i puljer ud fra deres samlede ranglistepoint. Vi sigter efter seks par pr. pulje, så I møder par på nogenlunde samme niveau.</p>
         </section>
 
         <section className={section}>
           <h2 className="text-xl font-bold">Kampformat og point</h2>
           <p>Alle kampe spilles <strong>bedst af tre fulde sæt</strong>. Står det 1–1 i sæt, spiller I et fuldt tredje sæt.</p>
-          <p>Begge par får <strong>1 point</strong> for at gennemføre kampen. Vinderne får <strong>2 ekstra point</strong>, og taberne får <strong>1 ekstra point</strong>, hvis de vinder et sæt.</p>
+          <p>Begge par får <strong>1 point</strong> for at gennemføre kampen. Derudover giver en 2–0-sejr <strong>3 ekstra point</strong>, en 2–1-sejr <strong>2 ekstra point</strong>, et 1–2-nederlag <strong>1 ekstra point</strong> og et 0–2-nederlag ingen ekstra point.</p>
           <table className="w-full text-left">
             <thead className="border-b border-[var(--border)]">
-              <tr><th scope="col" className="py-2 pr-3">Jeres resultat</th><th scope="col" className="py-2 text-right">Point i puljen</th></tr>
+              <tr><th scope="col" className="py-2 pr-3">Jeres resultat</th><th scope="col" className="py-2 text-right">Point i alt inkl. kamp</th></tr>
             </thead>
             <tbody className="divide-y divide-[var(--border)]">
-              <tr><td className="py-2 pr-3">Sejr 2–0 eller 2–1</td><td className="py-2 text-right font-bold">3</td></tr>
+              <tr><td className="py-2 pr-3">Sejr 2–0</td><td className="py-2 text-right font-bold">4</td></tr>
+              <tr><td className="py-2 pr-3">Sejr 2–1</td><td className="py-2 text-right font-bold">3</td></tr>
               <tr><td className="py-2 pr-3">Nederlag 1–2</td><td className="py-2 text-right font-bold">2</td></tr>
               <tr><td className="py-2 pr-3">Nederlag 0–2</td><td className="py-2 text-right font-bold">1</td></tr>
             </tbody>

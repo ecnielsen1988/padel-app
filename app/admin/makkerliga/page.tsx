@@ -25,13 +25,13 @@ export default function MakkerligaAdminPage() {
     void loadRoster().then(setRoster).catch((error: Error) => setError(error.message));
   }, []);
 
-  async function publish() {
+  async function publish(action = "publish", id?: string) {
     setBusy(true);
     setError("");
     try {
       const response = await fetch(endpoint, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "publish" }),
+        body: JSON.stringify({ action, id }),
       });
       if (!response.ok) throw new Error((await response.json()).error);
       setRoster(await loadRoster());
@@ -74,10 +74,12 @@ export default function MakkerligaAdminPage() {
               {!entries.length ? <p>Ingen tilmeldinger.</p> : (
                 <ul className="divide-y divide-[var(--border)]">
                   {entries.map((entry) => <li key={entry.id} className="flex flex-wrap items-center justify-between gap-2 py-3">
-                    <span className="font-semibold">{entry.names.join(" & ")}</span>
+                    <div><span className="font-semibold">{entry.names.join(" & ")}</span>
+                      {entry.contact_phone && <p className="text-sm">Kontakt: {entry.names[0]} · <a href={`tel:${entry.contact_phone}`} className="underline">{entry.contact_phone}</a></p>}</div>
                     <StatusPill tone={entry.status === "paid" ? "success" : entry.status === "pending" ? "warning" : "neutral"}>
                       {labels[entry.status]}
                     </StatusPill>
+                    {entry.status === "pending" && <button type="button" disabled={busy} className="padel-secondary-button disabled:opacity-50" onClick={() => void publish("confirm_payment", entry.id)}>Markér betaling modtaget</button>}
                   </li>)}
                 </ul>
               )}

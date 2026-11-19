@@ -4,6 +4,25 @@ Tilmeldingen til Makkerliga 2027 Vinter findes på `/makkerrangliste` og fra app
 Fristen gælder til dagens udgang i dansk tid. Begge spillere skal have en
 spillerprofil. Mix og Kvinder bruger profilernes registrerede køn.
 
+## Manuel betaling (aktuel løsning)
+
+Kør [opdateringen til manuel betaling](../database/partner_league_manual_payment.sql)
+i Supabase SQL Editor efter de eksisterende Makkerliga-migrationer. Den kan køres igen.
+
+- Tilmelding kræver kontaktpersonens telefonnummer og reserverer begge spillere i rækken straks.
+- Betal 200 kr. pr. par manuelt til MobilePay **102438**, med begge spillernes navne i beskeden.
+- Holdet vises som **Tilmeldt – afventer betaling**, indtil admin har kontrolleret indbetalingen.
+- Under **Admin → Makkerliga** vælger admin **Markér betaling modtaget** efter kontrol i MobilePay.
+- Kun betalte hold kommer med i puljeinddelingen. Tælleren på tilmeldingssiden medregner også hold, der afventer betaling.
+- Kontaktperson er spilleren, der tilmelder holdet. Telefonnummeret vises til admin, eget hold og holdene i samme pulje.
+- Point inklusive gennemført kamp: 2–0 giver 4, 2–1 giver 3, 1–2 giver 2 og 0–2 giver 1.
+- Sidste puljekampdag er 21. februar 2027. Sæsonafslutning og finaler er 27. februar 2027.
+
+## Senere: Integreret MobilePay-betaling
+
+Tilmeldingen bruger i øjeblikket altid manuel betaling. Automatisk betaling kræver
+både nedenstående opsætning og en ændring af tilmeldingsflowet, før den aktiveres.
+
 ## Sæt Supabase og MobilePay op
 
 1. Kør [databaseændringen](../database/partner_tournaments.sql) én gang i

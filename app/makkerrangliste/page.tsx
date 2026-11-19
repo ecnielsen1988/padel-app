@@ -26,6 +26,7 @@ export default function PartnerTournamentPage() {
         <section className="padel-surface space-y-4">
           <h2 className="text-xl font-bold">Derfor skal I med</h2>
           <ul className="list-disc space-y-2 pl-5 marker:text-[var(--brand-strong)]">
+            <li><strong>Alle niveauer er velkomne.</strong> Find din makker og vær med – fra ny spiller til rutineret turneringspar. Vi samler jer i puljer med par på jeres niveau.</li>
             <li><strong>Spil jer til den store sæsonfinale.</strong> Hver pulje har sin egen finale.</li>
             <li><strong>Spil om præmier.</strong> Der er præmier i alle rækker.</li>
             <li><strong>Få tætte kampe hele vinteren.</strong> Vi bruger ranglisten til at lave jævnbyrdige puljer med så vidt muligt seks par i hver.</li>
@@ -33,11 +34,12 @@ export default function PartnerTournamentPage() {
         </section>
         <section className="padel-surface space-y-5">
           <h2 className="text-xl font-bold">Tilmelding</h2>
-          <dl className="grid gap-3 sm:grid-cols-3">
+          <dl className="grid gap-3 sm:grid-cols-2">
             {[
               ["Tilmeldingsfrist", WINTER_2027.closes_on],
               ["Programmet offentliggøres", WINTER_2027.program_on],
-              ["Sæsonafslutning", WINTER_2027.play_date],
+              ["Sidste dag for puljekampe", WINTER_2027.last_match_on],
+              ["Sæsonafslutning og finaler", WINTER_2027.play_date],
             ].map(([label, date]) => (
               <div key={label} className="rounded-xl border border-[var(--border)] p-3">
                 <dt className="text-sm text-[var(--muted)]">{label}</dt>

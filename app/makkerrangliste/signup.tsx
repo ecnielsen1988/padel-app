@@ -68,6 +68,7 @@ function DivisionOptions({ selected, onSelect, available }: {
 export function TournamentSignup() {
   const router = useRouter();
   const [data, setData] = useState<TournamentSignupData | null>();
+  const [contactPhone, setContactPhone] = useState("");
   const [partnerId, setPartnerId] = useState("");
   const [division, setDivision] = useState<PartnerDivision>("open");
   const [busy, setBusy] = useState(false);
@@ -126,7 +127,7 @@ export function TournamentSignup() {
       if (result.status === "cancelled") {
         setMessage({ text: "Betalingen blev afbrudt eller udløb. I kan tilmelde jer igen, hvis fristen stadig er åben." });
       }
-      if (result.status === "pending") setMessage({ text: "MobilePay afventer stadig betaling." });
+      if (result.status === "pending") setMessage({ text: "I er tilmeldt. Betal 200 kr. til MobilePay 102438 og skriv begge spillernes navne. Vi bekræfter betalingen manuelt." });
       if (result.status === "paid") router.refresh();
     } catch (error) {
       setMessage({ text: (error as Error).message, error: true });
@@ -164,7 +165,7 @@ export function TournamentSignup() {
   function register(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!data?.paymentAvailable || !selectedPartner || !selectedDivision) return;
-    void act({ action: "register", partnerId: selectedPartner.value, division: selectedDivision });
+    void act({ action: "register", partnerId: selectedPartner.value, division: selectedDivision, contactPhone });
   }
 
   return (
@@ -177,7 +178,7 @@ export function TournamentSignup() {
         return (
           <div key={entry.id} className="space-y-3 rounded-2xl border border-[var(--border)] p-4">
             <StatusPill tone={entry.status === "paid" ? "success" : "warning"}>
-              {entry.status === "paid" ? "Tilmeldt og betalt" : "Afventer betaling"}
+              {entry.status === "paid" ? "Tilmeldt og betalt" : "Tilmeldt – afventer betaling"}
             </StatusPill>
             <dl className="flex flex-wrap gap-x-8 gap-y-2">
               <div>
@@ -189,15 +190,9 @@ export function TournamentSignup() {
                 <dd className="font-semibold">{PARTNER_DIVISIONS[entry.division].name}</dd>
               </div>
             </dl>
+            {entry.contact_phone && <p className="text-sm">Kontaktpersonens telefon: {entry.contact_phone}</p>}
             {entry.status === "pending" && (
-              <div className="flex flex-wrap gap-2">
-                {entry.payer_id === data.userId ? (
-                  <button type="button" className={button} disabled={busy || !data.paymentAvailable}
-                    onClick={() => void act({ action: "resume", id: entry.id })}>Fortsæt til MobilePay</button>
-                ) : <p className="w-full text-sm">Din makker står for betalingen.</p>}
-                <button type="button" className="padel-secondary-button inline-flex disabled:opacity-50" disabled={busy || !data.paymentAvailable}
-                  onClick={() => void act({ action: "status", id: entry.id })}>Tjek betaling</button>
-              </div>
+              <p className="text-sm">Betal <strong>200 kr. pr. par til MobilePay 102438</strong>. Skriv begge spillernes navne i beskeden. Har I allerede betalt, skal I ikke betale igen – vi bekræfter betalingen manuelt.</p>
             )}
           </div>
         );
@@ -232,8 +227,16 @@ export function TournamentSignup() {
               })}
             />
           </div>
-          <button type="submit" className={button} disabled={busy || !selectedPartner || !data.paymentAvailable}>
-            {busy ? "Vent et øjeblik …" : "Betal 200 kr. med MobilePay"}
+          <div className="space-y-1.5">
+            <label htmlFor="makkerliga-phone" className="block text-sm font-semibold">Kontaktpersonens telefonnummer</label>
+            <input id="makkerliga-phone" type="tel" autoComplete="tel" required maxLength={25}
+              value={contactPhone} onChange={(event) => setContactPhone(event.target.value)} disabled={busy}
+              className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-strong)] p-3" placeholder="Fx 12345678" />
+            <p className="text-sm text-[var(--muted)]">Dit navn er holdets kontaktperson. Nummeret vises til holdene i jeres pulje, så I kan aftale kampe.</p>
+          </div>
+          <p className="text-sm">Efter tilmelding betaler I <strong>200 kr. pr. par til MobilePay 102438</strong>. Skriv begge spillernes navne i beskeden.</p>
+          <button type="submit" className={button} disabled={busy || !selectedPartner || !contactPhone.trim() || !data.paymentAvailable}>
+            {busy ? "Vent et øjeblik …" : "Tilmeld holdet – 200 kr. pr. par"}
           </button>
         </form>
       ) : !data.open && <p>Tilmeldingen er lukket.</p>}

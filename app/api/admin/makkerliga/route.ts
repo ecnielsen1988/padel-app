@@ -1,6 +1,6 @@
 import { getCachedRangliste } from "@/lib/cachedRangliste";
 import { messagingAdmin, messagingReply as reply } from "@/lib/messagingAuth";
-import { WINTER_2027 } from "@/lib/partnerTournaments";
+import { UUID_PATTERN, WINTER_2027 } from "@/lib/partnerTournaments";
 import { supabaseServiceRole } from "@/lib/supabaseServiceRole";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -33,6 +33,12 @@ export async function POST(request: Request) {
     const access = await messagingAdmin();
     if (access.response) return access.response;
     const body = await request.json().catch(() => null);
+    if (body?.action === "confirm_payment" && typeof body.id === "string" && UUID_PATTERN.test(body.id)) {
+      const { error } = await db.rpc("confirm_manual_partner_payment", {
+        p_actor: access.user!.id, p_id: body.id, p_tournament: WINTER_2027.id,
+      });
+      return error ? failure(error) : reply({ ok: true });
+    }
     if (body?.action !== "publish") return reply({ error: "Ukendt handling." }, 400);
 
     const ranking = await getCachedRangliste();

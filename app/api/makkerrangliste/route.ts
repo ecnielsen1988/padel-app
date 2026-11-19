@@ -5,7 +5,7 @@ import { copenhagenDate, PARTNER_DIVISIONS, UUID_PATTERN, WINTER_2027, type Part
 import { supabaseServiceRole } from "@/lib/supabaseServiceRole";
 
 const db = supabaseServiceRole as SupabaseClient;
-const entryColumns = "id, tournament_id, payer_id, partner_id, division, status";
+const entryColumns = "id, tournament_id, payer_id, partner_id, division, status, contact_phone";
 
 function unavailable() {
   return messagingReply({ error: "MobilePay er ikke tilgængelig lige nu." }, 503);
@@ -67,15 +67,17 @@ export async function GET() {
     for (const entry of entries) {
       occupiedPlayers[entry.division].push(entry.payer_id, entry.partner_id);
     }
-    const config = paymentConfig();
     return messagingReply({
       userId, open: tournament.closes_on >= copenhagenDate(),
-      paymentAvailable: Boolean(config), testPayments: config?.mode === "test",
+      paymentAvailable: true, testPayments: false,
       players,
       registrations: entries.filter((entry) => entry.payer_id === userId || entry.partner_id === userId),
       occupiedPlayers,
     } satisfies TournamentSignupData);
   } catch (error) {
+    if (["42703", "PGRST204"].includes((error as { code?: string }).code ?? "")) {
+      return messagingReply({ error: "Tilmeldingen afventer databaseopdateringen til manuel betaling." }, 503);
+    }
     console.error("Partner tournament signup", error);
     return messagingReply({ error: "Tilmeldingen kunne ikke indlæses." }, 503);
   }
@@ -94,7 +96,6 @@ export async function POST(request: Request) {
     return messagingReply({ error: "Ukendt handling." }, 400);
   }
   const config = paymentConfig();
-  if (!config) return unavailable();
 
   try {
     if (input.action === "register") {
@@ -103,15 +104,17 @@ export async function POST(request: Request) {
         typeof division !== "string" || !Object.hasOwn(PARTNER_DIVISIONS, division)) {
         return messagingReply({ error: "Vælg række og makker." }, 400);
       }
-      const { data: id, error } = await db.rpc("reserve_partner_registration", {
+      const phone = typeof input.contactPhone === "string" ? input.contactPhone.replace(/[\s()-]/g, "") : "";
+      if (!/^\+?[0-9]{8,15}$/.test(phone)) return messagingReply({ error: "Indtast et gyldigt telefonnummer med 8–15 cifre." }, 400);
+      const { data: id, error } = await db.rpc("register_manual_partner_team", {
         p_tournament: WINTER_2027.id, p_payer: userId, p_partner: partnerId,
-        p_division: division, p_merchant: config.merchant,
+        p_division: division, p_phone: phone,
       });
       if (error?.code === "22023" || error?.code === "23505") {
         return messagingReply({ error: error.message }, error.code === "23505" ? 409 : 400);
       }
       if (error || !id) throw error || new Error("Tilmeldingen mangler en reference.");
-      return messagingReply(await syncPartnerPayment(config, id, true), 201);
+      return messagingReply({ status: "pending", id }, 201);
     }
 
     if (typeof input.id !== "string" || !UUID_PATTERN.test(input.id)) {
@@ -127,11 +130,12 @@ export async function POST(request: Request) {
     }
     const tournamentId = entry.tournament_id;
     if (entry.status !== "pending") return messagingReply({ status: entry.status, tournamentId });
-    if (entry.merchant !== config.merchant) return unavailable();
+    if (entry.merchant === "manual:102438") return messagingReply({ status: entry.status, tournamentId });
+    if (!config || entry.merchant !== config.merchant) return unavailable();
     const result = await syncPartnerPayment(config, entry.id, input.action === "resume");
     return messagingReply({ ...result, tournamentId });
   } catch (error) {
     console.error("Partner tournament payment", error);
-    return messagingReply({ error: "Betalingen kunne ikke opdateres. Prøv igen fra din tilmelding." }, 502);
+    return messagingReply({ error: "Tilmeldingen kunne ikke gemmes eller opdateres. Prøv igen." }, 502);
   }
 }

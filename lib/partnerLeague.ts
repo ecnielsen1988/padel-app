@@ -1,7 +1,7 @@
 import type { MatchSet, PlayerMatch } from "@/lib/playerMatches";
 import type { PartnerDivision, PartnerRegistration } from "@/lib/partnerTournaments";
 
-export type LeagueTeam = { id: string; names: [string, string] };
+export type LeagueTeam = { id: string; names: [string, string]; contact_phone?: string | null };
 export type LeagueFixture = Pick<PlayerMatch, "date" | "start_time" | "location" | "court"> & {
   id: string | null;
   team_a: string;
@@ -46,8 +46,8 @@ export function leagueStandings(pool: LeaguePool) {
     const gameDifference = match.sets.reduce((total, set) => total + set.a - set.b, 0);
     a.played++;
     b.played++;
-    a.points += 1 + wonA;
-    b.points += 1 + wonB;
+    a.points += 1 + (wonA === 2 && wonB === 0 ? 3 : wonA);
+    b.points += 1 + (wonB === 2 && wonA === 0 ? 3 : wonB);
     a.setDifference += wonA - wonB;
     b.setDifference += wonB - wonA;
     a.gameDifference += gameDifference;

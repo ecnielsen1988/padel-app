@@ -10,7 +10,7 @@ export async function RegisteredTeamCount() {
     const result = await supabaseServiceRole.from("partner_registrations")
       .select("id", { count: "exact" })
       .eq("tournament_id", WINTER_2027.id)
-      .eq("status", "paid")
+      .in("status", ["pending", "paid"])
       .limit(1)
       .abortSignal(AbortSignal.timeout(5000));
 
