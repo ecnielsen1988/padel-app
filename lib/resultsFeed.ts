@@ -193,15 +193,20 @@ function buildCards(
     .sort((a, b) => b.kampid - a.kampid);
 }
 
-export function filterCardsForPlayer(cards: ResultMatchCard[], spillerNavn: string) {
+export function filterCardsForPlayer(cards: ResultMatchCard[], spillerNavn: string, limit = cards.length) {
   const navn = spillerNavn.trim();
-  if (!navn) return [];
+  if (!navn || limit <= 0) return [];
 
-  return cards.filter((card) =>
-    card.sets.some((sæt) =>
-      [sæt.holdA1, sæt.holdA2, sæt.holdB1, sæt.holdB2].some((spiller) => spiller === navn)
-    )
-  );
+  const matches: ResultMatchCard[] = [];
+  for (const card of cards) {
+    const played = card.sets.some((sæt) =>
+      [sæt.holdA1, sæt.holdA2, sæt.holdB1, sæt.holdB2].includes(navn)
+    );
+    if (!played) continue;
+    matches.push(card);
+    if (matches.length === limit) break;
+  }
+  return matches;
 }
 
 export async function getRecentResultCards(

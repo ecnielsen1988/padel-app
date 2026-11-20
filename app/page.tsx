@@ -6,10 +6,6 @@ import { createSupabaseServerReadClient } from "@/lib/supabaseServerRead"
 
 export const revalidate = 60
 
-type Spiller = {
-  visningsnavn: string
-  elo: number
-}
 
 type ProfileRow = {
   visningsnavn: string
@@ -20,13 +16,10 @@ type ProfileRow = {
 export default async function Home() {
   const supabase = createSupabaseServerReadClient()
 
-  // 1) Hent rangliste (alle spillere)
-  const rangliste: Spiller[] = await getCachedRangliste()
-
-  // 2) Hent aktive profiler
-  const { data: profiles } = await supabase
-  .from("profiles")
-  .select("visningsnavn, status")
+  const [rangliste, { data: profiles }] = await Promise.all([
+    getCachedRangliste(),
+    supabase.from("profiles").select("visningsnavn, status"),
+  ]);
 
   const activeNameSet = new Set(
   ((profiles as ProfileRow[] | null) ?? [])

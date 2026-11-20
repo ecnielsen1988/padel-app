@@ -12,7 +12,6 @@ type ResultRow = {
   holdB2: string | null;
   scoreA: number | null;
   scoreB: number | null;
-  finish: boolean | null;
 };
 
 type PreviewRow = {
@@ -35,9 +34,9 @@ export type RankingOverviewData = {
 export type TvRankingData = Pick<RankingOverviewData, "rangliste" | "monthly" | "women" | "eggs">;
 
 const RESULT_COLUMNS =
-  "id,date,holdA1,holdA2,holdB1,holdB2,scoreA,scoreB,finish";
+  "id,date,holdA1,holdA2,holdB1,holdB2,scoreA,scoreB";
 
-async function fetchAllResults(): Promise<ResultRow[]> {
+async function fetchFinishedResults(): Promise<ResultRow[]> {
   const supabase = createSupabaseServerReadClient();
   const pageSize = 1000;
   const rows: ResultRow[] = [];
@@ -46,6 +45,7 @@ async function fetchAllResults(): Promise<ResultRow[]> {
     const { data, error } = await supabase
       .from("newresults")
       .select(RESULT_COLUMNS)
+      .eq("finish", true)
       .order("date", { ascending: true })
       .order("id", { ascending: true })
       .range(from, from + pageSize - 1);
@@ -99,7 +99,7 @@ async function buildRankingOverview(): Promise<RankingOverviewData & { activeRan
   const [rankingData, monthlyData, allSets, activeProfiles] = await Promise.all([
     getCachedRangliste(),
     beregnEloÆndringerForIndeværendeMåned(),
-    fetchAllResults(),
+    fetchFinishedResults(),
     fetchActiveProfiles(),
   ]);
 
@@ -128,8 +128,6 @@ async function buildRankingOverview(): Promise<RankingOverviewData & { activeRan
   const { year, month } = currentCopenhagenMonth();
 
   for (const set of allSets) {
-    if (set.finish !== true) continue;
-
     const ha1 = String(set.holdA1 ?? "").trim();
     const ha2 = String(set.holdA2 ?? "").trim();
     const hb1 = String(set.holdB1 ?? "").trim();

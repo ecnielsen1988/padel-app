@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
+import { loadRankingOverview } from "@/lib/rankingOverviewClient";
+import type { RankingOverviewData } from "@/lib/rankingOverview";
 import { LoadingState, LoggedOutState, PageShell } from "../components/ui";
 
 type UserProfile = {
@@ -18,16 +20,6 @@ type PreviewRow = {
   sæt?: number;
 };
 
-type RankingOverview = {
-  rangliste: PreviewRow[];
-  monthly: PreviewRow[];
-  active: PreviewRow[];
-  women: PreviewRow[];
-  eggs: PreviewRow[];
-  winStreak: PreviewRow[];
-  playStreak: PreviewRow[];
-};
-
 type PreviewSection = {
   href: string;
   icon: string;
@@ -38,7 +30,7 @@ type PreviewSection = {
   rows: PreviewRow[];
 };
 
-const EMPTY_OVERVIEW: RankingOverview = {
+const EMPTY_OVERVIEW: RankingOverviewData = {
   rangliste: [], monthly: [], active: [], women: [], eggs: [], winStreak: [], playStreak: [],
 };
 
@@ -65,7 +57,7 @@ function buildDisplayRows(rows: PreviewRow[], myName: string | null) {
   });
 }
 
-function sectionsFromOverview(data: Partial<RankingOverview>): PreviewSection[] {
+function sectionsFromOverview(data: Partial<RankingOverviewData>): PreviewSection[] {
   const overview = { ...EMPTY_OVERVIEW, ...data };
   const sections: PreviewSection[] = [
     { href: "/nyrangliste", icon: "🥇", title: "Ranglisten", subtitle: "Den samlede Elo-top", accentClass: "bg-[#fff0f5]", metric: "elo", rows: overview.rangliste },
@@ -85,10 +77,10 @@ function sectionsFromOverview(data: Partial<RankingOverview>): PreviewSection[] 
 }
 
 export default function RanglisterClient() {
-  const [loading, setLoading] = useState(true);
-  const [loggedIn, setLoggedIn] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [previewSections, setPreviewSections] = useState<PreviewSection[]>([]);
+  const [overview, setOverview] = useState<RankingOverviewData | null>(null);
+  const [overviewError, setOverviewError] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -97,40 +89,28 @@ export default function RanglisterClient() {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         const user = session?.user;
-        if (!user) {
-          if (mounted) setLoggedIn(false);
-          return;
-        }
+        if (!mounted || !user) return;
 
-        const [profileResult, overviewResponse] = await Promise.all([
-          (supabase.from("profiles") as any)
-            .select("visningsnavn, rolle, torsdagspadel")
-            .eq("id", user.id)
-            .maybeSingle(),
-          fetch("/api/ranking-overview"),
-        ]);
-        if (!mounted) return;
-
-        const p = profileResult.data;
-        setLoggedIn(true);
-        setProfile({
-          visningsnavn: String(p?.visningsnavn ?? (user.user_metadata as any)?.visningsnavn ?? user.email ?? "Spiller"),
-          rolle: p?.rolle ?? null,
-          torsdagspadel: !!p?.torsdagspadel,
+        void loadRankingOverview().then((data) => {
+          if (mounted) setOverview(data);
+        }).catch((error) => {
+          console.error("Kunne ikke hente ranglisteoversigten", error);
+          if (mounted) setOverviewError(true);
         });
-        let overview: Partial<RankingOverview> = EMPTY_OVERVIEW;
-        if (overviewResponse.ok) {
-          try {
-            overview = await overviewResponse.json();
-          } catch (error) {
-            console.error("Ugyldigt svar fra ranglisteoversigten", error);
-          }
-        }
-        if (mounted) setPreviewSections(sectionsFromOverview(overview));
+
+        const { data: profile } = await supabase.from("profiles")
+          .select("visningsnavn, rolle, torsdagspadel")
+          .eq("id", user.id)
+          .maybeSingle();
+        if (mounted) setProfile({
+          visningsnavn: String(profile?.visningsnavn ?? user.user_metadata?.visningsnavn ?? user.email ?? "Spiller"),
+          rolle: profile?.rolle ?? null,
+          torsdagspadel: !!profile?.torsdagspadel,
+        });
       } catch (error) {
-        console.error("Kunne ikke hente ranglisteoversigten", error);
+        console.error("Kunne ikke hente profilen til ranglisteoversigten", error);
       } finally {
-        if (mounted) setLoading(false);
+        if (mounted) setCheckingSession(false);
       }
     }
 
@@ -138,11 +118,12 @@ export default function RanglisterClient() {
     return () => { mounted = false; };
   }, []);
 
-  if (loading) return <LoadingState />;
-  if (!loggedIn || !profile) {
+  if (checkingSession) return <LoadingState />;
+  if (!profile) {
     return <LoggedOutState title="Du er ikke logget ind" description="Log ind for at se ranglister og følge udviklingen på tværs af huset." />;
   }
 
+  const previewSections = sectionsFromOverview(overview ?? EMPTY_OVERVIEW);
   const topLinks = [
     { href: "/startside", icon: "🏠", label: "Hjem" },
     { href: "/ranglister", icon: "📊", label: "Rangliste" },
@@ -189,7 +170,11 @@ export default function RanglisterClient() {
                         <span className="text-sm font-bold text-[#f01f78]">Se</span>
                       </div>
                       <div className="space-y-2">
-                        {displayRows.length > 0 ? displayRows.map((row) => {
+                        {overview === null ? (
+                          <div className="rounded-[12px] bg-white px-3 py-2 text-xs text-[#8b92a0]">
+                            {overviewError ? "Kunne ikke hente ranglisten." : "Henter ranglisten…"}
+                          </div>
+                        ) : displayRows.length > 0 ? displayRows.map((row) => {
                           const placement = item.rows.findIndex((entry) => entry.visningsnavn.toLowerCase() === row.visningsnavn.toLowerCase()) + 1;
                           const isMe = row.visningsnavn.toLowerCase() === profile.visningsnavn.trim().toLowerCase();
                           return (

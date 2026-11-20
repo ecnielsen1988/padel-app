@@ -165,10 +165,11 @@ export async function beregnEloÆndringerForMåned(year: number, month1_12: numb
   const start = monthStartCph(year, month1_12);
   const endExclusive = nextMonthStartCph(year, month1_12);
 
-  const initialEloMap = await fetchInitialEloMap();
-
-  const rowsBefore = await fetchAllNewresults({ lt: start });
-  const rowsMonth = await fetchAllNewresults({ gte: start, lt: endExclusive });
+  const [initialEloMap, rowsBefore, rowsMonth] = await Promise.all([
+    fetchInitialEloMap(),
+    fetchAllNewresults({ lt: start }),
+    fetchAllNewresults({ gte: start, lt: endExclusive }),
+  ]);
 
   const beforeKampe = rowsBefore.map(rowToKamp).filter(Boolean) as Kamp[];
   const monthKampe = rowsMonth.map(rowToKamp).filter(Boolean) as Kamp[];

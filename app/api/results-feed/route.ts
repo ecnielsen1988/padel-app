@@ -1,10 +1,10 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const revalidate = 0;
-export const fetchCache = "force-no-store";
 
+// Keep viewer responses private while allowing the shared match history cache.
 import { NextResponse } from "next/server";
 import { filterCardsForPlayer, getRecentResultCards } from "@/lib/resultsFeed";
+import { NO_STORE_HEADERS } from "@/lib/publicCache";
 import { supabaseRoute } from "@/lib/supabaseClient";
 
 async function getViewerName(supabase: any) {
@@ -40,17 +40,15 @@ export async function GET(req: Request) {
       getRecentResultCards(supabase),
     ]);
 
-    const latestMatches = allCards.slice(0, 50);
-    const myMatches = user ? filterCardsForPlayer(allCards, visningsnavn).slice(0, 20) : [];
 
     if (view === "mine") {
       return NextResponse.json(
         {
           loggedIn: Boolean(user),
           visningsnavn: user ? visningsnavn : null,
-          matches: myMatches,
+          matches: user ? filterCardsForPlayer(allCards, visningsnavn, 20) : [],
         },
-        { headers: { "Cache-Control": "no-store" } }
+        { headers: NO_STORE_HEADERS }
       );
     }
 
@@ -59,9 +57,9 @@ export async function GET(req: Request) {
         {
           loggedIn: Boolean(user),
           visningsnavn,
-          matches: latestMatches,
+          matches: allCards.slice(0, 50),
         },
-        { headers: { "Cache-Control": "no-store" } }
+        { headers: NO_STORE_HEADERS }
       );
     }
 
@@ -69,10 +67,10 @@ export async function GET(req: Request) {
       {
         loggedIn: Boolean(user),
         visningsnavn,
-        myLatest: myMatches[0] ?? null,
-        latestOverall: latestMatches[0] ?? null,
+        myLatest: user ? filterCardsForPlayer(allCards, visningsnavn, 1)[0] ?? null : null,
+        latestOverall: allCards[0] ?? null,
       },
-      { headers: { "Cache-Control": "no-store" } }
+      { headers: NO_STORE_HEADERS }
     );
   } catch (error) {
     console.error("GET /api/results-feed error", error);
@@ -84,7 +82,7 @@ export async function GET(req: Request) {
         latestOverall: null,
         matches: [],
       },
-      { status: 500, headers: { "Cache-Control": "no-store" } }
+      { status: 500, headers: NO_STORE_HEADERS }
     );
   }
 }

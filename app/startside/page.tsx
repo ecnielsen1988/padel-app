@@ -5,6 +5,8 @@ import { royalPairingComplete } from "@/lib/royal";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import type { User } from "@supabase/supabase-js";
+import { preloadRankingOverview } from "@/lib/rankingOverviewClient";
 import { detachDevicePush } from '@/lib/pushClient';
 import { supabase } from "@/lib/supabaseClient";
 import { LoadingState, PageShell } from "../components/ui";
@@ -68,6 +70,9 @@ type EventSet = {
   scoreA: number;
   scoreB: number;
 };
+
+const MESSAGE_PREVIEW_COLUMNS =
+  "id, sender_id, sender_visningsnavn, recipient_id, recipient_visningsnavn, body, created_at, read_at";
 
 type MessagePreview = {
   id: string;
@@ -225,19 +230,44 @@ async function fetchLatestAdminMessages(supabase: any) {
 
 export default function StartSide() {
   const router = useRouter();
+  const [user, setUser] = useState<User | null>(null);
+
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      const nextUser = session?.user;
+      if (!nextUser) {
+        setUser(null);
+        router.replace(event === "INITIAL_SESSION" ? "/login" : "/registrer");
+        return;
+      }
+
+      setUser((current) =>
+        current?.id === nextUser.id && event !== "USER_UPDATED" ? current : nextUser
+      );
+    });
+
+    return () => subscription.unsubscribe();
+  }, [router]);
+
+  return user ? <StartsideDashboard key={user.id} user={user} /> : <LoadingState />;
+}
+
+function StartsideDashboard({ user }: { user: User }) {
+  const router = useRouter();
 
   const [bruger, setBruger] = useState<Bruger | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [rankingLoading, setRankingLoading] = useState(true);
   const [ulæsteDM, setUlæsteDM] = useState<number>(0);
   const [ulæsteAdmin, setUlæsteAdmin] = useState<number>(0);
   const [myElo, setMyElo] = useState<number | null>(null);
   const [myRank, setMyRank] = useState<number | null>(null);
   const [topPlayers, setTopPlayers] = useState<RankingRow[]>([]);
-  const [upcomingEvents, setUpcomingEvents] = useState<EventPreview[]>([]);
-  const [latestMessages, setLatestMessages] = useState<MessagePreview[]>([]);
+  const [upcomingEvents, setUpcomingEvents] = useState<EventPreview[] | null>(null);
+  const [latestMessages, setLatestMessages] = useState<MessagePreview[] | null>(null);
   const [latestAdminMessages, setLatestAdminMessages] = useState<AdminMessagePreview[]>([]);
   const [adminBusyId, setAdminBusyId] = useState<string | number | null>(null);
   const [mineEventSets, setMineEventSets] = useState<EventSet[]>([]);
+  const [mineEventsLoading, setMineEventsLoading] = useState(true);
   const [scoreBusy, setScoreBusy] = useState(false);
   const [scoreError, setScoreError] = useState<string | null>(null);
 
@@ -267,256 +297,183 @@ export default function StartSide() {
   useEffect(() => {
     let mounted = true;
 
-    const håndhævRegelOgHent = async () => {
-      // 1) Session
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const user = session?.user;
-
-      // Ikke logget ind → /login
-      if (!user) {
-        router.replace("/login");
-        return;
-      }
-
-      // 2) Tjek om der findes en profilrække (så er brugeren reelt registreret)
-      const { count: profileCount, error: profileErr } = await supabase
-        .from("profiles")
-        .select("id", { count: "exact", head: true })
-        .eq("id", user.id);
-
-      // Brug profil-eksistens som primær sandhed, fald tilbage til user_metadata.registered
-      const isRegistered =
-        (!profileErr && (profileCount ?? 0) > 0) ||
-        !!user.user_metadata?.registered;
-
-      if (!isRegistered) {
-        router.replace("/registrer");
-        return;
-      }
-
-      // 3) Hent profil-data til UI
+    async function loadProfile() {
       const { data: profile } = await supabase
         .from("profiles")
         .select("visningsnavn, rolle, torsdagspadel, status")
         .eq("id", user.id)
         .maybeSingle();
 
-      const rolle = profile?.rolle ?? "bruger";
-      const initBruger: Bruger = {
-        visningsnavn:
-          profile?.visningsnavn ??
-          (user.user_metadata?.visningsnavn || "Ukendt"),
-        rolle,
+      if (!mounted) return;
+      if (!profile && !user.user_metadata?.registered) {
+        router.replace("/registrer");
+        return;
+      }
+
+      setBruger({
+        visningsnavn: profile?.visningsnavn ?? (user.user_metadata?.visningsnavn || "Ukendt"),
+        rolle: profile?.rolle ?? "bruger",
         torsdagspadel: !!profile?.torsdagspadel,
         status: profile?.status ?? null,
-      };
-      if (mounted) setBruger(initBruger);
-
-      const today = new Date().toLocaleDateString("sv-SE", {
-        timeZone: "Europe/Copenhagen",
       });
+    }
 
-      const [
-        dmResponse,
-        adminResponse,
-        rankingResponse,
-        activeProfilesResponse,
-        upcomingResponse,
-        latestMessagesResponse,
-        latestAdminMessagesResponse,
-        mineEventsResponse,
-      ] = await Promise.all([
-        supabase
-          .from("beskeder")
-          .select("*", { count: "exact", head: true })
-          .eq("recipient_id", user.id)
-          .is("read_at", null),
-        rolle === "admin"
-          ? fetchUnreadAdminCount(supabase)
-          : Promise.resolve(0),
-        fetch("/api/rangliste", { cache: "no-store" })
-          .then((res) => res.json())
-          .catch(() => []),
-        supabase
-          .from("profiles")
-          .select("visningsnavn")
-          .eq("status", "active"),
-        supabase
-          .from("events")
-          .select("id, name, date, start_time, location, status")
-          .gte("date", today)
-          .order("date", { ascending: true })
-          .limit(3),
-        supabase
-          .from("beskeder")
-          .select(
-            "id, sender_id, sender_visningsnavn, recipient_id, recipient_visningsnavn, body, created_at, read_at"
-          )
-          .or(`recipient_id.eq.${user.id},sender_id.eq.${user.id}`)
-          .order("created_at", { ascending: false })
-          .limit(3),
-        rolle === "admin"
-          ? fetchLatestAdminMessages(supabase)
-          : Promise.resolve([]),
-        supabase
+    void loadProfile();
+    return () => { mounted = false; };
+  }, [router, user]);
+
+  useEffect(() => {
+    if (!bruger) return;
+    let mounted = true;
+    const { visningsnavn, rolle } = bruger;
+    const lowerName = visningsnavn.trim().toLowerCase();
+    const dateOptions = { timeZone: "Europe/Copenhagen" };
+    const today = new Date().toLocaleDateString("sv-SE", dateOptions);
+
+    async function loadRanking() {
+      try {
+        const [rankingResponse, activeProfilesResponse] = await Promise.all([
+          fetch("/api/rangliste", { cache: "no-store" })
+            .then((res) => res.json())
+            .catch(() => []),
+          supabase.from("profiles").select("visningsnavn").eq("status", "active"),
+        ]);
+        if (!mounted) return;
+
+        const rankingList = extractArray(rankingResponse)
+          .map((row) => ({
+            visningsnavn: String(row.visningsnavn ?? "").trim(),
+            elo: Number(row.elo ?? 0),
+          }))
+          .filter((row) => row.visningsnavn && Number.isFinite(row.elo))
+          .sort((a, b) => b.elo - a.elo);
+
+        const activeNames = new Set(
+          (activeProfilesResponse.data ?? [])
+            .map((row) => String(row.visningsnavn ?? "").trim().toLowerCase())
+            .filter(Boolean)
+        );
+        const activeRanking = rankingList.filter((row) => activeNames.has(row.visningsnavn.toLowerCase()));
+        const myIndex = activeRanking.findIndex((row) => row.visningsnavn.toLowerCase() === lowerName);
+        setTopPlayers(activeRanking);
+        setMyRank(myIndex >= 0 ? myIndex + 1 : null);
+        setMyElo(rankingList.find((row) => row.visningsnavn.toLowerCase() === lowerName)?.elo ?? null);
+      } finally {
+        if (mounted) setRankingLoading(false);
+      }
+    }
+
+    async function loadUpcomingEvents() {
+      const { data } = await supabase
+        .from("events")
+        .select("id, name, date, start_time, location, status")
+        .gte("date", today)
+        .order("date", { ascending: true })
+        .limit(3);
+      if (mounted) setUpcomingEvents(data ?? []);
+    }
+
+    async function loadMyEvents() {
+      try {
+        const { data } = await supabase
           .from("events")
           .select("id, date, status")
           .gte("date", today)
-          .lte(
-            "date",
-            new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toLocaleDateString("sv-SE", {
-              timeZone: "Europe/Copenhagen",
-            })
-          ),
-      ]);
+          .lte("date", new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toLocaleDateString("sv-SE", dateOptions));
+        if (!mounted) return;
+        const publishedEvents = (data ?? []).filter((event) => (event.status ?? "").toLowerCase() === "published");
+        if (publishedEvents.length === 0) {
+          setMineEventSets([]);
+          return;
+        }
 
-      if (!mounted) return;
-
-      setUlæsteDM(dmResponse.count ?? 0);
-      setUlæsteAdmin(typeof adminResponse === "number" ? adminResponse : 0);
-
-      const rankingList = extractArray(rankingResponse)
-        .map((row) => ({
-          visningsnavn: String(
-            (row as { visningsnavn?: unknown }).visningsnavn ?? ""
-          ).trim(),
-          elo: Number((row as { elo?: unknown }).elo ?? 0),
-        }))
-        .filter((row) => row.visningsnavn && Number.isFinite(row.elo))
-        .sort((a, b) => b.elo - a.elo);
-
-      const activeProfiles = activeProfilesResponse.data ?? [];
-
-      const activeNames = new Set(
-        ((activeProfiles as Array<{ visningsnavn: string | null }> | null) ?? [])
-          .map((row) => String(row.visningsnavn ?? "").trim().toLowerCase())
-          .filter(Boolean)
-      );
-
-      const activeRankingList = rankingList.filter((row) =>
-        activeNames.has(row.visningsnavn.toLowerCase())
-      );
-
-      setTopPlayers(activeRankingList);
-
-      const myIndex = activeRankingList.findIndex(
-        (row) =>
-          row.visningsnavn.toLowerCase() ===
-          initBruger.visningsnavn.trim().toLowerCase()
-      );
-      setMyRank(myIndex >= 0 ? myIndex + 1 : null);
-      const myOverallRow = rankingList.find(
-        (row) =>
-          row.visningsnavn.toLowerCase() ===
-          initBruger.visningsnavn.trim().toLowerCase()
-      );
-      setMyElo(myOverallRow?.elo ?? null);
-
-      setUpcomingEvents((upcomingResponse.data as EventPreview[] | null) ?? []);
-      setLatestMessages(
-        (latestMessagesResponse.data as MessagePreview[] | null) ?? []
-      );
-      setLatestAdminMessages(
-        Array.isArray(latestAdminMessagesResponse) ? latestAdminMessagesResponse : []
-      );
-
-      const publishedEvents = (((mineEventsResponse.data as Array<{ id: string | number; date: string | null; status?: string | null }> | null) ?? [])
-        .filter((event) => (event.status ?? "").toLowerCase() === "published"));
-
-      if (publishedEvents.length > 0) {
-        const eventIds = publishedEvents.map((event) => event.id);
         const dateByEvent = new Map(
           publishedEvents.map((event) => [String(event.id), event.date ?? today] as const)
         );
-
-        const { data: eventResultData } = await (supabase.from("event_result") as any)
+        const { data: eventResultData } = await supabase
+          .from("event_result")
           .select("*")
-          .in("event_id", eventIds)
+          .in("event_id", publishedEvents.map((event) => event.id))
           .order("group_index", { ascending: true })
           .order("set_index", { ascending: true });
+        if (!mounted) return;
 
-        const allSets = mapEventRowsToSets(
-          (eventResultData as EventResultRow[] | null) ?? [],
-          today
-        ).map((row) => ({
-          ...row,
-          event_dato: dateByEvent.get(String(row.event_id)) ?? today,
-        }));
-
-        const lowerName = initBruger.visningsnavn.trim().toLowerCase();
-        setMineEventSets(
-          allSets.filter((row) =>
-            [row.holda1, row.holda2, row.holdb1, row.holdb2]
-              .map((name) => name.trim().toLowerCase())
-              .includes(lowerName)
-          )
+        const allSets = mapEventRowsToSets(eventResultData ?? [], today);
+        setMineEventSets(allSets
+          .filter((row) => [row.holda1, row.holda2, row.holdb1, row.holdb2]
+            .some((name) => name.trim().toLowerCase() === lowerName))
+          .map((row) => ({
+            ...row,
+            event_dato: dateByEvent.get(String(row.event_id)) ?? today,
+          }))
         );
-      } else {
-        setMineEventSets([]);
+      } finally {
+        if (mounted) setMineEventsLoading(false);
       }
+    }
 
-      setLoading(false);
-    };
+    async function loadAdminMessages() {
+      const [count, messages] = await Promise.all([
+        fetchUnreadAdminCount(supabase),
+        fetchLatestAdminMessages(supabase),
+      ]);
+      if (!mounted) return;
+      setUlæsteAdmin(count);
+      setLatestAdminMessages(messages);
+    }
 
-    håndhævRegelOgHent();
+    void loadRanking();
+    void loadUpcomingEvents();
+    void loadMyEvents();
+    if (rolle === "admin") void loadAdminMessages();
 
-    // Lyt til auth-ændringer (fx login/logout i andre faner)
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      const user = session?.user;
-      if (!user) {
-        router.replace("/registrer");
-      } else {
-        håndhævRegelOgHent();
-      }
-    });
+    return () => { mounted = false; };
+  }, [bruger]);
 
-    return () => {
-      mounted = false;
-      sub.subscription.unsubscribe();
-    };
-  }, [supabase, router]);
-
-  // Keep the inbox preview current without reloading rankings and events.
+  const hasProfile = Boolean(bruger);
   useEffect(() => {
+    if (!hasProfile) return;
     let cancelled = false;
-    let channel: ReturnType<typeof supabase.channel> | null = null;
     let refreshing = false;
-    let userId: string | null = null;
+
     async function refresh() {
-      if (!userId || cancelled || refreshing || document.visibilityState !== 'visible') return;
+      if (cancelled || refreshing || document.visibilityState !== "visible") return;
       refreshing = true;
       try {
         const [unread, latest] = await Promise.all([
-          supabase.from('beskeder').select('*', { count: 'exact', head: true }).eq('recipient_id', userId).is('read_at', null),
-          supabase.from('beskeder').select('*').or(`recipient_id.eq.${userId},sender_id.eq.${userId}`).order('created_at', { ascending: false }).limit(3),
+          supabase.from("beskeder").select("id", { count: "exact", head: true }).eq("recipient_id", user.id).is("read_at", null),
+          supabase.from("beskeder").select(MESSAGE_PREVIEW_COLUMNS)
+            .or(`recipient_id.eq.${user.id},sender_id.eq.${user.id}`)
+            .order("created_at", { ascending: false }).limit(3),
         ]);
         if (!cancelled) {
           if (!unread.error) setUlæsteDM(unread.count ?? 0);
-          if (!latest.error) setLatestMessages((latest.data ?? []) as MessagePreview[]);
+          if (!latest.error) setLatestMessages(latest.data ?? []);
+          else setLatestMessages((current) => current ?? []);
         }
-      } finally { refreshing = false; }
+      } finally {
+        refreshing = false;
+      }
     }
+
     const refreshVisible = () => { void refresh().catch(() => {}); };
-    void supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user || cancelled) return;
-      userId = user.id;
-      channel = supabase.channel(`inbox-preview-${user.id}`)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'beskeder', filter: `recipient_id=eq.${user.id}` }, refreshVisible)
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'beskeder', filter: `sender_id=eq.${user.id}` }, refreshVisible)
-        .subscribe((status) => { if (status === 'SUBSCRIBED') refreshVisible(); });
-    }).catch(() => {});
+    const channel = supabase.channel(`inbox-preview-${user.id}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "beskeder", filter: `recipient_id=eq.${user.id}` }, refreshVisible)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "beskeder", filter: `sender_id=eq.${user.id}` }, refreshVisible)
+      .subscribe((status) => { if (status === "SUBSCRIBED") refreshVisible(); });
+
+    refreshVisible();
     const timer = window.setInterval(refreshVisible, 30000);
-    window.addEventListener('focus', refreshVisible);
-    document.addEventListener('visibilitychange', refreshVisible);
+    window.addEventListener("focus", refreshVisible);
+    document.addEventListener("visibilitychange", refreshVisible);
     return () => {
-      cancelled = true; window.clearInterval(timer);
-      window.removeEventListener('focus', refreshVisible);
-      document.removeEventListener('visibilitychange', refreshVisible);
-      if (channel) void supabase.removeChannel(channel);
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refreshVisible);
+      document.removeEventListener("visibilitychange", refreshVisible);
+      void supabase.removeChannel(channel);
     };
-  }, []);
+  }, [hasProfile, user.id]);
 
   const logUd = async () => {
     try { await detachDevicePush(); }
@@ -795,12 +752,7 @@ export default function StartSide() {
     }
   }
 
-  if (loading) {
-    return <LoadingState />;
-  }
-
-  // Brugeren er garanteret logget ind + registreret her (ellers var der redirect)
-  if (!bruger) return null;
+  if (!bruger) return <LoadingState />;
 
   return (
     <PageShell className="bg-[#1a1a2e] px-0 py-0 md:px-6 md:py-6">
@@ -865,7 +817,7 @@ export default function StartSide() {
                   ? "fordi du ikke har indrapporteret et resultat i 3 mdr."
                   : erInaktiv
                     ? "Aktivér profilen for at få en placering igen."
-                    : formatRelativeRank(myRank)}
+                    : rankingLoading ? "Henter din placering…" : formatRelativeRank(myRank)}
               </span>
             </p>
 
@@ -898,6 +850,8 @@ export default function StartSide() {
                 <Link
                   key={action.href}
                   href={action.href}
+                  onPointerEnter={action.href === "/ranglister" ? preloadRankingOverview : undefined}
+                  onFocus={action.href === "/ranglister" ? preloadRankingOverview : undefined}
                   className="rounded-[18px] bg-white p-4 shadow-[0_2px_12px_rgba(0,0,0,0.07)] transition hover:-translate-y-0.5"
                 >
                   <div className="mb-3 text-[22px]">{action.icon}</div>
@@ -921,7 +875,9 @@ export default function StartSide() {
                 </Link>
               </div>
 
-              {mineMatches.length > 0 ? (
+              {mineEventsLoading ? (
+                <p className="text-sm text-[#6d7280]">Henter dine kampe…</p>
+              ) : mineMatches.length > 0 ? (
                 <div className="space-y-3">
                   {mineMatches.map((sets) => {
                     const meta = sets[0];
@@ -997,11 +953,12 @@ export default function StartSide() {
                 <h2 className="text-[13px] font-bold uppercase tracking-[0.12em] text-[#2d3340]">
                   Ranglisten
                 </h2>
-                <Link href="/ranglister" className="text-xs font-bold text-[#f01f78]">
+                <Link href="/ranglister" onPointerEnter={preloadRankingOverview} onFocus={preloadRankingOverview} className="text-xs font-bold text-[#f01f78]">
                   Se alle
                 </Link>
               </div>
               <div className="space-y-1">
+                {rankingLoading && <p className="text-sm text-[#8b92a0]">Henter ranglisten…</p>}
                 {rankingPreview.map((player, index) => {
                   const isMe =
                     player.visningsnavn.toLowerCase() ===
@@ -1052,7 +1009,9 @@ export default function StartSide() {
                 </Link>
               </div>
               <div className="space-y-2">
-                {upcomingEvents.length > 0 ? (
+                {upcomingEvents === null ? (
+                  <p className="text-sm text-[#8b92a0]">Henter kommende events…</p>
+                ) : upcomingEvents.length > 0 ? (
                   upcomingEvents.map((event) => (
                     <Link
                       key={String(event.id)}
@@ -1100,7 +1059,9 @@ export default function StartSide() {
                 </Link>
               </div>
               <div className="space-y-1">
-                {latestMessages.length > 0 ? (
+                {latestMessages === null ? (
+                  <p className="text-sm text-[#8b92a0]">Henter beskeder…</p>
+                ) : latestMessages.length > 0 ? (
                   latestMessages.map((message) => {
                     const fromMe = message.sender_visningsnavn === bruger.visningsnavn;
                     const counterpart = fromMe
@@ -1154,6 +1115,8 @@ export default function StartSide() {
             <Link
               key={item.href}
               href={item.href}
+              onPointerEnter={item.href === "/ranglister" ? preloadRankingOverview : undefined}
+              onFocus={item.href === "/ranglister" ? preloadRankingOverview : undefined}
               className="flex min-w-16 flex-col items-center gap-1 text-[#7b8190]"
             >
               <span className="text-lg">{item.icon}</span>
