@@ -244,7 +244,7 @@ export function TournamentSignup() {
               className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-strong)] p-3" placeholder="Fx 12345678" />
             <p className="text-sm text-[var(--muted)]">Du bliver parrets kontaktperson. Nummeret vises til holdene i jeres pulje, så I kan aftale kampe.</p>
           </div>
-          <p className="text-sm">Når holdet er tilmeldt, åbner vi MobilePay til <strong>Makker Liga (#102438)</strong>. Indtast <strong>200 kr. pr. par</strong> og skriv begge spillernes navne i beskeden.</p>
+          <p className="text-sm">Når holdet er tilmeldt, åbner vi MobilePay til <strong>Makker Liga (#102438)</strong>. Beløbet er allerede sat til <strong>200 kr. pr. par</strong> – I skal kun skrive begge spillernes navne i beskeden.</p>
           <button type="submit" className={button} disabled={busy || !selectedPartner || !contactPhone.trim() || !data.paymentAvailable}>
             {busy ? "Vent et øjeblik …" : "Tilmeld og åbn MobilePay – 200 kr."}
           </button>
