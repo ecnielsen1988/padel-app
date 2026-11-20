@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import Select from "react-select";
 import { StatusPill } from "../components/ui";
 import {
-  isWoman, partnerMobilePayLink, PARTNER_DIVISIONS, UUID_PATTERN, type PartnerDivision,
+  isWoman, PARTNER_MOBILEPAY_URL, PARTNER_DIVISIONS, UUID_PATTERN, type PartnerDivision,
   type PartnerRegistration, type TournamentSignupData,
 } from "@/lib/partnerTournaments";
 
@@ -127,12 +127,11 @@ export function TournamentSignup() {
       if (result.status === "cancelled") {
         setMessage({ text: "Betalingen blev afbrudt eller udløb. I kan tilmelde jer igen, hvis fristen stadig er åben." });
       }
-      if (result.status === "pending") setMessage({ text: "I er tilmeldt. Betal 200 kr. til MobilePay 102438 og skriv begge spillernes navne. Vi bekræfter betalingen manuelt." });
+      if (result.status === "pending") setMessage({ text: "I er tilmeldt. Betal 200 kr. til Makker Liga (#102438) og skriv begge spillernes navne. Vi bekræfter betalingen manuelt." });
       if (result.status === "pending" && input.action === "register") {
         setData(await loadSignup());
         setBusy(false);
-        const names = [data?.userId, input.partnerId].map((id) => data?.players.find((player) => player.id === id)?.visningsnavn ?? "");
-        window.location.assign(partnerMobilePayLink(names));
+        window.location.assign(PARTNER_MOBILEPAY_URL);
         redirecting = true;
         return;
       }
@@ -201,8 +200,8 @@ export function TournamentSignup() {
             {entry.contact_phone && <p className="text-sm">Kontaktpersonens telefon: {entry.contact_phone}</p>}
             {entry.status === "pending" && (
               <div className="space-y-3">
-                <p className="text-sm">Betal <strong>200 kr. pr. par til MobilePay 102438</strong>. Skriv begge spillernes navne i beskeden. Har I allerede betalt, skal I ikke betale igen – vi bekræfter betalingen manuelt.</p>
-                <a className={button} href={partnerMobilePayLink([entry.payer_id, entry.partner_id].map((id) => data.players.find((player) => player.id === id)?.visningsnavn ?? ""))}>Åbn MobilePay – 200 kr.</a>
+                <p className="text-sm">Betal <strong>200 kr. pr. par til Makker Liga (#102438)</strong>. Skriv begge spillernes navne i beskeden. Har I allerede betalt, skal I ikke betale igen – vi bekræfter betalingen manuelt.</p>
+                <a className={button} href={PARTNER_MOBILEPAY_URL}>Åbn MobilePay – 200 kr.</a>
               </div>
             )}
           </div>
@@ -245,7 +244,7 @@ export function TournamentSignup() {
               className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-strong)] p-3" placeholder="Fx 12345678" />
             <p className="text-sm text-[var(--muted)]">Du bliver parrets kontaktperson. Nummeret vises til holdene i jeres pulje, så I kan aftale kampe.</p>
           </div>
-          <p className="text-sm">Når holdet er tilmeldt, åbner vi MobilePay med <strong>200 kr. pr. par til MobilePay 102438</strong>. Kontrollér beløb og begge spillernes navne, før I godkender betalingen.</p>
+          <p className="text-sm">Når holdet er tilmeldt, åbner vi MobilePay til <strong>Makker Liga (#102438)</strong>. Indtast <strong>200 kr. pr. par</strong> og skriv begge spillernes navne i beskeden.</p>
           <button type="submit" className={button} disabled={busy || !selectedPartner || !contactPhone.trim() || !data.paymentAvailable}>
             {busy ? "Vent et øjeblik …" : "Tilmeld og åbn MobilePay – 200 kr."}
           </button>

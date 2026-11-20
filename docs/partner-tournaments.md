@@ -10,7 +10,8 @@ Kør [opdateringen til manuel betaling](../database/partner_league_manual_paymen
 i Supabase SQL Editor efter de eksisterende Makkerliga-migrationer. Den kan køres igen.
 
 - Tilmelding kræver kontaktpersonens telefonnummer og reserverer begge spillere i rækken straks.
-- Betal 200 kr. pr. par manuelt til MobilePay **102438**, med begge spillernes navne i beskeden.
+- Betal 200 kr. pr. par manuelt til **Makker Liga (#102438)**, med begge spillernes navne i beskeden.
+- Betalingsknapperne bruger salgsstedets originale QR-adresse: `https://qr.mobilepay.dk/vp/SRa_brZcM`. Beløb og navne indtastes af spilleren i MobilePay.
 - Holdet vises som **Tilmeldt – afventer betaling**, indtil admin har kontrolleret indbetalingen.
 - Under **Admin → Makkerliga** vælger admin **Markér betaling modtaget** efter kontrol i MobilePay.
 - Kun betalte hold kommer med i puljeinddelingen. Tælleren på tilmeldingssiden medregner også hold, der afventer betaling.
