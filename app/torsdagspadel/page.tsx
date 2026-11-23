@@ -1,7 +1,5 @@
 "use client";
 
-export const dynamic = "force-dynamic";
-
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { LoadingState, LoggedOutState, PageShell } from "@/app/components/ui";
@@ -215,6 +213,7 @@ function DashboardLinkCard({
 
 function DashboardButtonCard({
   onClick,
+  disabled,
   eyebrow,
   title,
   icon,
@@ -222,6 +221,7 @@ function DashboardButtonCard({
   footer,
 }: {
   onClick: () => void;
+  disabled: boolean;
   eyebrow: string;
   title: string;
   icon: string;
@@ -232,6 +232,7 @@ function DashboardButtonCard({
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       className={`group w-full rounded-[22px] border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-[0_28px_90px_rgba(5,120,87,0.14)] ${cardAccentClasses()}`}
     >
       <div className="space-y-3">
@@ -397,206 +398,182 @@ function SignupModal({
 export default function TorsdagStartside() {
   const [bruger, setBruger] = useState<Bruger | null>(null);
   const [loading, setLoading] = useState(true);
-  const [events, setEvents] = useState<EventRow[]>([]);
-  const [tilmeldinger, setTilmeldinger] = useState<Record<string, Tilmelding>>({});
+  const [events, setEvents] = useState<EventRow[] | null>(null);
+  const [tilmeldinger, setTilmeldinger] = useState<Record<string, Tilmelding> | null>(null);
   const [savingDate, setSavingDate] = useState<string | null>(null);
   const [editingEventDate, setEditingEventDate] = useState<string | null>(null);
   const [signupModalOpen, setSignupModalOpen] = useState(false);
   const [nextHoldkamp, setNextHoldkamp] = useState<Holdkamp | null>(null);
   const [nextHoldPlayers, setNextHoldPlayers] = useState<string[]>([]);
+  const [holdLoading, setHoldLoading] = useState(true);
   const [myRank, setMyRank] = useState<number | null>(null);
-  const [rankingNeighbors, setRankingNeighbors] = useState<RankingRow[]>([]);
-  const [economySummary, setEconomySummary] = useState({
-    openFineOre: 0,
-    outstandingFineOre: 0,
-    pendingFineOre: 0,
-    outstandingCreditOre: 0,
-    beerPrizeCount: 0,
-    sodaPrizeCount: 0,
-    hasOpenFine: false,
-    hasPendingFine: false,
-  });
+  const [rankingNeighbors, setRankingNeighbors] = useState<RankingRow[] | null>(null);
+  const [economySummary, setEconomySummary] = useState<{
+    openFineOre: number;
+    pendingFineOre: number;
+    beerPrizeCount: number;
+    sodaPrizeCount: number;
+    hasOpenFine: boolean;
+    hasPendingFine: boolean;
+  } | "error" | null>(null);
   const mobilePayUrl = MOBILEPAY_BOX_URL;
-  const [mineEventSets, setMineEventSets] = useState<EventSet[]>([]);
+  const [mineEventSets, setMineEventSets] = useState<EventSet[] | null>(null);
   const [scoreBusy, setScoreBusy] = useState(false);
   const [scoreError, setScoreError] = useState<string | null>(null);
 
   useEffect(() => {
-    const hentData = async () => {
-      try {
-        setLoading(true);
-        const { data: auth } = await supabase.auth.getUser();
-        const user = auth?.user;
+    let mounted = true;
+    const controller = new AbortController();
 
-        if (!user) {
-          setBruger(null);
-          return;
+    async function loadSignups(profile: Bruger, nextEvents: EventRow[]) {
+      const map: Record<string, Tilmelding> = {};
+      if (nextEvents.length > 0) {
+        const { data } = await supabase.from("event_signups")
+          .select("event_dato, kan_spille, tidligste_tid")
+          .eq("visningsnavn", profile.visningsnavn)
+          .in("event_dato", nextEvents.map((event) => event.date));
+        for (const row of data ?? []) {
+          map[row.event_dato] = {
+            kan_spille: !!row.kan_spille,
+            tidligste_tid: row.kan_spille ? row.tidligste_tid ?? "17:00" : null,
+          };
         }
+      }
+      if (mounted) setTilmeldinger(map);
+    }
 
-        const profResp = await (supabase.from("profiles") as any)
+    async function loadMyMatches(profile: Bruger, nextEvents: EventRow[], todayISO: string) {
+      const published = nextEvents.filter((event) => event.status === "published");
+      if (!published.length) {
+        if (mounted) setMineEventSets([]);
+        return;
+      }
+
+      const dateByEvent = new Map(published.map((event) => [String(event.id), event.date]));
+      const { data } = await supabase.from("event_result")
+        .select("*")
+        .in("event_id", published.map((event) => event.id))
+        .order("group_index", { ascending: true })
+        .order("set_index", { ascending: true });
+      if (!mounted) return;
+
+      const lowerName = profile.visningsnavn.trim().toLowerCase();
+      setMineEventSets(mapEventRowsToSets(data ?? [], todayISO)
+        .filter((row) => [row.holda1, row.holda2, row.holdb1, row.holdb2]
+          .some((name) => name.trim().toLowerCase() === lowerName))
+        .map((row) => ({ ...row, event_dato: dateByEvent.get(String(row.event_id)) ?? todayISO })));
+    }
+
+    async function loadEvents(profile: Bruger) {
+      const todayISO = nowInCopenhagen().toISOString().slice(0, 10);
+      const { data } = await supabase.from("events")
+        .select("id, name, date, start_time, closed_group, status")
+        .eq("closed_group", true)
+        .gte("date", todayISO)
+        .order("date", { ascending: true })
+        .limit(4);
+      if (!mounted) return;
+
+      const nextEvents: EventRow[] = data ?? [];
+      setEvents(nextEvents);
+      void loadSignups(profile, nextEvents).catch(() => {
+        if (mounted) setTilmeldinger({});
+      });
+      void loadMyMatches(profile, nextEvents, todayISO).catch(() => {
+        if (mounted) setMineEventSets([]);
+      });
+    }
+
+    async function loadHoldkamp() {
+      try {
+        const { data: match } = await supabase.from("hold_matches")
+          .select("id, opponent, match_date, location, hold_teams (name, division)")
+          .eq("status", "upcoming")
+          .order("match_date", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        if (!mounted || !match) return;
+
+        const { data } = await supabase.from("hold_match_players")
+          .select("visningsnavn")
+          .eq("match_id", match.id)
+          .eq("status", "tilmeldt");
+        if (!mounted) return;
+
+        setNextHoldkamp(match);
+        setNextHoldPlayers(((data ?? []) as HoldMatchPlayer[])
+          .map((row) => (row.visningsnavn ?? "").trim()).filter(Boolean));
+      } finally {
+        if (mounted) setHoldLoading(false);
+      }
+    }
+
+    async function loadRanking(profile: Bruger) {
+      const [ranking, { data: profiles }] = await Promise.all([
+        fetch("/api/rangliste", { signal: controller.signal }).then((res) => res.json()),
+        supabase.from("profiles").select("visningsnavn").eq("torsdagspadel", true),
+      ]);
+      if (!mounted) return;
+
+      const rows: RankingRow[] = Array.isArray(ranking) ? ranking : ranking?.data ?? [];
+      const names = new Set((profiles ?? [])
+        .map((row) => (row.visningsnavn ?? "").trim()).filter(Boolean));
+      const torsRanking = rows.filter((row) => names.has((row.visningsnavn ?? "").trim()));
+      const index = torsRanking.findIndex((row) => row.visningsnavn.trim() === profile.visningsnavn.trim());
+      setMyRank(index >= 0 ? index + 1 : null);
+      setRankingNeighbors(index >= 0 ? torsRanking.slice(Math.max(0, index - 1), index + 2) : torsRanking.slice(0, 3));
+    }
+
+    async function loadEconomy() {
+      const res = await fetch("/api/torsdag/economy", { cache: "no-store", signal: controller.signal });
+      if (!res.ok) throw new Error(`Økonomi svarede med ${res.status}`);
+      const data = await res.json();
+      if (mounted) setEconomySummary({
+        openFineOre: Number(data.openFineOre ?? 0),
+        pendingFineOre: Number(data.pendingFineOre ?? 0),
+        beerPrizeCount: Number(data.beerPrizeCount ?? 0),
+        sodaPrizeCount: Number(data.sodaPrizeCount ?? 0),
+        hasOpenFine: Boolean(data.hasOpenFine),
+        hasPendingFine: Boolean(data.hasPendingFine),
+      });
+    }
+
+    async function loadProfile() {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!mounted || !user) return;
+        const { data: profile } = await supabase.from("profiles")
           .select("id, visningsnavn, torsdagspadel, rolle")
           .eq("id", user.id)
           .maybeSingle();
-
-        const profile = (profResp?.data ?? null) as Bruger | null;
-        if (!profile?.torsdagspadel || !profile.visningsnavn) {
-          setBruger(null);
-          return;
-        }
+        if (!mounted || !profile?.torsdagspadel || !profile.visningsnavn) return;
 
         setBruger(profile);
-
-        const todayISO = nowInCopenhagen().toISOString().slice(0, 10);
-
-        const [eventsResp, holdResp, rangResp, torsResp] = await Promise.all([
-          (supabase.from("events") as any)
-            .select("id, name, date, start_time, closed_group, status")
-            .eq("closed_group", true)
-            .gte("date", todayISO)
-            .order("date", { ascending: true })
-            .limit(4),
-          supabase
-            .from("hold_matches")
-            .select(`
-              id,
-              opponent,
-              match_date,
-              location,
-              hold_teams (
-                name,
-                division
-              )
-            `)
-            .eq("status", "upcoming")
-            .order("match_date", { ascending: true })
-            .limit(1)
-            .maybeSingle(),
-          fetch("/api/rangliste", { cache: "no-store" }).then((res) => res.json()),
-          (supabase.from("profiles") as any)
-            .select("visningsnavn")
-            .eq("torsdagspadel", true),
-        ]);
-
-        const nextEvents = (eventsResp?.data ?? []) as EventRow[];
-        setEvents(nextEvents);
-
-        if (nextEvents.length > 0) {
-          const signupResp = await (supabase.from("event_signups") as any)
-            .select("event_dato, kan_spille, tidligste_tid")
-            .eq("visningsnavn", profile.visningsnavn)
-            .in("event_dato", nextEvents.map((event) => event.date));
-
-          const map: Record<string, Tilmelding> = {};
-          for (const row of signupResp?.data ?? []) {
-            map[row.event_dato] = {
-              kan_spille: !!row.kan_spille,
-              tidligste_tid: row.kan_spille ? row.tidligste_tid ?? "17:00" : null,
-            };
-          }
-          setTilmeldinger(map);
-        }
-
-        setNextHoldkamp((holdResp?.data as Holdkamp | null) ?? null);
-
-        if (holdResp?.data?.id) {
-          const playersResp = await supabase
-            .from("hold_match_players")
-            .select("visningsnavn")
-            .eq("match_id", holdResp.data.id)
-            .eq("status", "tilmeldt");
-
-          const names = ((playersResp.data ?? []) as HoldMatchPlayer[])
-            .map((row) => (row.visningsnavn ?? "").trim())
-            .filter(Boolean);
-          setNextHoldPlayers(names);
-        }
-
-        const rangArray = Array.isArray(rangResp) ? rangResp : rangResp?.data ?? [];
-        const torsNames = new Set(
-          (((torsResp?.data ?? []) as Array<{ visningsnavn?: string | null }>)
-            .map((row) => (row.visningsnavn ?? "").trim())
-            .filter(Boolean))
-        );
-        const torsRanking = (rangArray as RankingRow[]).filter((row) =>
-          torsNames.has((row.visningsnavn ?? "").trim())
-        );
-        const myIndex = torsRanking.findIndex(
-          (row) => row.visningsnavn.trim() === profile.visningsnavn.trim()
-        );
-        setMyRank(myIndex >= 0 ? myIndex + 1 : null);
-        if (myIndex >= 0) {
-          setRankingNeighbors(torsRanking.slice(Math.max(0, myIndex - 1), Math.min(torsRanking.length, myIndex + 2)));
-        } else {
-          setRankingNeighbors(torsRanking.slice(0, 3));
-        }
-
-        const economyResp = await fetch("/api/torsdag/economy", { cache: "no-store" });
-        const economyData = await economyResp.json();
-        if (economyResp.ok) {
-          setEconomySummary({
-            openFineOre: Number(economyData.openFineOre ?? 0),
-            outstandingFineOre: Number(economyData.outstandingFineOre ?? 0),
-            pendingFineOre: Number(economyData.pendingFineOre ?? 0),
-            outstandingCreditOre: Number(economyData.outstandingCreditOre ?? 0),
-            beerPrizeCount: Number(economyData.beerPrizeCount ?? 0),
-            sodaPrizeCount: Number(economyData.sodaPrizeCount ?? 0),
-            hasOpenFine: Boolean(economyData.hasOpenFine),
-            hasPendingFine: Boolean(economyData.hasPendingFine),
-          });
-        } else {
-          setEconomySummary({
-            openFineOre: 0,
-            outstandingFineOre: 0,
-            pendingFineOre: 0,
-            outstandingCreditOre: 0,
-            beerPrizeCount: 0,
-            sodaPrizeCount: 0,
-            hasOpenFine: false,
-            hasPendingFine: false,
-          });
-        }
-
-        const publishedEvents = ((eventsResp?.data ?? []) as EventRow[]).filter((event) => {
-          return event.closed_group && event.date >= todayISO && event.status === "published";
-        });
-
-        if (publishedEvents.length > 0) {
-          const eventIds = publishedEvents.map((event) => event.id);
-          const dateByEvent = new Map(
-            publishedEvents.map((event) => [String(event.id), event.date] as const)
-          );
-
-          const { data: eventResultData } = await (supabase.from("event_result") as any)
-            .select("*")
-            .in("event_id", eventIds)
-            .order("group_index", { ascending: true })
-            .order("set_index", { ascending: true });
-
-          const allSets = mapEventRowsToSets(
-            (eventResultData as EventResultRow[] | null) ?? [],
-            todayISO
-          ).map((row) => ({
-            ...row,
-            event_dato: dateByEvent.get(String(row.event_id)) ?? todayISO,
-          }));
-
-          const lowerName = profile.visningsnavn.trim().toLowerCase();
-          setMineEventSets(
-            allSets.filter((row) =>
-              [row.holda1, row.holda2, row.holdb1, row.holdb2]
-                .map((name) => name.trim().toLowerCase())
-                .includes(lowerName)
-            )
-          );
-        } else {
+        void loadEvents(profile).catch(() => {
+          if (!mounted) return;
+          setEvents([]);
+          setTilmeldinger({});
           setMineEventSets([]);
-        }
+        });
+        void loadHoldkamp().catch((error) => console.error("Kunne ikke hente holdkamp", error));
+        void loadRanking(profile).catch(() => {
+          if (mounted) setRankingNeighbors([]);
+        });
+        void loadEconomy().catch(() => {
+          if (mounted) setEconomySummary("error");
+        });
+      } catch (error) {
+        console.error("Kunne ikke hente torsdagspadelprofil", error);
       } finally {
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
-    };
+    }
 
-    void hentData();
+    void loadProfile();
+    return () => {
+      mounted = false;
+      controller.abort();
+    };
   }, []);
 
   async function sendTilmelding(eventDato: string, kanSpille: boolean, tidligsteTid?: string) {
@@ -625,12 +602,12 @@ export default function TorsdagStartside() {
     setSavingDate(null);
   }
 
-  const nextEvent = events[0] ?? null;
-  const nextSignup = nextEvent ? tilmeldinger[nextEvent.date] : null;
+  const nextEvent = events?.[0] ?? null;
+  const nextSignup = nextEvent ? tilmeldinger?.[nextEvent.date] : null;
   const holdTeam = Array.isArray(nextHoldkamp?.hold_teams) ? nextHoldkamp?.hold_teams[0] : nextHoldkamp?.hold_teams;
   const mineMatches = useMemo(
     () =>
-      Array.from(groupByMatch(mineEventSets).values())
+      Array.from(groupByMatch(mineEventSets ?? []).values())
         .sort((a, b) => {
           const aDate = `${a[0]?.event_dato ?? ""}T${a[0]?.starttid ?? "00:00"}`;
           const bDate = `${b[0]?.event_dato ?? ""}T${b[0]?.starttid ?? "00:00"}`;
@@ -650,7 +627,7 @@ export default function TorsdagStartside() {
     const rows = mapEventRowsToSets((data as EventResultRow[] | null) ?? [], eventDate);
     const lowerName = bruger?.visningsnavn.trim().toLowerCase() ?? "";
     setMineEventSets((prev) => {
-      const rest = prev.filter((row) => String(row.event_id) !== String(eventId));
+      const rest = (prev ?? []).filter((row) => String(row.event_id) !== String(eventId));
       const mine = rows.filter((row) =>
         [row.holda1, row.holda2, row.holdb1, row.holdb2]
           .map((name) => name.trim().toLowerCase())
@@ -739,6 +716,8 @@ export default function TorsdagStartside() {
   }
 
   const isAdmin = bruger.rolle === "admin";
+  const economy = economySummary === "error" ? null : economySummary;
+  const economyStatus = economySummary === "error" ? "Kunne ikke hente økonomien." : "Henter økonomi…";
 
   return (
     <PageShell className="bg-[#16211d] px-0 py-0 md:px-6 md:py-6">
@@ -782,7 +761,7 @@ export default function TorsdagStartside() {
                 Overblik
               </p>
               <div className="mt-2 text-2xl font-black tracking-tight">
-                {nextEvent ? `Næste torsdag: ${formatEventDate(nextEvent.date)}` : "Ingen kommende event endnu"}
+                {events === null ? "Henter kommende events…" : nextEvent ? `Næste torsdag: ${formatEventDate(nextEvent.date)}` : "Ingen kommende event endnu"}
               </div>
               <p className="mt-3 max-w-[280px] text-sm text-white/80">
                 📅 🧾 📊 💸 🍺 📘
@@ -792,16 +771,17 @@ export default function TorsdagStartside() {
             <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <DashboardButtonCard
                 onClick={() => setSignupModalOpen(true)}
+                disabled={tilmeldinger === null}
                 eyebrow="1. Tilmelding"
                 title="Kommende events"
                 icon="📅"
                 body={
-                  nextEvent ? (
+                  events === null ? <p>Henter kommende events…</p> : nextEvent ? (
                     <>
                       <p className="font-semibold text-emerald-900">{nextEvent.name || "Torsdagspadel"}</p>
                       <p className="text-xs text-zinc-500">{formatEventDate(nextEvent.date)}</p>
                       <p className="mt-2 rounded-2xl bg-emerald-50 px-3 py-2 font-medium text-emerald-900">
-                        {nextSignup?.kan_spille
+                        {tilmeldinger === null ? "Henter din tilmelding…" : nextSignup?.kan_spille
                           ? `✅ Tilmeldt${nextSignup.tidligste_tid ? ` · ${nextSignup.tidligste_tid}` : ""}`
                           : nextSignup
                             ? "❌ Afbud"
@@ -821,7 +801,7 @@ export default function TorsdagStartside() {
                 title="Næste holdkamp"
                 icon="🧾"
                 body={
-                  nextHoldkamp ? (
+                  holdLoading ? <p>Henter holdkamp…</p> : nextHoldkamp ? (
                     <>
                       <p className="font-semibold text-emerald-900">
                         {holdTeam?.name ?? "Holdkamp"} vs. {nextHoldkamp.opponent}
@@ -846,7 +826,7 @@ export default function TorsdagStartside() {
                 title="Din placering"
                 icon="📊"
                 body={
-                  <>
+                  rankingNeighbors === null ? <p>Henter din placering…</p> : <>
                     <p className="text-4xl font-black text-emerald-900">#{myRank ?? "—"}</p>
                     <div className="mt-2 space-y-1.5 text-sm">
                       {rankingNeighbors.map((row, index) => {
@@ -877,20 +857,24 @@ export default function TorsdagStartside() {
                     <span className="text-3xl leading-none" aria-hidden="true">💸</span>
                   </div>
                   <div className="min-h-[82px] text-sm leading-5 text-zinc-700">
-                    <p className="text-4xl font-black text-emerald-900">{formatOre(economySummary.openFineOre)}</p>
-                    <p className="mt-2 font-semibold text-zinc-800">
-                      {economySummary.hasOpenFine
-                          ? "Du skylder penge"
-                        : economySummary.hasPendingFine
-                          ? "Du har ingen udestående bøder"
-                          : "Du har opført dig pænt"}
-                    </p>
-                    {economySummary.hasPendingFine && (
-                      <p className="mt-2 font-semibold text-amber-700">
-                        {`Betaling afventer: ${formatOre(economySummary.pendingFineOre)}`}
-                      </p>
-                    )}
-                    <p className="mt-2 text-4xl leading-none">💰</p>
+                    {economy ? (
+                      <>
+                        <p className="text-4xl font-black text-emerald-900">{formatOre(economy.openFineOre)}</p>
+                        <p className="mt-2 font-semibold text-zinc-800">
+                          {economy.hasOpenFine
+                            ? "Du skylder penge"
+                            : economy.hasPendingFine
+                              ? "Du har ingen udestående bøder"
+                              : "Du har opført dig pænt"}
+                        </p>
+                        {economy.hasPendingFine && (
+                          <p className="mt-2 font-semibold text-amber-700">
+                            {`Betaling afventer: ${formatOre(economy.pendingFineOre)}`}
+                          </p>
+                        )}
+                        <p className="mt-2 text-4xl leading-none">💰</p>
+                      </>
+                    ) : <p role="status">{economyStatus}</p>}
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Link
@@ -900,7 +884,7 @@ export default function TorsdagStartside() {
                       Se bødelisten
                       <span aria-hidden="true">→</span>
                     </Link>
-                    {economySummary.hasOpenFine && (
+                    {economy?.hasOpenFine && (
                       <button
                         type="button"
                         onClick={() => void openMobilePay()}
@@ -920,16 +904,16 @@ export default function TorsdagStartside() {
                 title="Dine drikkevarer"
                 icon="🍺"
                 body={
-                  <div className="space-y-2">
+                  economy ? <div className="space-y-2">
                     <div className="flex items-center justify-between rounded-2xl bg-zinc-50 px-3 py-2">
                       <span className="text-2xl">🍺</span>
-                      <span className="font-black text-emerald-900">{economySummary.beerPrizeCount}</span>
+                      <span className="font-black text-emerald-900">{economy.beerPrizeCount}</span>
                     </div>
                     <div className="flex items-center justify-between rounded-2xl bg-zinc-50 px-3 py-2">
                       <span className="text-2xl">🥤</span>
-                      <span className="font-black text-emerald-900">{economySummary.sodaPrizeCount}</span>
+                      <span className="font-black text-emerald-900">{economy.sodaPrizeCount}</span>
                     </div>
-                  </div>
+                  </div> : <p>{economyStatus}</p>
                 }
                 footer="Se din historik"
               />
@@ -975,7 +959,7 @@ export default function TorsdagStartside() {
                 </Link>
               </div>
 
-              {mineMatches.length > 0 ? (
+              {mineEventSets === null ? <p className="text-sm text-[#6d7280]">Henter dine kampe…</p> : mineMatches.length > 0 ? (
                 <div className="space-y-3">
                   {mineMatches.map((sets) => {
                     const meta = sets[0];
@@ -1074,8 +1058,8 @@ export default function TorsdagStartside() {
           setSignupModalOpen(false);
           setEditingEventDate(null);
         }}
-        events={events}
-        tilmeldinger={tilmeldinger}
+        events={events ?? []}
+        tilmeldinger={tilmeldinger ?? {}}
         editingEventDate={editingEventDate}
         setEditingEventDate={setEditingEventDate}
         sendTilmelding={sendTilmelding}

@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { LoadingState, LoggedOutState, PageShell } from '../components/ui'
-import { ResultMatchCard } from '@/lib/resultsFeed'
+import { LoggedOutState, PageShell } from '../components/ui'
+import type { ResultMatchCard } from '@/lib/resultsFeed'
 
 function initials(name: string) {
   return name
@@ -49,35 +49,46 @@ function issueText(count: number | undefined) {
 
 export default function ResultaterPage() {
   const [loading, setLoading] = useState(true)
-  const [loggedIn, setLoggedIn] = useState(false)
+  const [loggedIn, setLoggedIn] = useState<boolean | null>(null)
+  const [error, setError] = useState(false)
+  const [clock, setClock] = useState('')
   const [visningsnavn, setVisningsnavn] = useState<string>('')
   const [myLatest, setMyLatest] = useState<ResultMatchCard | null>(null)
   const [latestOverall, setLatestOverall] = useState<ResultMatchCard | null>(null)
 
   useEffect(() => {
-    let mounted = true
+    const controller = new AbortController()
+    setClock(new Intl.DateTimeFormat('da-DK', {
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(new Date()))
 
-    ;(async () => {
-      const res = await fetch('/api/results-feed?view=overview', { cache: 'no-store' })
-      const data = await res.json()
+    async function load() {
+      try {
+        const res = await fetch('/api/results-feed?view=overview', {
+          cache: 'no-store',
+          signal: controller.signal,
+        })
+        if (!res.ok) throw new Error(`Resultater svarede med ${res.status}`)
+        const data = await res.json()
+        if (controller.signal.aborted) return
 
-      if (!mounted) return
-
-      setLoggedIn(Boolean(data?.loggedIn))
-      setVisningsnavn(typeof data?.visningsnavn === 'string' ? data.visningsnavn : 'Spiller')
-      setMyLatest(data?.myLatest ?? null)
-      setLatestOverall(data?.latestOverall ?? null)
-      setLoading(false)
-    })()
-
-    return () => {
-      mounted = false
+        setLoggedIn(Boolean(data?.loggedIn))
+        setVisningsnavn(typeof data?.visningsnavn === 'string' ? data.visningsnavn : 'Spiller')
+        setMyLatest(data?.myLatest ?? null)
+        setLatestOverall(data?.latestOverall ?? null)
+      } catch {
+        if (!controller.signal.aborted) setError(true)
+      } finally {
+        if (!controller.signal.aborted) setLoading(false)
+      }
     }
+
+    void load()
+    return () => controller.abort()
   }, [])
 
-  if (loading) return <LoadingState />
-
-  if (!loggedIn) {
+  if (loggedIn === false) {
     return (
       <LoggedOutState
         title="Du er ikke logget ind"
@@ -86,6 +97,7 @@ export default function ResultaterPage() {
     )
   }
 
+  const matchStatus = loading ? 'Henter resultater…' : error ? 'Kunne ikke hente resultater.' : 'Ingen resultater fundet endnu.'
   const cards = [
     {
       href: '/mine',
@@ -109,12 +121,7 @@ export default function ResultaterPage() {
         <header className="bg-gradient-to-br from-[#f01f78] to-[#c0135a] px-4 pb-5 pt-4 text-white md:px-6">
           <div className="mb-4 flex items-center justify-between text-[11px] font-semibold opacity-90">
             <span>Padelhuset</span>
-            <span>
-              {new Intl.DateTimeFormat('da-DK', {
-                hour: '2-digit',
-                minute: '2-digit',
-              }).format(new Date())}
-            </span>
+            <span>{clock}</span>
           </div>
 
           <div className="flex items-center justify-between gap-3">
@@ -127,13 +134,15 @@ export default function ResultaterPage() {
               </h1>
             </div>
 
-            <Link
-              href={`/profil/${encodeURIComponent(visningsnavn)}`}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#ffd44d] text-xs font-black text-[#463018]"
-              aria-label="Min profil"
-            >
-              {initials(visningsnavn)}
-            </Link>
+            {loggedIn && (
+              <Link
+                href={`/profil/${encodeURIComponent(visningsnavn)}`}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#ffd44d] text-xs font-black text-[#463018]"
+                aria-label="Min profil"
+              >
+                {initials(visningsnavn)}
+              </Link>
+            )}
           </div>
         </header>
 
@@ -153,7 +162,7 @@ export default function ResultaterPage() {
                       Min seneste kamp
                     </p>
                     <p className="text-xs text-[#838999]">
-                      {myLatest ? formatDate(myLatest.date) : 'Ingen kamp endnu'}
+                      {myLatest ? formatDate(myLatest.date) : !loading && !error ? 'Ingen kamp endnu' : null}
                     </p>
                   </div>
                 </div>
@@ -197,7 +206,7 @@ export default function ResultaterPage() {
                   </div>
                 ) : (
                   <div className="rounded-[10px] bg-[#fbfbfc] px-3 py-2 text-sm text-[#838999]">
-                    Ingen resultater fundet endnu.
+                    {matchStatus}
                   </div>
                 )}
               </Link>
@@ -215,7 +224,7 @@ export default function ResultaterPage() {
                       Senest indrapporterede
                     </p>
                     <p className="text-xs text-[#838999]">
-                      {latestOverall ? formatDate(latestOverall.date) : 'Ingen kamp endnu'}
+                      {latestOverall ? formatDate(latestOverall.date) : !loading && !error ? 'Ingen kamp endnu' : null}
                     </p>
                   </div>
                 </div>
@@ -259,7 +268,7 @@ export default function ResultaterPage() {
                   </div>
                 ) : (
                   <div className="rounded-[10px] bg-[#fbfbfc] px-3 py-2 text-sm text-[#838999]">
-                    Ingen resultater fundet endnu.
+                    {matchStatus}
                   </div>
                 )}
               </Link>
@@ -303,7 +312,7 @@ export default function ResultaterPage() {
             { href: '/startside', icon: '🏠', label: 'Hjem' },
             { href: '/ranglister', icon: '📊', label: 'Rangliste' },
             { href: '/kommende', icon: '📅', label: 'Events' },
-            { href: `/profil/${encodeURIComponent(visningsnavn)}`, icon: '🧑‍🎾', label: 'Profil' },
+            ...(loggedIn ? [{ href: `/profil/${encodeURIComponent(visningsnavn)}`, icon: '🧑‍🎾', label: 'Profil' }] : []),
           ].map((item) => (
             <Link
               key={item.href}

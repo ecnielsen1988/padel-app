@@ -38,33 +38,49 @@ export function clearRecentResultCardsCache() {
   revalidateTag("results-feed");
 }
 
-async function fetchAllResults(supabase: any): Promise<Kamp[]> {
+async function fetchAllResults(supabase: ReturnType<typeof createSupabaseServerReadClient>): Promise<Kamp[]> {
   const batchSize = 1000;
-  let alleResultater: Kamp[] = [];
-  let offset = 0;
-  let batch: Kamp[] = [];
+  const parallelPages = 4;
 
-  do {
-    const res = await supabase
+  async function fetchPage(offset: number, size: number, includeCount = false) {
+    const { data, error, count } = await supabase
       .from("newresults")
-      .select(RESULTS_COLUMNS)
+      .select(RESULTS_COLUMNS, includeCount ? { count: "exact" } : undefined)
       .order("date", { ascending: true })
       .order("id", { ascending: true })
-      .range(offset, offset + batchSize - 1);
+      .range(offset, offset + size - 1);
+    if (error) throw error;
+    return { rows: (data ?? []) as Kamp[], count };
+  }
 
-    const data = (res?.data ?? []) as Kamp[];
-    const error = res?.error as any;
+  const first = await fetchPage(0, batchSize, true);
+  if (first.rows.length === 0 || first.count === first.rows.length) return first.rows;
 
-    if (error) {
-      throw error;
+  const count = first.count;
+  if (count !== null && count > first.rows.length) {
+    const rows = [...first.rows];
+    const pageSize = first.rows.length;
+    for (let offset = pageSize; offset < count; offset += pageSize * parallelPages) {
+      const offsets = Array.from({ length: parallelPages }, (_, index) => offset + index * pageSize)
+        .filter((pageOffset) => pageOffset < count);
+      const pages = await Promise.all(offsets.map((pageOffset) => fetchPage(pageOffset, pageSize)));
+      for (const page of pages) rows.push(...page.rows);
     }
 
-    batch = data;
-    alleResultater = alleResultater.concat(batch);
-    offset += batchSize;
-  } while (batch.length === batchSize);
+    if (rows.length === count && new Set(rows.map((row) => row.id)).size === rows.length) {
+      return rows;
+    }
+    // Writes can shift offsets between reads. Retry with the current history.
+  }
 
-  return alleResultater;
+  const firstPage = first.count === null ? first.rows : (await fetchPage(0, batchSize)).rows;
+  const rows = [...firstPage];
+  for (let offset = batchSize, size = firstPage.length; size === batchSize; offset += batchSize) {
+    const page = await fetchPage(offset, batchSize);
+    rows.push(...page.rows);
+    size = page.rows.length;
+  }
+  return rows;
 }
 
 async function fetchInitialEloMap(supabase: any): Promise<EloMap> {
