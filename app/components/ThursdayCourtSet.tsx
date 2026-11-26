@@ -19,12 +19,12 @@ export function ThursdayCourt({ label, header, children }: {
         aria-label={hasExtraSets ? `Sæt for ${label}` : undefined}
         tabIndex={hasExtraSets ? 0 : undefined}
       >
-        <div className="grid auto-cols-max grid-cols-[max(min(100%,14rem),calc(100%-6rem))] gap-x-1 gap-y-0.5">
+        <div className="grid auto-cols-max grid-cols-[max(min(100%,14rem),calc(100%-6rem))] grid-rows-[repeat(2,auto_auto_0.875rem)_auto_auto] gap-x-1 gap-y-0.5">
           {children.map((set, index) => set && (
             <div
               key={index}
               className="grid min-w-0 grid-rows-subgrid"
-              style={{ gridRow: `${(index % thursdayRotationCount) * 2 + 1} / span 2`, gridColumn: Math.floor(index / thursdayRotationCount) + 1 }}
+              style={{ gridRow: `${(index % thursdayRotationCount) * 3 + 1} / span 2`, gridColumn: Math.floor(index / thursdayRotationCount) + 1 }}
             >
               {set}
             </div>
