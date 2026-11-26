@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
+import { ThursdayCourt } from "@/app/components/ThursdayCourtSet";
 import { LoadingState, LoggedOutState, PageShell } from "@/app/components/ui";
 import { MOBILEPAY_BOX_ID, MOBILEPAY_BOX_URL } from "@/lib/mobilepay";
 import { supabase } from "@/lib/supabaseClient";
@@ -963,35 +964,37 @@ export default function TorsdagStartside() {
                 <div className="space-y-3">
                   {mineMatches.map((sets) => {
                     const meta = sets[0];
+                    const cards: ReactNode[] = [];
+                    for (const row of sets) {
+                      cards[row.saet_nr - 1] = <TorsdagScoreEntryCard
+                        key={row.id}
+                        row={row}
+                        saving={scoreBusy}
+                        onSave={saveSetScore}
+                      />;
+                    }
                     return (
                       <div
                         key={`${meta.event_id}-${meta.kamp_nr}`}
                         className="rounded-[18px] bg-[#fbfbfc] p-4 shadow-[0_1px_8px_rgba(0,0,0,0.04)]"
                       >
-                        <div className="mb-2 flex items-center justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-extrabold text-[#1f2430]">
-                              Kamp #{meta.kamp_nr}
-                            </p>
-                            <p className="mt-1 text-xs text-[#838999]">
-                              {formatShortDate(meta.event_dato)} · {formatClock(meta.starttid)}–{formatClock(meta.sluttid)} · {meta.bane}
-                            </p>
+                        <ThursdayCourt label={`${meta.bane}, kamp ${meta.kamp_nr}`} header={
+                          <div className="mb-2 flex items-center justify-between gap-3 px-1">
+                            <div>
+                              <p className="text-sm font-extrabold text-[#1f2430] dark:text-sky-100">
+                                Kamp #{meta.kamp_nr}
+                              </p>
+                              <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+                                {formatShortDate(meta.event_dato)} · {formatClock(meta.starttid)}–{formatClock(meta.sluttid)} · {meta.bane}
+                              </p>
+                            </div>
+                            <span className="rounded-full bg-[#ecfdf5] px-2.5 py-1 text-[10px] font-bold text-[#0b6b3a]">
+                              {sets.length} sæt
+                            </span>
                           </div>
-                          <span className="rounded-full bg-[#ecfdf5] px-2.5 py-1 text-[10px] font-bold text-[#0b6b3a]">
-                            {sets.length} sæt
-                          </span>
-                        </div>
-
-                        <div className="space-y-2 text-sm text-[#414754]">
-                          {sets.map((row) => (
-                            <TorsdagScoreEntryCard
-                              key={row.id}
-                              row={row}
-                              saving={scoreBusy}
-                              onSave={saveSetScore}
-                            />
-                          ))}
-                        </div>
+                        }>
+                          {cards}
+                        </ThursdayCourt>
 
                         <div className="mt-3 flex flex-wrap gap-2">
                           <button
@@ -1108,24 +1111,23 @@ function TorsdagScoreEntryCard({
   }, [onSave, row, scoreA, scoreB]);
 
   return (
-    <div className="rounded-[18px] bg-[#fbfbfc] p-4 shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
+    <div className="p-2 text-white">
       <div className="grid grid-cols-[1fr_auto] items-start gap-3">
         <div className="min-w-0">
-          <p className="text-sm font-extrabold text-[#1f2430]">Sæt {row.saet_nr}</p>
-          <p className="mt-1 text-xs text-[#838999]">
-            🏟 {row.bane} · ⏱ {formatClock(row.starttid)}–{formatClock(row.sluttid)}
-          </p>
+          <p className="text-sm font-bold">Sæt {row.saet_nr}</p>
         </div>
         <div className="flex items-center gap-2 justify-self-end">
           <input
+            aria-label={`Kamp ${row.kamp_nr}, sæt ${row.saet_nr}, hold A`}
             value={scoreA}
             onChange={(e) => setScoreA(sanitize(e.target.value))}
             inputMode="numeric"
             disabled={saving}
             className="h-10 w-10 rounded-[10px] border border-zinc-200 bg-white px-2 py-1.5 text-center text-sm font-black text-[#1f2430] outline-none disabled:opacity-70"
           />
-          <span className="text-sm font-bold text-[#838999]">-</span>
+          <span aria-hidden="true" className="text-sm font-bold">–</span>
           <input
+            aria-label={`Kamp ${row.kamp_nr}, sæt ${row.saet_nr}, hold B`}
             value={scoreB}
             onChange={(e) => setScoreB(sanitize(e.target.value))}
             inputMode="numeric"
@@ -1135,7 +1137,7 @@ function TorsdagScoreEntryCard({
         </div>
       </div>
 
-      <div className="mt-3 text-sm leading-tight text-[#414754]">
+      <div className="mt-1 text-xs leading-tight wrap-break-word">
         {row.holda1} & {row.holda2} <span className="opacity-60">vs</span>
         <br />
         {row.holdb1} & {row.holdb2}

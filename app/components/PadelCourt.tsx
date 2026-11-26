@@ -16,16 +16,24 @@ export function PadelCourtColumns({ courts, byRow = false }: { courts: ReactNode
   </div>;
 }
 
-export function PadelCourt({ label, header, children }: { label: string; header: ReactNode; children: ReactNode }) {
+export function PadelCourt({ label, header, children, backgroundImage }: {
+  label: string;
+  header: ReactNode;
+  children: ReactNode;
+  backgroundImage?: string;
+}) {
   return <section aria-label={label} className="min-w-0 rounded-xl border border-sky-200 bg-sky-50/70 p-1.5 dark:border-sky-900 dark:bg-slate-950/70">
     {header}
-    <div className="relative overflow-hidden rounded-lg bg-linear-to-br from-[#105eaa] to-[#073567] py-1 text-white">
-      <div aria-hidden="true" className="pointer-events-none absolute inset-1">
+    <div
+      className="relative overflow-hidden rounded-lg bg-[#073567] bg-size-[100%_100%] bg-no-repeat py-1 text-white"
+      style={{ backgroundImage: backgroundImage ? `url("${backgroundImage}")` : "linear-gradient(to bottom right, #105eaa, #073567)" }}
+    >
+      {!backgroundImage && <div aria-hidden="true" className="pointer-events-none absolute inset-1">
         <div className="absolute inset-y-0 left-[16%] right-[16%] border-x border-white/35">
           <div className="absolute inset-x-0 top-1/2 border-t border-white/35" />
         </div>
         <div className="absolute inset-y-0 left-1/2 w-1 -translate-x-1/2 border-x border-white/60 bg-[repeating-linear-gradient(to_bottom,#eff6ff_0_1px,#093d78_1px_3px)] shadow-sm" />
-      </div>
+      </div>}
       {children}
     </div>
   </section>;

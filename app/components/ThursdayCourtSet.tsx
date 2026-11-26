@@ -1,7 +1,50 @@
 "use client";
 
-import { Fragment, type ReactNode } from "react";
-import { CourtScoreInput, CourtWinChance } from "./PadelCourt";
+import { Fragment, useEffect, useRef, type ReactNode } from "react";
+import { CourtScoreInput, CourtWinChance, PadelCourt } from "./PadelCourt";
+
+const teamRotations = 3;
+
+export function ThursdayCourt({ label, header, children }: {
+  label: string;
+  header: ReactNode;
+  children: ReactNode[];
+}) {
+  const scrollArea = useRef<HTMLDivElement>(null);
+  const setCount = children.length;
+  const hasExtraSets = setCount > teamRotations;
+  const previousSetCount = useRef(setCount);
+
+  useEffect(() => {
+    const area = scrollArea.current;
+    if (area && setCount > previousSetCount.current) {
+      area.scrollLeft = area.scrollWidth;
+    }
+    previousSetCount.current = setCount;
+  }, [setCount]);
+
+  return <PadelCourt label={label} header={header} backgroundImage="/thursday-padel-court.webp">
+    <div
+      ref={scrollArea}
+      className="overflow-x-auto overscroll-x-contain"
+      role={hasExtraSets ? "region" : undefined}
+      aria-label={hasExtraSets ? `Sæt for ${label}` : undefined}
+      tabIndex={hasExtraSets ? 0 : undefined}
+    >
+      <div className="grid auto-cols-[minmax(min(100%,14rem),1fr)] grid-rows-3 gap-1 px-[5%] py-3">
+        {children.map((set, index) => set && (
+          <div
+            key={index}
+            className="min-w-0 rounded-md bg-slate-950/70"
+            style={{ gridRow: index % teamRotations + 1, gridColumn: Math.floor(index / teamRotations) + 1 }}
+          >
+            {set}
+          </div>
+        ))}
+      </div>
+    </div>
+  </PadelCourt>;
+}
 
 export default function ThursdayCourtSet({ number, court, teams, probabilityA, score, eloGain, disabled = false, onScore }: {
   number: number;
@@ -15,7 +58,7 @@ export default function ThursdayCourtSet({ number, court, teams, probabilityA, s
 }) {
   const percentA = Math.round(100 * probabilityA);
 
-  return <article aria-label={`${court}, sæt ${number}`} className="relative grid grid-cols-[50%_repeat(3,minmax(0,1fr))] items-start gap-y-0.5 px-3 py-2 [text-shadow:0_1px_2px_#073567]">
+  return <article aria-label={`${court}, sæt ${number}`} className="relative grid grid-cols-[minmax(0,1fr)_2.25rem_2.5rem_2.5rem] items-start gap-y-0.5 px-2 py-1 [text-shadow:0_1px_2px_#073567]">
     <h3 className="pr-2 text-xs font-bold">Sæt {number}</h3>
     <span title="Forventet vinderchance" className="pl-1 text-center text-[10px] font-semibold text-sky-100">%</span>
     <span className="text-center text-[10px] font-semibold text-sky-100">Score</span>

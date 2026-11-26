@@ -12,8 +12,8 @@ import {
   type EventSubmissionSet,
 } from "@/lib/eventSubmission";
 
-import { PadelCourt, PadelCourtColumns, padelEventGrid, padelEventWidth } from "@/app/components/PadelCourt";
-import ThursdayCourtSet from "@/app/components/ThursdayCourtSet";
+import { PadelCourtColumns, padelEventGrid, padelEventWidth } from "@/app/components/PadelCourt";
+import ThursdayCourtSet, { ThursdayCourt } from "@/app/components/ThursdayCourtSet";
 import RoyalMatches from "./RoyalMatches";
 
 import { eventRotation, isRoyalTiebreak, finishedEventSet, ROYAL_COURTS, ROYAL_RULES, royalSetLabel, royalPairingComplete, validateRoyalScores, validateRoyalEvent } from "@/lib/royal";
@@ -2097,7 +2097,7 @@ function CenterMatches({
     });
 
     return thursday ? (
-      <PadelCourt key={gi} label={court} header={header}>{sets}</PadelCourt>
+      <ThursdayCourt key={gi} label={court} header={header}>{sets}</ThursdayCourt>
     ) : (
       <div key={gi} className="rounded-lg border dark:border-zinc-800 overflow-hidden">
         {header}

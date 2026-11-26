@@ -1,7 +1,7 @@
 "use client";
 
-import { PadelCourt, PadelCourtColumns, padelEventGrid, padelEventWidth } from "@/app/components/PadelCourt";
-import ThursdayCourtSet from "@/app/components/ThursdayCourtSet";
+import { PadelCourtColumns, padelEventGrid, padelEventWidth } from "@/app/components/PadelCourt";
+import ThursdayCourtSet, { ThursdayCourt } from "@/app/components/ThursdayCourtSet";
 import ProgramTimeInput from "@/app/components/ProgramTimeInput";
 import { addPublishedThursdaySet, queueThursdayWrite, savedThursdayGroups, thursdaySetNames, waitForThursdayWrites } from "@/lib/thursdayProgram";
 import { saveEventSubmission, type EventSubmissionSet } from "@/lib/eventSubmission";
@@ -1499,7 +1499,7 @@ function CenterMatches({
 
     const court = `Bane ${g.saved ? g.court : courtsOrder[gi] ?? g.court}, kamp ${kampNr}`;
     return (
-      <PadelCourt key={gi} label={court} header={
+      <ThursdayCourt key={gi} label={court} header={
         <header className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 px-1.5 pb-1.5">
           <h2 className="text-sm font-bold text-sky-950 dark:text-sky-100">Kamp #{kampNr}</h2>
           <div className="flex flex-wrap items-center gap-2">
@@ -1645,7 +1645,7 @@ function CenterMatches({
               onScore={(side, value) => setScore(gi, si, side, value)}
             />;
           })}
-      </PadelCourt>
+      </ThursdayCourt>
     );
   });
 
