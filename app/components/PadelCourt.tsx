@@ -6,13 +6,17 @@ export const padelEventWidth = "w-full px-3 sm:px-5 2xl:px-8";
 export const padelEventGrid = "grid grid-cols-1 items-start gap-3 lg:grid-cols-[minmax(13rem,1fr)_repeat(2,minmax(0,1.7fr))_minmax(11rem,0.85fr)] xl:gap-5 2xl:gap-6";
 
 export function PadelCourtColumns({ courts, byRow = false }: { courts: ReactNode[]; byRow?: boolean }) {
+  if (byRow) {
+    return <div className="@container">
+      <div className="grid items-start gap-3 @min-[46rem]:grid-cols-2 xl:gap-5 2xl:gap-6">{courts}</div>
+    </div>;
+  }
+
   const midpoint = Math.max(2, Math.ceil(courts.length / 2));
 
   return <div className="grid items-start gap-3 sm:grid-cols-2 xl:gap-5 2xl:gap-6">
-    {byRow ? courts : <>
-      <div className="grid min-w-0 gap-3">{courts.slice(0, midpoint)}</div>
-      {courts.length > midpoint && <div className="grid min-w-0 gap-3">{courts.slice(midpoint)}</div>}
-    </>}
+    <div className="grid min-w-0 gap-3">{courts.slice(0, midpoint)}</div>
+    {courts.length > midpoint && <div className="grid min-w-0 gap-3">{courts.slice(midpoint)}</div>}
   </div>;
 }
 
@@ -25,7 +29,7 @@ export function PadelCourt({ label, header, children, backgroundImage }: {
   return <section aria-label={label} className="min-w-0 rounded-xl border border-sky-200 bg-sky-50/70 p-1.5 dark:border-sky-900 dark:bg-slate-950/70">
     {header}
     <div
-      className="relative overflow-hidden rounded-lg bg-[#073567] bg-size-[100%_100%] bg-no-repeat py-1 text-white"
+      className={`relative overflow-hidden rounded-lg bg-[#073567] bg-size-[100%_100%] bg-no-repeat text-white ${backgroundImage ? "@container" : "py-1"}`}
       style={{ backgroundImage: backgroundImage ? `url("${backgroundImage}")` : "linear-gradient(to bottom right, #105eaa, #073567)" }}
     >
       {!backgroundImage && <div aria-hidden="true" className="pointer-events-none absolute inset-1">

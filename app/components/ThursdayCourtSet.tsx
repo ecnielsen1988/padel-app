@@ -12,22 +12,24 @@ export function ThursdayCourt({ label, header, children }: {
   const hasExtraSets = children.length > thursdayRotationCount;
 
   return <PadelCourt label={label} header={header} backgroundImage="/thursday-padel-court.webp">
-    <div
-      className="overflow-x-auto overscroll-x-contain"
-      role={hasExtraSets ? "region" : undefined}
-      aria-label={hasExtraSets ? `Sæt for ${label}` : undefined}
-      tabIndex={hasExtraSets ? 0 : undefined}
-    >
-      <div className="grid auto-cols-max grid-cols-[max(min(100%,12rem),calc(100%-6rem))] gap-x-1 gap-y-0.5 px-[5%] py-3">
-        {children.map((set, index) => set && (
-          <div
-            key={index}
-            className="grid min-w-0 grid-rows-subgrid"
-            style={{ gridRow: `${(index % thursdayRotationCount) * 2 + 1} / span 2`, gridColumn: Math.floor(index / thursdayRotationCount) + 1 }}
-          >
-            {set}
-          </div>
-        ))}
+    <div className="grid min-h-[max(15rem,50cqw)] grid-rows-[3fr_14fr_3fr] px-[5%]">
+      <div
+        className="row-start-2 min-w-0 self-center overflow-x-auto overscroll-x-contain [scrollbar-width:none]"
+        role={hasExtraSets ? "region" : undefined}
+        aria-label={hasExtraSets ? `Sæt for ${label}` : undefined}
+        tabIndex={hasExtraSets ? 0 : undefined}
+      >
+        <div className="grid auto-cols-max grid-cols-[max(min(100%,14rem),calc(100%-6rem))] gap-x-1 gap-y-0.5">
+          {children.map((set, index) => set && (
+            <div
+              key={index}
+              className="grid min-w-0 grid-rows-subgrid"
+              style={{ gridRow: `${(index % thursdayRotationCount) * 2 + 1} / span 2`, gridColumn: Math.floor(index / thursdayRotationCount) + 1 }}
+            >
+              {set}
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   </PadelCourt>;
