@@ -13,6 +13,7 @@ import {
 } from "@/lib/eventSubmission";
 
 import { PadelCourtColumns, padelEventGrid, padelEventWidth } from "@/app/components/PadelCourt";
+import { thursdayRotationCount } from "@/lib/thursdayProgram";
 import ThursdayCourtSet, { ThursdayCourt } from "@/app/components/ThursdayCourtSet";
 import RoyalMatches from "./RoyalMatches";
 
@@ -2015,7 +2016,7 @@ function CenterMatches({
               key={key}
               number={si + 1}
               court={court}
-              teams={[`${a1?.visningsnavn || "?"} & ${a2?.visningsnavn || "?"}`, `${b1?.visningsnavn || "?"} & ${b2?.visningsnavn || "?"}`]}
+              teams={si < thursdayRotationCount ? [`${a1?.visningsnavn || "?"} & ${a2?.visningsnavn || "?"}`, `${b1?.visningsnavn || "?"} & ${b2?.visningsnavn || "?"}`] : undefined}
               probabilityA={pA}
               score={sc}
               eloGain={plusTxt}

@@ -1,3 +1,14 @@
+export const thursdayRotationCount = 3;
+
+export function showThursdaySetTeams(
+  index: number,
+  names: readonly (string | null | undefined)[],
+  baseNames?: readonly (string | null | undefined)[],
+) {
+  return index < thursdayRotationCount || !baseNames ||
+    names.some((name, playerIndex) => name !== baseNames[playerIndex]);
+}
+
 export function programTime(value: unknown): string | null {
   const match = /^([01]\d|2[0-3])[:.]([0-5]\d)(?::[0-5]\d)?$/.exec(typeof value === "string" ? value.trim() : "");
   return match ? `${match[1]}:${match[2]}` : null;

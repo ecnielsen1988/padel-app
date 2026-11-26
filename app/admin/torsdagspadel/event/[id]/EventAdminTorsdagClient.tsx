@@ -3,7 +3,7 @@
 import { PadelCourtColumns, padelEventGrid, padelEventWidth } from "@/app/components/PadelCourt";
 import ThursdayCourtSet, { ThursdayCourt } from "@/app/components/ThursdayCourtSet";
 import ProgramTimeInput from "@/app/components/ProgramTimeInput";
-import { addPublishedThursdaySet, queueThursdayWrite, savedThursdayGroups, thursdaySetNames, waitForThursdayWrites } from "@/lib/thursdayProgram";
+import { addPublishedThursdaySet, queueThursdayWrite, savedThursdayGroups, showThursdaySetTeams, thursdayRotationCount, thursdaySetNames, waitForThursdayWrites } from "@/lib/thursdayProgram";
 import { saveEventSubmission, type EventSubmissionSet } from "@/lib/eventSubmission";
 import { programPushSummary } from "@/lib/programNotificationsClient";
 import { Fragment, useEffect, useMemo, useState, useCallback } from "react";
@@ -1634,11 +1634,17 @@ function CenterMatches({
               if (Number.isFinite(maxPos)) plusTxt = `+${maxPos.toFixed(1)}`;
             }
 
+            const showTeams = showThursdaySetTeams(
+              si,
+              [a1, a2, b1, b2].map(player => player?.visningsnavn),
+              playersForSet(g, si % thursdayRotationCount).map(player => player?.visningsnavn),
+            );
+
             return <ThursdayCourtSet
               key={key}
               number={si + 1}
               court={court}
-              teams={[`${a1?.visningsnavn || "?"} & ${a2?.visningsnavn || "?"}`, `${b1?.visningsnavn || "?"} & ${b2?.visningsnavn || "?"}`]}
+              teams={showTeams ? [`${a1?.visningsnavn || "?"} & ${a2?.visningsnavn || "?"}`, `${b1?.visningsnavn || "?"} & ${b2?.visningsnavn || "?"}`] : undefined}
               probabilityA={pA}
               score={sc}
               eloGain={plusTxt}

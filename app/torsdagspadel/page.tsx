@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
-import { ThursdayCourt } from "@/app/components/ThursdayCourtSet";
+import ThursdayCourtSet, { ThursdayCourt } from "@/app/components/ThursdayCourtSet";
 import { LoadingState, LoggedOutState, PageShell } from "@/app/components/ui";
 import { MOBILEPAY_BOX_ID, MOBILEPAY_BOX_URL } from "@/lib/mobilepay";
 import { supabase } from "@/lib/supabaseClient";
 import { formatOre } from "@/lib/torsdagEconomyV2";
+import { showThursdaySetTeams, thursdayRotationCount } from "@/lib/thursdayProgram";
 
 type Bruger = {
   id: string;
@@ -965,10 +966,12 @@ export default function TorsdagStartside() {
                   {mineMatches.map((sets) => {
                     const meta = sets[0];
                     const cards: ReactNode[] = [];
+                    const setsByNumber = new Map(sets.map(row => [row.saet_nr, row]));
                     for (const row of sets) {
                       cards[row.saet_nr - 1] = <TorsdagScoreEntryCard
                         key={row.id}
                         row={row}
+                        baseSet={setsByNumber.get((row.saet_nr - 1) % thursdayRotationCount + 1)}
                         saving={scoreBusy}
                         onSave={saveSetScore}
                       />;
@@ -1074,10 +1077,12 @@ export default function TorsdagStartside() {
 
 function TorsdagScoreEntryCard({
   row,
+  baseSet,
   saving,
   onSave,
 }: {
   row: EventSet;
+  baseSet?: EventSet;
   saving: boolean;
   onSave: (row: EventSet, scoreA: number, scoreB: number) => Promise<void>;
 }) {
@@ -1110,38 +1115,18 @@ function TorsdagScoreEntryCard({
     return () => window.clearTimeout(timeout);
   }, [onSave, row, scoreA, scoreB]);
 
-  return (
-    <div className="p-2 text-white">
-      <div className="grid grid-cols-[1fr_auto] items-start gap-3">
-        <div className="min-w-0">
-          <p className="text-sm font-bold">Sæt {row.saet_nr}</p>
-        </div>
-        <div className="flex items-center gap-2 justify-self-end">
-          <input
-            aria-label={`Kamp ${row.kamp_nr}, sæt ${row.saet_nr}, hold A`}
-            value={scoreA}
-            onChange={(e) => setScoreA(sanitize(e.target.value))}
-            inputMode="numeric"
-            disabled={saving}
-            className="h-10 w-10 rounded-[10px] border border-zinc-200 bg-white px-2 py-1.5 text-center text-sm font-black text-[#1f2430] outline-none disabled:opacity-70"
-          />
-          <span aria-hidden="true" className="text-sm font-bold">–</span>
-          <input
-            aria-label={`Kamp ${row.kamp_nr}, sæt ${row.saet_nr}, hold B`}
-            value={scoreB}
-            onChange={(e) => setScoreB(sanitize(e.target.value))}
-            inputMode="numeric"
-            disabled={saving}
-            className="h-10 w-10 rounded-[10px] border border-zinc-200 bg-white px-2 py-1.5 text-center text-sm font-black text-[#1f2430] outline-none disabled:opacity-70"
-          />
-        </div>
-      </div>
-
-      <div className="mt-1 text-xs leading-tight wrap-break-word">
-        {row.holda1} & {row.holda2} <span className="opacity-60">vs</span>
-        <br />
-        {row.holdb1} & {row.holdb2}
-      </div>
-    </div>
+  const showTeams = showThursdaySetTeams(
+    row.saet_nr - 1,
+    [row.holda1, row.holda2, row.holdb1, row.holdb2],
+    baseSet && [baseSet.holda1, baseSet.holda2, baseSet.holdb1, baseSet.holdb2],
   );
+
+  return <ThursdayCourtSet
+    number={row.saet_nr}
+    court={`${row.bane}, kamp ${row.kamp_nr}`}
+    teams={showTeams ? [`${row.holda1} & ${row.holda2}`, `${row.holdb1} & ${row.holdb2}`] : undefined}
+    score={{ a: Number(scoreA), b: Number(scoreB) }}
+    disabled={saving}
+    onScore={(side, value) => (side === "a" ? setScoreA : setScoreB)(sanitize(value))}
+  />;
 }
