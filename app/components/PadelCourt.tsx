@@ -69,11 +69,16 @@ export function CourtScoreInput({ value, empty, label, tiebreak, disabled, onCha
   />;
 }
 
-export function CourtWinChance({ side, probability, percent }: { side: "A" | "B"; probability: number; percent: number }) {
+export function CourtWinChance({ side, probability, percent, textSize = "text-[11px]" }: {
+  side: "A" | "B";
+  probability: number;
+  percent: number;
+  textSize?: string;
+}) {
   return <span
     title="Forventet vinderchance før kampen"
     aria-label={`Vinderchance hold ${side}, ${percent}%`}
-    className="flex h-7 items-center justify-center pl-1 text-[11px] font-bold tabular-nums"
+    className={`flex h-7 items-center justify-center pl-1 font-bold tabular-nums ${textSize}`}
     style={{ color: `hsl(${Math.round(120 * probability)} 90% 83%)` }}
   >{percent}%</span>;
 }

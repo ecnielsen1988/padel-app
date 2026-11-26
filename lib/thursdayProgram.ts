@@ -1,5 +1,49 @@
 export const thursdayRotationCount = 3;
 
+export function thursdayPlayerLabels(names: readonly (string | null | undefined)[]) {
+  const groups = new Map<string, Map<string, string>>();
+  for (const value of names) {
+    const name = value?.trim().replace(/\s+/g, " ");
+    if (!name || name === "?") continue;
+    const key = name.split(" ")[0].toLocaleLowerCase("da");
+    const group = groups.get(key) ?? new Map<string, string>();
+    group.set(name.toLocaleLowerCase("da"), name);
+    groups.set(key, group);
+  }
+
+  const labels = new Map<string, string>();
+  for (const group of groups.values()) {
+    const players = [...group].map(([key, name]) => {
+      const [first, ...surname] = name.split(" ");
+      return { key, first, surname: surname.map(part => Array.from(part)) };
+    });
+    const initials = (surname: string[][], length: number) =>
+      surname.map(part => `${part.slice(0, length).join("")}.`).join("");
+
+    for (const { key, first, surname } of players) {
+      if (players.length === 1 || !surname.length) {
+        labels.set(key, first);
+        continue;
+      }
+
+      const maxLength = Math.max(...surname.map(part => part.length));
+      let length = 1;
+      let suffix = initials(surname, length);
+      while (length < maxLength && players.some(other =>
+        other.key !== key && initials(other.surname, length).toLocaleLowerCase("da") === suffix.toLocaleLowerCase("da")
+      )) {
+        suffix = initials(surname, ++length);
+      }
+      labels.set(key, `${first} ${suffix}`);
+    }
+  }
+
+  return (name: string | null | undefined) => {
+    const trimmed = name?.trim().replace(/\s+/g, " ");
+    return (trimmed && (labels.get(trimmed.toLocaleLowerCase("da")) ?? trimmed)) || "?";
+  };
+}
+
 export function showThursdaySetTeams(
   index: number,
   names: readonly (string | null | undefined)[],

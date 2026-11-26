@@ -13,7 +13,7 @@ import {
 } from "@/lib/eventSubmission";
 
 import { PadelCourtColumns, padelEventGrid, padelEventWidth } from "@/app/components/PadelCourt";
-import { thursdayRotationCount } from "@/lib/thursdayProgram";
+import { thursdayPlayerLabels, thursdayRotationCount } from "@/lib/thursdayProgram";
 import ThursdayCourtSet, { ThursdayCourt } from "@/app/components/ThursdayCourtSet";
 import RoyalMatches from "./RoyalMatches";
 
@@ -1784,6 +1784,9 @@ function CenterMatches({
   if (royal) return <RoyalMatches plan={plan} roundsPerCourt={roundsPerCourt} scores={scores} setScore={setScore} submittedLocked={submittedLocked} eloMap={eloMap} />;
 
   const thursday = isTorsdag(event.name);
+  const shortName = thursdayPlayerLabels(thursday ? plan.flatMap(match =>
+    match.players.map(player => player.visningsnavn)
+  ) : []);
   const courts = plan.map((g, index) => {
     const gi = g.gi;
     const kampNr = index + 1;
@@ -2016,7 +2019,7 @@ function CenterMatches({
               key={key}
               number={si + 1}
               court={court}
-              teams={si < thursdayRotationCount ? [`${a1?.visningsnavn || "?"} & ${a2?.visningsnavn || "?"}`, `${b1?.visningsnavn || "?"} & ${b2?.visningsnavn || "?"}`] : undefined}
+              teams={si < thursdayRotationCount ? [`${shortName(a1?.visningsnavn)} & ${shortName(a2?.visningsnavn)}`, `${shortName(b1?.visningsnavn)} & ${shortName(b2?.visningsnavn)}`] : undefined}
               probabilityA={pA}
               score={sc}
               eloGain={plusTxt}

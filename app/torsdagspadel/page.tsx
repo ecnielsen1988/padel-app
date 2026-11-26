@@ -7,7 +7,7 @@ import { LoadingState, LoggedOutState, PageShell } from "@/app/components/ui";
 import { MOBILEPAY_BOX_ID, MOBILEPAY_BOX_URL } from "@/lib/mobilepay";
 import { supabase } from "@/lib/supabaseClient";
 import { formatOre } from "@/lib/torsdagEconomyV2";
-import { showThursdaySetTeams, thursdayRotationCount } from "@/lib/thursdayProgram";
+import { showThursdaySetTeams, thursdayPlayerLabels, thursdayRotationCount } from "@/lib/thursdayProgram";
 
 type Bruger = {
   id: string;
@@ -153,6 +153,10 @@ function mapEventRowsToSets(rows: EventResultRow[], eventDate: string): EventSet
     scoreA: Number(r.scoreA ?? 0),
     scoreB: Number(r.scoreB ?? 0),
   }));
+}
+
+function eventSetNames(row: EventSet) {
+  return [row.holda1, row.holda2, row.holdb1, row.holdb2];
 }
 
 function groupByMatch(rows: EventSet[]) {
@@ -419,7 +423,7 @@ export default function TorsdagStartside() {
     hasPendingFine: boolean;
   } | "error" | null>(null);
   const mobilePayUrl = MOBILEPAY_BOX_URL;
-  const [mineEventSets, setMineEventSets] = useState<EventSet[] | null>(null);
+  const [eventSets, setEventSets] = useState<EventSet[] | null>(null);
   const [scoreBusy, setScoreBusy] = useState(false);
   const [scoreError, setScoreError] = useState<string | null>(null);
 
@@ -444,10 +448,10 @@ export default function TorsdagStartside() {
       if (mounted) setTilmeldinger(map);
     }
 
-    async function loadMyMatches(profile: Bruger, nextEvents: EventRow[], todayISO: string) {
+    async function loadMatches(nextEvents: EventRow[], todayISO: string) {
       const published = nextEvents.filter((event) => event.status === "published");
       if (!published.length) {
-        if (mounted) setMineEventSets([]);
+        if (mounted) setEventSets([]);
         return;
       }
 
@@ -459,10 +463,7 @@ export default function TorsdagStartside() {
         .order("set_index", { ascending: true });
       if (!mounted) return;
 
-      const lowerName = profile.visningsnavn.trim().toLowerCase();
-      setMineEventSets(mapEventRowsToSets(data ?? [], todayISO)
-        .filter((row) => [row.holda1, row.holda2, row.holdb1, row.holdb2]
-          .some((name) => name.trim().toLowerCase() === lowerName))
+      setEventSets(mapEventRowsToSets(data ?? [], todayISO)
         .map((row) => ({ ...row, event_dato: dateByEvent.get(String(row.event_id)) ?? todayISO })));
     }
 
@@ -481,8 +482,8 @@ export default function TorsdagStartside() {
       void loadSignups(profile, nextEvents).catch(() => {
         if (mounted) setTilmeldinger({});
       });
-      void loadMyMatches(profile, nextEvents, todayISO).catch(() => {
-        if (mounted) setMineEventSets([]);
+      void loadMatches(nextEvents, todayISO).catch(() => {
+        if (mounted) setEventSets([]);
       });
     }
 
@@ -555,7 +556,7 @@ export default function TorsdagStartside() {
           if (!mounted) return;
           setEvents([]);
           setTilmeldinger({});
-          setMineEventSets([]);
+          setEventSets([]);
         });
         void loadHoldkamp().catch((error) => console.error("Kunne ikke hente holdkamp", error));
         void loadRanking(profile).catch(() => {
@@ -607,17 +608,30 @@ export default function TorsdagStartside() {
   const nextEvent = events?.[0] ?? null;
   const nextSignup = nextEvent ? tilmeldinger?.[nextEvent.date] : null;
   const holdTeam = Array.isArray(nextHoldkamp?.hold_teams) ? nextHoldkamp?.hold_teams[0] : nextHoldkamp?.hold_teams;
-  const mineMatches = useMemo(
-    () =>
-      Array.from(groupByMatch(mineEventSets ?? []).values())
-        .sort((a, b) => {
-          const aDate = `${a[0]?.event_dato ?? ""}T${a[0]?.starttid ?? "00:00"}`;
-          const bDate = `${b[0]?.event_dato ?? ""}T${b[0]?.starttid ?? "00:00"}`;
-          return aDate.localeCompare(bDate);
-        })
-        .slice(0, 2),
-    [mineEventSets]
-  );
+  const mineMatches = useMemo(() => {
+    const myName = bruger?.visningsnavn.trim().toLowerCase();
+    const mySets = (eventSets ?? []).filter(row =>
+      eventSetNames(row).some(name => name.trim().toLowerCase() === myName)
+    );
+    return Array.from(groupByMatch(mySets).values())
+      .sort((a, b) => {
+        const aDate = `${a[0]?.event_dato ?? ""}T${a[0]?.starttid ?? "00:00"}`;
+        const bDate = `${b[0]?.event_dato ?? ""}T${b[0]?.starttid ?? "00:00"}`;
+        return aDate.localeCompare(bDate);
+      })
+      .slice(0, 2);
+  }, [bruger?.visningsnavn, eventSets]);
+
+  const labelsByEvent = useMemo(() => {
+    const namesByEvent = new Map<string, string[]>();
+    for (const row of eventSets ?? []) {
+      const eventId = String(row.event_id);
+      const names = namesByEvent.get(eventId) ?? [];
+      names.push(...eventSetNames(row));
+      namesByEvent.set(eventId, names);
+    }
+    return new Map(Array.from(namesByEvent, ([id, names]) => [id, thursdayPlayerLabels(names)]));
+  }, [eventSets]);
 
   async function reloadEventSets(eventId: string | number, eventDate: string) {
     const { data } = await (supabase.from("event_result") as any)
@@ -627,16 +641,10 @@ export default function TorsdagStartside() {
       .order("set_index", { ascending: true });
 
     const rows = mapEventRowsToSets((data as EventResultRow[] | null) ?? [], eventDate);
-    const lowerName = bruger?.visningsnavn.trim().toLowerCase() ?? "";
-    setMineEventSets((prev) => {
-      const rest = (prev ?? []).filter((row) => String(row.event_id) !== String(eventId));
-      const mine = rows.filter((row) =>
-        [row.holda1, row.holda2, row.holdb1, row.holdb2]
-          .map((name) => name.trim().toLowerCase())
-          .includes(lowerName)
-      );
-      return [...rest, ...mine];
-    });
+    setEventSets((prev) => [
+      ...(prev ?? []).filter(row => String(row.event_id) !== String(eventId)),
+      ...rows,
+    ]);
   }
 
   async function saveSetScore(setRow: EventSet, scoreA: number, scoreB: number) {
@@ -961,16 +969,18 @@ export default function TorsdagStartside() {
                 </Link>
               </div>
 
-              {mineEventSets === null ? <p className="text-sm text-[#6d7280]">Henter dine kampe…</p> : mineMatches.length > 0 ? (
+              {eventSets === null ? <p className="text-sm text-[#6d7280]">Henter dine kampe…</p> : mineMatches.length > 0 ? (
                 <div className="space-y-3">
                   {mineMatches.map((sets) => {
                     const meta = sets[0];
+                    const shortName = labelsByEvent.get(String(meta.event_id));
                     const cards: ReactNode[] = [];
                     const setsByNumber = new Map(sets.map(row => [row.saet_nr, row]));
                     for (const row of sets) {
                       cards[row.saet_nr - 1] = <TorsdagScoreEntryCard
                         key={row.id}
                         row={row}
+                        shortName={shortName}
                         baseSet={setsByNumber.get((row.saet_nr - 1) % thursdayRotationCount + 1)}
                         saving={scoreBusy}
                         onSave={saveSetScore}
@@ -991,9 +1001,6 @@ export default function TorsdagStartside() {
                                 {formatShortDate(meta.event_dato)} · {formatClock(meta.starttid)}–{formatClock(meta.sluttid)} · {meta.bane}
                               </p>
                             </div>
-                            <span className="rounded-full bg-[#ecfdf5] px-2.5 py-1 text-[10px] font-bold text-[#0b6b3a]">
-                              {sets.length} sæt
-                            </span>
                           </div>
                         }>
                           {cards}
@@ -1078,11 +1085,13 @@ export default function TorsdagStartside() {
 function TorsdagScoreEntryCard({
   row,
   baseSet,
+  shortName,
   saving,
   onSave,
 }: {
   row: EventSet;
   baseSet?: EventSet;
+  shortName?: (name: string) => string;
   saving: boolean;
   onSave: (row: EventSet, scoreA: number, scoreB: number) => Promise<void>;
 }) {
@@ -1115,16 +1124,14 @@ function TorsdagScoreEntryCard({
     return () => window.clearTimeout(timeout);
   }, [onSave, row, scoreA, scoreB]);
 
-  const showTeams = showThursdaySetTeams(
-    row.saet_nr - 1,
-    [row.holda1, row.holda2, row.holdb1, row.holdb2],
-    baseSet && [baseSet.holda1, baseSet.holda2, baseSet.holdb1, baseSet.holdb2],
-  );
+  const names = eventSetNames(row);
+  const showTeams = showThursdaySetTeams(row.saet_nr - 1, names, baseSet && eventSetNames(baseSet));
+  const [a1, a2, b1, b2] = shortName ? names.map(shortName) : names;
 
   return <ThursdayCourtSet
     number={row.saet_nr}
     court={`${row.bane}, kamp ${row.kamp_nr}`}
-    teams={showTeams ? [`${row.holda1} & ${row.holda2}`, `${row.holdb1} & ${row.holdb2}`] : undefined}
+    teams={showTeams ? [`${a1} & ${a2}`, `${b1} & ${b2}`] : undefined}
     score={{ a: Number(scoreA), b: Number(scoreB) }}
     disabled={saving}
     onScore={(side, value) => (side === "a" ? setScoreA : setScoreB)(sanitize(value))}

@@ -3,7 +3,7 @@
 import { PadelCourtColumns, padelEventGrid, padelEventWidth } from "@/app/components/PadelCourt";
 import ThursdayCourtSet, { ThursdayCourt } from "@/app/components/ThursdayCourtSet";
 import ProgramTimeInput from "@/app/components/ProgramTimeInput";
-import { addPublishedThursdaySet, queueThursdayWrite, savedThursdayGroups, showThursdaySetTeams, thursdayRotationCount, thursdaySetNames, waitForThursdayWrites } from "@/lib/thursdayProgram";
+import { addPublishedThursdaySet, queueThursdayWrite, savedThursdayGroups, showThursdaySetTeams, thursdayPlayerLabels, thursdayRotationCount, thursdaySetNames, waitForThursdayWrites } from "@/lib/thursdayProgram";
 import { saveEventSubmission, type EventSubmissionSet } from "@/lib/eventSubmission";
 import { programPushSummary } from "@/lib/programNotificationsClient";
 import { Fragment, useEffect, useMemo, useState, useCallback } from "react";
@@ -1486,6 +1486,10 @@ function CenterMatches({
   const setKey = (gi: number, si: number) => `${gi}-${si}`;
   const scoreOf = (s?: { a: number; b: number }) => ({ a: s?.a ?? 0, b: s?.b ?? 0 });
 
+  const shortName = thursdayPlayerLabels(plan.flatMap(match => match.saved
+    ? Object.values(match.saved.sets).flatMap(thursdaySetNames)
+    : match.players.map(player => player.visningsnavn)));
+
   const courts = plan.map((g, index) => {
     const gi = g.gi;
     const kampNr = index + 1;
@@ -1644,7 +1648,7 @@ function CenterMatches({
               key={key}
               number={si + 1}
               court={court}
-              teams={showTeams ? [`${a1?.visningsnavn || "?"} & ${a2?.visningsnavn || "?"}`, `${b1?.visningsnavn || "?"} & ${b2?.visningsnavn || "?"}`] : undefined}
+              teams={showTeams ? [`${shortName(a1?.visningsnavn)} & ${shortName(a2?.visningsnavn)}`, `${shortName(b1?.visningsnavn)} & ${shortName(b2?.visningsnavn)}`] : undefined}
               probabilityA={pA}
               score={sc}
               eloGain={plusTxt}

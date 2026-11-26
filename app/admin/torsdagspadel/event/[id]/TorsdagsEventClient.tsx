@@ -3,7 +3,7 @@
 import { PadelCourtColumns, padelEventGrid, padelEventWidth } from "@/app/components/PadelCourt";
 import ThursdayCourtSet, { ThursdayCourt } from "@/app/components/ThursdayCourtSet";
 import ProgramTimeInput from "@/app/components/ProgramTimeInput";
-import { addPublishedThursdaySet, queueThursdayWrite, savedThursdayGroups, showThursdaySetTeams, thursdayRotationCount, thursdaySetNames, waitForThursdayWrites } from "@/lib/thursdayProgram";
+import { addPublishedThursdaySet, queueThursdayWrite, savedThursdayGroups, showThursdaySetTeams, thursdayPlayerLabels, thursdayRotationCount, thursdaySetNames, waitForThursdayWrites } from "@/lib/thursdayProgram";
 import { saveEventSubmission, type EventSubmissionSet } from "@/lib/eventSubmission";
 import { programPushSummary } from "@/lib/programNotificationsClient";
 import { Fragment, useEffect, useMemo, useState, useCallback, useRef } from "react";
@@ -1668,11 +1668,15 @@ function CenterMatches({
   const setKey = (gi: number, si: number) => `${gi}-${si}`;
   const scoreOf = (s?: { a: number; b: number }) => ({ a: s?.a ?? 0, b: s?.b ?? 0 });
 
+  const shortName = thursdayPlayerLabels(plan.flatMap(match => match.saved
+    ? Object.values(match.saved.sets).flatMap(thursdaySetNames)
+    : match.players.map(player => player.visningsnavn)));
+
   const playerLabel = (player?: Pick<EventPlayer, "visningsnavn">) => {
     const navn = (player?.visningsnavn || "?").trim();
     return (
       <>
-        <span>{navn}</span>
+        <span title={navn}>{shortName(navn)}</span>
         {(fineDebtByName[navn] ?? 0) > 0 && <span title="Skylder til bødekassen">💰</span>}
       </>
     );
